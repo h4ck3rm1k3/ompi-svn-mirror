@@ -71,6 +71,7 @@ EXTRA_DIST	= \
 	base/MIPS.asm \
 	base/POWERPC32.asm \
 	base/POWERPC64.asm \
+	base/SPARC.asm \
 	base/SPARCV9_32.asm \
 	base/SPARCV9_64.asm
 

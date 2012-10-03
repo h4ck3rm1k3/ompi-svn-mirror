@@ -7,8 +7,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,6 +18,7 @@
 
 #include "osc_pt2pt.h"
 #include "osc_pt2pt_sendreq.h"
+#include "osc_pt2pt_longreq.h"
 #include "osc_pt2pt_header.h"
 #include "osc_pt2pt_data_move.h"
 
@@ -123,7 +122,7 @@ ompi_osc_pt2pt_module_fence(int assert, ompi_win_t *win)
 
             ret = ompi_osc_pt2pt_sendreq_send(module, req);
 
-            if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
+            if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret ) {
                 opal_output_verbose(5, ompi_osc_base_output,
                                     "complete: failure in starting sendreq (%d).  Will try later.",
                                     ret);
@@ -268,7 +267,7 @@ ompi_osc_pt2pt_module_complete(ompi_win_t *win)
 
         ret = ompi_osc_pt2pt_sendreq_send(module, req);
 
-        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret ) {
             opal_output_verbose(5, ompi_osc_base_output,
                                 "complete: failure in starting sendreq (%d).  Will try later.",
                                 ret);
@@ -366,7 +365,7 @@ ompi_osc_pt2pt_module_test(ompi_win_t *win,
     ompi_group_t *group;
     ompi_osc_pt2pt_module_t *module = P2P_MODULE(win);
 
-#if !OMPI_ENABLE_PROGRESS_THREADS
+#if !OPAL_ENABLE_PROGRESS_THREADS
     opal_progress();
 #endif
 
@@ -428,16 +427,6 @@ ompi_osc_pt2pt_module_lock(int lock_type,
                                 ompi_comm_rank(module->p2p_comm),
                                 lock_type);
 
-    if (ompi_comm_rank(module->p2p_comm) == target) {
-        /* If we're trying to lock locally, have to wait to actually
-           acquire the lock */
-        OPAL_THREAD_LOCK(&module->p2p_lock);
-        while (module->p2p_lock_received_ack == 0) {
-            opal_condition_wait(&module->p2p_cond, &module->p2p_lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->p2p_lock);
-    }
-
     /* return */
     return OMPI_SUCCESS;
 }
@@ -491,7 +480,7 @@ ompi_osc_pt2pt_module_unlock(int target,
 
         ret = ompi_osc_pt2pt_sendreq_send(module, req);
 
-        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret ) {
             opal_output_verbose(5, ompi_osc_base_output,
                                 "complete: failure in starting sendreq (%d).  Will try later.",
                                 ret);

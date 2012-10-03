@@ -8,7 +8,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2006 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -19,9 +19,7 @@
 
 # MCA_crs_blcr_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_opal_crs_blcr_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/crs/blcr/Makefile])
-
+AC_DEFUN([MCA_crs_blcr_CONFIG],[
     AC_ARG_WITH([blcr],
                 [AC_HELP_STRING([--with-blcr(=DIR)],
                                 [Path to BLCR Installation])])
@@ -37,7 +35,7 @@ AC_DEFUN([MCA_opal_crs_blcr_CONFIG],[
     #
     # If we wanted BLCR, but did not specify the FT option,
     # error out with a warning for the user
-    AS_IF([test "$opal_want_ft_cr" = "0"],
+    AS_IF([test "$ompi_want_ft_cr" = "0"],
           [$2
            check_crs_blcr_good="no"
            AS_IF([test ! -z "$with_blcr" -a "$with_blcr" != "no"],
@@ -176,14 +174,6 @@ AC_DEFUN([MCA_opal_crs_blcr_CONFIG],[
            AC_DEFINE_UNQUOTED([CRS_BLCR_HAVE_INFO_REQUESTER], [$crs_blcr_have_info_requester],
                [BLCRs cr_checkpoint_info.requester member availability])
            $1])
-
-    #
-    # Require either a working cr_request_file() or cr_request_checkpoint() function
-    #
-    AS_IF([test "$crs_blcr_have_working_cr_request" = "0" -a "$crs_blcr_have_cr_request_checkpoint" = "0"],
-        [$2
-         check_crs_blcr_good="no"
-         AC_MSG_WARN([The BLCR CRS component requires either the cr_request_checkpoint() or cr_request_file() functions])])
 
     #
     # Reset the flags

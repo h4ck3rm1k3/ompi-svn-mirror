@@ -26,7 +26,7 @@
 #define MCA_BTL_IB_ENDPOINT_H
 
 #include "opal/class/opal_list.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/output.h"
 #include "ompi/mca/btl/btl.h"
 #include "btl_openib.h"
@@ -208,7 +208,7 @@ struct mca_btl_base_endpoint_t {
     /** list of pending rget ops */
     opal_list_t                 pending_get_frags;
     /** list of pending rput ops */
-    opal_list_t                 pending_put_frags;
+    opal_list_t                 pending_put_frags; 
 
     /** number of available get tokens */
     int32_t                     get_tokens;
@@ -478,13 +478,13 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
         mca_btl_openib_send_frag_t *frag, const bool rdma)
 {
     mca_btl_openib_module_t *openib_btl = ep->endpoint_btl;
-    mca_btl_openib_segment_t *seg = &to_base_frag(frag)->segment;
+    mca_btl_base_segment_t *seg = &to_base_frag(frag)->segment;
     struct ibv_sge *sg = &to_com_frag(frag)->sg_entry;
     struct ibv_send_wr *sr_desc = &to_out_frag(frag)->sr_desc;
     struct ibv_send_wr *bad_wr;
     int qp = to_base_frag(frag)->base.order;
 
-    sg->length = seg->base.seg_len + sizeof(mca_btl_openib_header_t) +
+    sg->length = seg->seg_len + sizeof(mca_btl_openib_header_t) +
         (rdma ? sizeof(mca_btl_openib_footer_t) : 0) + frag->coalesced_length;
 
     sr_desc->send_flags = ib_send_flags(sg->length, &(ep->qps[qp]));
@@ -493,10 +493,10 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
         BTL_OPENIB_HEADER_HTON(*frag->hdr);
 
     if(rdma) {
-        int32_t head;   
+        int32_t head;
         mca_btl_openib_footer_t* ftr =
             (mca_btl_openib_footer_t*)(((char*)frag->hdr) + sg->length +
-                    BTL_OPENIB_FTR_PADDING(sg->length) - sizeof(mca_btl_openib_footer_t));
+                     BTL_OPENIB_FTR_PADDING(sg->length) - sizeof(mca_btl_openib_footer_t));
         sr_desc->opcode = IBV_WR_RDMA_WRITE;
         MCA_BTL_OPENIB_RDMA_FRAG_SET_SIZE(ftr, sg->length);
         MCA_BTL_OPENIB_RDMA_MAKE_LOCAL(ftr);
@@ -512,20 +512,13 @@ static inline int post_send(mca_btl_openib_endpoint_t *ep,
 
         sr_desc->wr.rdma.rkey = ep->eager_rdma_remote.rkey;
         MCA_BTL_OPENIB_RDMA_MOVE_INDEX(ep->eager_rdma_remote.head, head);
-#if BTL_OPENIB_FAILOVER_ENABLED
-        /* frag->ftr is unused on the sending fragment, so use it
-         * to indicate it is an eager fragment.  A non-zero value
-         * indicates it is eager, and the value indicates the
-         * location in the eager RDMA array that it lives. */
-        frag->ftr = (mca_btl_openib_footer_t*)(long)(1 + head);
-#endif
         sr_desc->wr.rdma.remote_addr =
             ep->eager_rdma_remote.base.lval +
             head * openib_btl->eager_rdma_frag_size +
             sizeof(mca_btl_openib_header_t) +
             mca_btl_openib_component.eager_limit +
             sizeof(mca_btl_openib_footer_t);
-        sr_desc->wr.rdma.remote_addr -= sg->length + BTL_OPENIB_FTR_PADDING(sg->length);
+        sr_desc->wr.rdma.remote_addr -= (sg->length + BTL_OPENIB_FTR_PADDING(sg->length));
     } else {
         if(BTL_OPENIB_QP_TYPE_PP(qp)) {
             sr_desc->opcode = IBV_WR_SEND;

@@ -39,7 +39,6 @@
 #include "opal/constants.h"
 #include "opal/util/output.h"
 #include "opal/util/show_help.h"
-#include "opal/util/argv.h"
 
 #ifndef _NSIG
 #define _NSIG 32
@@ -382,7 +381,7 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
 #endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
 
 
-#if OPAL_WANT_PRETTY_PRINT_STACKTRACE
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
 void opal_stackframe_output(int stream)
 {   
     int traces_size;
@@ -402,44 +401,7 @@ void opal_stackframe_output(int stream)
     }
 }
 
-char *opal_stackframe_output_string(void)
-{
-    int traces_size, i;
-    size_t len;
-    char *output, **traces;
-    
-    len = 0;
-    if (OPAL_SUCCESS != opal_backtrace_buffer(&traces, &traces_size)) {
-        return NULL;
-    }
-    
-    /* Calculate the space needed for the string */
-    for (i = 3; i < traces_size; i++) {
-	    if (NULL == traces[i]) {
-            break;
-        }
-        len += strlen(traces[i]) + 1;
-    }
-    
-    output = (char *) malloc(len + 1);
-    if (NULL == output) {
-        return NULL;
-    }
-    
-    *output = '\0';
-    for (i = 3; i < traces_size; i++) {
-        if (NULL == traces[i]) {
-            break;
-        }
-        strcat(output, traces[i]);
-        strcat(output, "\n");
-    }
-
-    free(traces);
-    return output;
-}
-
-#endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE */
+#endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
 
 /**
  * Here we register the show_stackframe function for signals
@@ -519,7 +481,9 @@ int opal_util_register_stackhandlers (void)
           if (!showed_help && complain) {
               /* JMS This is icky; there is no error message
                  aggregation here so this message may be repeated for
-                 every single MPI process... */
+                 every single MPI process...  This should be replaced
+                 with OPAL_SOS when that is done so that it can be
+                 properly aggregated. */
               opal_show_help("help-opal-util.txt",
                              "stacktrace signal override",
                              true, sig, sig, sig, string_value);

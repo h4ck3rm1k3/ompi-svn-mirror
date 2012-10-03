@@ -12,7 +12,6 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2008 University of Houston. All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,8 +23,6 @@
 #include "coll_hierarch.h"
 
 #include <stdio.h>
-
-#include "opal/mca/hwloc/base/base.h"
 
 #include "mpi.h"
 #include "ompi/communicator/communicator.h"

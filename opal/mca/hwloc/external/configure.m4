@@ -10,14 +10,9 @@
 #
 
 #
-# Priority
-#
-AC_DEFUN([MCA_opal_hwloc_external_PRIORITY], [10])
-
-#
 # Force this component to compile in static-only mode
 #
-AC_DEFUN([MCA_opal_hwloc_external_COMPILE_MODE], [
+AC_DEFUN([MCA_hwloc_external_COMPILE_MODE], [
     AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
     $4="static"
     AC_MSG_RESULT([$$4])
@@ -26,17 +21,15 @@ AC_DEFUN([MCA_opal_hwloc_external_COMPILE_MODE], [
 
 # MCA_hwloc_external_POST_CONFIG()
 # ---------------------------------
-AC_DEFUN([MCA_opal_hwloc_external_POST_CONFIG],[
+AC_DEFUN([MCA_hwloc_external_POST_CONFIG],[
     HWLOC_DO_AM_CONDITIONALS
 ])dnl
 
 
 # MCA_hwloc_external_CONFIG([action-if-found], [action-if-not-found])
 # --------------------------------------------------------------------
-AC_DEFUN([MCA_opal_hwloc_external_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/hwloc/external/Makefile])
-
-    OPAL_VAR_SCOPE_PUSH([opal_hwloc_external_CPPFLAGS_save opal_hwloc_external_CFLAGS_save opal_hwloc_external_LDFLAGS_save opal_hwloc_external_LIBS_save opal_hwloc_external_want opal_hwloc_external_tmp opal_hwloc_external_lstopo])
+AC_DEFUN([MCA_hwloc_external_CONFIG],[
+    OMPI_VAR_SCOPE_PUSH([opal_hwloc_external_CPPFLAGS_save opal_hwloc_external_CFLAGS_save opal_hwloc_external_LDFLAGS_save opal_hwloc_external_LIBS_save opal_hwloc_external_want opal_hwloc_external_tmp opal_hwloc_external_lstopo])
 
     AC_ARG_WITH([hwloc-libdir],
        [AC_HELP_STRING([--with-hwloc-libdir=DIR],
@@ -101,7 +94,7 @@ AC_DEFUN([MCA_opal_hwloc_external_CONFIG],[
            AC_MSG_CHECKING([if external hwloc supports XML])
            AS_IF([test "$opal_hwloc_dir" != ""],
                  [opal_hwloc_external_lstopo="$opal_hwloc_dir/bin/lstopo"],
-                 [OPAL_WHICH(lstopo, opal_hwloc_external_lstopo)])
+                 [OMPI_WHICH(lstopo, opal_hwloc_external_lstopo)])
            opal_hwloc_external_tmp=`$opal_hwloc_external_lstopo --help | $GREP "Supported output file formats" | grep xml`
            AS_IF([test "$opal_hwloc_external_tmp" = ""],
                  [opal_hwloc_external_enable_xml=0
@@ -111,28 +104,10 @@ AC_DEFUN([MCA_opal_hwloc_external_CONFIG],[
 
            # Must set this variable so that the framework m4 knows
            # what file to include in opal/mca/hwloc/hwloc.h
-           opal_hwloc_external_include="opal/mca/hwloc/external/external.h"
+           opal_hwloc_external_include="$opal_hwloc_dir/include/hwloc.h"
            opal_hwloc_external_ADD_CPPFLAGS=$opal_hwloc_external_CPPFLAGS
            opal_hwloc_external_ADD_LDFLAGS=$opal_hwloc_external_LDFLAGS
            opal_hwloc_external_ADD_LIBS=$opal_hwloc_external_LIBS
-
-           # We have to do some extra indirection to get the
-           # OPAL_HWLOC_WANT_VERBS_HELPER to work.  First, the
-           # opal_hwloc_external_include file (set above), points to a
-           # file here in this component. That file will include the
-           # actual external hwloc.h file (via the
-           # MCA_hwloc_external_header define).  And if
-           # OPAL_HWLOC_WANT_VERBS_HELPER is set, that file will
-           # include the external hwloc/openfabrics-verbs.h file (via
-           # the MCA_hwloc_external_openfabrics_helper define).
-           AC_DEFINE_UNQUOTED(MCA_hwloc_external_header,
-                  ["$opal_hwloc_dir/include/hwloc.h"],
-                  [Location of external hwloc header])
-           AC_DEFINE_UNQUOTED(MCA_hwloc_external_openfabrics_header,
-                  ["$opal_hwloc_dir/include/hwloc/openfabrics-verbs.h"],
-                  [Location of external hwloc header])
-
-           AC_CHECK_HEADERS([infiniband/verbs.h])
 
            # These flags need to get passed to the wrapper compilers
            # (this is unnecessary for the internal/embedded hwloc)
@@ -144,5 +119,5 @@ AC_DEFUN([MCA_opal_hwloc_external_CONFIG],[
     AC_SUBST(opal_hwloc_external_LDFLAGS)
     AC_SUBST(opal_hwloc_external_LIBS)
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])dnl

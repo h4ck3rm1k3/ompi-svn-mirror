@@ -47,12 +47,10 @@ mca_mtl_psm_module_t ompi_mtl_psm = {
         
         ompi_mtl_psm_irecv,
         ompi_mtl_psm_iprobe,
-        ompi_mtl_psm_imrecv,
-        ompi_mtl_psm_improbe,
-
+        
         ompi_mtl_psm_cancel,
-        ompi_mtl_psm_add_comm,
-        ompi_mtl_psm_del_comm
+        NULL,
+        NULL
     }    
 };
 
@@ -359,22 +357,6 @@ ompi_mtl_psm_del_procs(struct mca_mtl_base_module_t *mtl,
                       size_t nprocs,
                       struct ompi_proc_t** procs, 
                       struct mca_mtl_base_endpoint_t **mtl_peer_data)
-{
-    return OMPI_SUCCESS;
-}
-
-
-int
-ompi_mtl_psm_add_comm(struct mca_mtl_base_module_t *mtl,
-                      struct ompi_communicator_t *comm)
-{
-    return OMPI_SUCCESS;
-}
-
-
-int
-ompi_mtl_psm_del_comm(struct mca_mtl_base_module_t *mtl,
-                      struct ompi_communicator_t *comm)
 {
     return OMPI_SUCCESS;
 }

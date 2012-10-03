@@ -200,7 +200,6 @@ static int discover(opal_list_t* nodelist, char *pbs_jobid)
         /* up the nodeid */
         nodeid++;
     }
-    fclose(fp);
 
     return ORTE_SUCCESS;
 }

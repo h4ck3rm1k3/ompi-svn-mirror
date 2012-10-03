@@ -50,8 +50,6 @@
 
 #include "opal/class/opal_list.h"
 
-#include "orte/mca/rml/rml_types.h"
-
 #include "orte/mca/iof/iof.h"
 
 BEGIN_C_DECLS

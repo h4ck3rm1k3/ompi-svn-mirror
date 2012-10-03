@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -197,12 +195,11 @@
 #include "ompi/attribute/attribute.h"
 #include "opal/class/opal_bitmap.h"
 #include "opal/threads/mutex.h"
-
 #include "ompi/constants.h"
 #include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"  /* ompi_communicator_t generated in [COPY|DELETE]_ATTR_CALLBACKS */
 #include "ompi/win/win.h"                    /* ompi_win_t generated in [COPY|DELETE]_ATTR_CALLBACKS */
-#include "ompi/mpi/fortran/base/fint_2_int.h"
+#include "ompi/mpi/f77/fint_2_int.h"
 
 /*
  * Macros
@@ -774,7 +771,7 @@ int ompi_attr_set_c(ompi_attribute_type_t type, void *object,
 
 
 /*
- * Front-end function called by the Fortran MPI-1 API functions to set
+ * Front-end function called by the Fortran MPI-2 API functions to set
  * an attribute.
  */
 int ompi_attr_set_fortran_mpi1(ompi_attribute_type_t type, void *object, 
@@ -959,7 +956,6 @@ int ompi_attr_copy_all(ompi_attribute_type_t type, void *old_object,
             }
             set_value(type, new_object, &newattr_hash, key, 
                       new_attr, true);
-
         } else {
             OBJ_RELEASE(new_attr);
         }
@@ -1162,7 +1158,7 @@ static int get_value(opal_hash_table_t *attr_hash, int key,
 
     OPAL_THREAD_LOCK(&attr_hash_lock);
     if (NULL == attr_hash) {
-	OPAL_THREAD_UNLOCK(&attr_hash_lock);
+        OPAL_THREAD_UNLOCK(&attr_hash_lock);
         return OMPI_SUCCESS;
     }
 

@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2012 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -53,7 +53,6 @@ SET(MCA_FRAMEWORK_LIST "")
 CHECK_SUBDIRS("${PROJECT_SOURCE_DIR}/mca" MCA_FRAMEWORK_LIST)
 #MESSAGE("MCA_FRAMEWORK_LIST:${MCA_FRAMEWORK_LIST}")
 
-LIST(REMOVE_ITEM MCA_FRAMEWORK_LIST "bcol")
 
 FILE(GLOB ${PROJECT_NAME}_MCA_HEADER_FILES "mca/*.C" "mca/*.h")
 SET(${PROJECT_NAME}_MCA_FILES ${${PROJECT_NAME}_MCA_FILES} ${${PROJECT_NAME}_MCA_HEADER_FILES})
@@ -156,26 +155,22 @@ FOREACH (MCA_FRAMEWORK ${MCA_FRAMEWORK_LIST})
 
         IF(BUILD_COMPONENT)
 
-          #check exclude list
-          SET(EXCLUDE_LIST "")
-          FILE(STRINGS ${CURRENT_PATH}/.windows EXCLUDE_LIST REGEX "^exclude_list=")
-
-          IF(NOT EXCLUDE_LIST STREQUAL "")
-            STRING(REPLACE "exclude_list=" "" EXCLUDE_LIST ${EXCLUDE_LIST})
-            FILE(GLOB_RECURSE RESULT_FILES "${CURRENT_PATH}/*.C" "${CURRENT_PATH}/*.h"
+          IF(NOT COMPONENT_FILES)
+            FILE(GLOB_RECURSE COMPONENT_FILES "${CURRENT_PATH}/*.C" "${CURRENT_PATH}/*.h"
               "${CURRENT_PATH}/*.cc" "${CURRENT_PATH}/*.cpp")
+
+            #check exclude list
+            SET(EXCLUDE_LIST "")
+            FILE(STRINGS ${CURRENT_PATH}/.windows EXCLUDE_LIST REGEX "^exclude_list=")
+
+            IF(NOT EXCLUDE_LIST STREQUAL "")
+              STRING(REPLACE "exclude_list=" "" EXCLUDE_LIST ${EXCLUDE_LIST})
+            ENDIF(NOT EXCLUDE_LIST STREQUAL "")
 
             # remove the files in the exclude list
             FOREACH(FILE ${EXCLUDE_LIST})
-              LIST(REMOVE_ITEM RESULT_FILES "${CURRENT_PATH}/${FILE}")
+              LIST(REMOVE_ITEM COMPONENT_FILES "${CURRENT_PATH}/${FILE}")
             ENDFOREACH(FILE)
-
-            # append the rest of the files to the main list
-            SET(COMPONENT_FILES ${COMPONENT_FILES} ${RESULT_FILES})
-          ENDIF(NOT EXCLUDE_LIST STREQUAL "")
-
-          IF(NOT COMPONENT_FILES)
-            FILE(GLOB_RECURSE COMPONENT_FILES "${CURRENT_PATH}/*.C" "${CURRENT_PATH}/*.h")
           ENDIF(NOT COMPONENT_FILES)
 
           IF(APPEND_FILES)
@@ -287,8 +282,6 @@ ENDIF (OMPI_DEBUG_BUILD)
           # Install help files if they are here.
           INSTALL(DIRECTORY ${CURRENT_PATH}/ DESTINATION share/openmpi/
             FILES_MATCHING PATTERN "*.txt"
-            PATTERN "hwloc" EXCLUDE
-            PATTERN "libevent" EXCLUDE
             PATTERN ".svn" EXCLUDE
             PATTERN ".hg" EXCLUDE)
 

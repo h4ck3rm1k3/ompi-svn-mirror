@@ -1,8 +1,5 @@
 /*
- * Copyright (c) 2010-2011 Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -56,7 +53,7 @@ static void dump_local_rdma_frags(mca_btl_openib_endpoint_t * endpoint);
  * @param qp Queue pair that had the error
  * @param remote_proc Pointer to process that had the error
  * @param endpoint Pointer to endpoint that had the error
- */
+ */ 
 void mca_btl_openib_handle_endpoint_error(mca_btl_openib_module_t *openib_btl,
                                           mca_btl_base_descriptor_t *des,
                                           int qp,
@@ -84,7 +81,7 @@ void mca_btl_openib_handle_endpoint_error(mca_btl_openib_module_t *openib_btl,
      * way to figure out what type of message created the error because
      * we need the information in the wc->imm_data field which does not
      * exist when we have an error.  So, nothing to do here but return. */
-    if ((openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_RECV) &&
+    if ((openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_RECV) && 
         !BTL_OPENIB_QP_TYPE_PP(qp)) {
         opal_output_verbose(20, mca_btl_openib_component.verbose_failover,
                             "SRQ RECV type=%d", openib_frag_type(des));
@@ -108,7 +105,7 @@ void mca_btl_openib_handle_endpoint_error(mca_btl_openib_module_t *openib_btl,
      *    B. It was some type of openib specific control message.
      * Therefore, just drop the fragments and call up into the PML to
      * disable this endpoint for future communication. */
-    if (((openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_RECV) &&
+    if (((openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_RECV) && 
          (BTL_OPENIB_QP_TYPE_PP(qp))) ||
          (openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_CONTROL) ||
          (openib_frag_type(des) == MCA_BTL_OPENIB_FRAG_EAGER_RDMA)) {
@@ -244,7 +241,7 @@ void mca_btl_openib_handle_btl_error(mca_btl_openib_module_t* openib_btl) {
                              NULL, btlname);
         if (NULL != btlname) free(btlname);
 
-        /* Now send out messages to all endpoints that we are disconnecting.
+        /* Now send out messages to all endpoints that we are disconnecting.  
          * Only do this to endpoints that are connected.  Otherwise, the
          * remote side does not yet have the information on this endpoint.  */
         for (i = 0; i < opal_pointer_array_get_size(openib_btl->device->endpoints); i++) {
@@ -318,12 +315,12 @@ void btl_openib_handle_failover_control_messages(mca_btl_openib_control_header_t
              * from the remote side and try to match it to an endpoint. */
             if ((bc_hdr->lid == newep->rem_info.rem_lid) &&
                 (bc_hdr->subnet_id == newep->rem_info.rem_subnet_id) &&
-                (bc_hdr->vpid == newep->endpoint_proc->proc_ompi->proc_name.vpid)) {
+                (bc_hdr->vpid == newep->endpoint_proc->proc_guid.vpid)) {
                 opal_output_verbose(30, mca_btl_openib_component.verbose_failover,
                                     "IB: Control message received from %d: "
                                     "found match: lid=%d,"
                                     "subnet=0x%" PRIx64 ",endpoint_state=%d",
-                                    newep->endpoint_proc->proc_ompi->proc_name.vpid,
+                                    newep->endpoint_proc->proc_guid.vpid,
                                     newep->rem_info.rem_lid,
                                     newep->rem_info.rem_subnet_id,
                                     newep->endpoint_state);
@@ -350,7 +347,7 @@ void btl_openib_handle_failover_control_messages(mca_btl_openib_control_header_t
                                             "IB: Control message received from %d: "
                                             "bringing down connection,lid=%d,"
                                             "subnet=0x%" PRIx64 ",endpoint_state=%d",
-                                            newep->endpoint_proc->proc_ompi->proc_name.vpid,
+                                            newep->endpoint_proc->proc_guid.vpid,
                                             newep->rem_info.rem_lid,
                                             newep->rem_info.rem_subnet_id,
                                             newep->endpoint_state);
@@ -372,15 +369,15 @@ void btl_openib_handle_failover_control_messages(mca_btl_openib_control_header_t
                         opal_output_verbose(20, mca_btl_openib_component.verbose_failover,
                                             "IB: rank=%d, control message (remote=%d), "
                                             "moved local head by one (new=%d)",
-                                            ORTE_PROC_MY_NAME->vpid,
-                                            newep->endpoint_proc->proc_ompi->proc_name.vpid,
+                                            ORTE_PROC_MY_NAME->vpid,    
+                                            newep->endpoint_proc->proc_guid.vpid,
                                             newep->eager_rdma_local.head);
                     } else {
                         opal_output_verbose(20, mca_btl_openib_component.verbose_failover,
                                             "IB: rank=%d, control message (remote=%d), "
                                             "did not move local head by one (still=%d)",
                                             ORTE_PROC_MY_NAME->vpid,
-                                            newep->endpoint_proc->proc_ompi->proc_name.vpid,
+                                            newep->endpoint_proc->proc_guid.vpid,
                                             newep->eager_rdma_local.head);
                     }
                 }
@@ -399,9 +396,9 @@ void btl_openib_handle_failover_control_messages(mca_btl_openib_control_header_t
  * and call the callback function with OMPI_ERROR.  It walks through
  * each qp with each priority and looks for both no_credits_pending_frags
  * and no_wqe_pending_frags.  It then looks for any pending_lazy_frags,
- * pending_put_frags, and pending_get_frags.  This function is only
+ * pending_put_frags, and pending_get_frags.  This function is only 
  * called when running with failover support enabled.  Note that
- * the errout parameter allows the function to also be used as a
+ * the errout parameter allows the function to also be used as a 
  * debugging tool to see if there are any fragments on any of the
  * queues.
  * @param ep Pointer to endpoint that had error
@@ -675,12 +672,12 @@ static void mca_btl_openib_endpoint_notify(mca_btl_base_endpoint_t* endpoint, ui
     to_base_frag(frag)->base.des_cbdata = NULL;
     to_base_frag(frag)->base.des_flags |= MCA_BTL_DES_FLAGS_PRIORITY|MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     to_base_frag(frag)->base.order = mca_btl_openib_component.credits_qp;
-    to_base_frag(frag)->segment.base.seg_len =
+    to_base_frag(frag)->segment.seg_len =
         sizeof(mca_btl_openib_broken_connection_header_t);
     to_com_frag(frag)->endpoint = newep;
 
     frag->hdr->tag = MCA_BTL_TAG_BTL;
-    bc_hdr = (mca_btl_openib_broken_connection_header_t*)to_base_frag(frag)->segment.base.seg_addr.pval;
+    bc_hdr = (mca_btl_openib_broken_connection_header_t*)to_base_frag(frag)->segment.seg_addr.pval;
     bc_hdr->control.type = type;
     bc_hdr->lid = endpoint->endpoint_btl->port_info.lid;
     bc_hdr->subnet_id = endpoint->endpoint_btl->port_info.subnet_id;
@@ -691,7 +688,7 @@ static void mca_btl_openib_endpoint_notify(mca_btl_base_endpoint_t* endpoint, ui
         BTL_OPENIB_BROKEN_CONNECTION_HEADER_HTON((*bc_hdr));
     }
     rc = mca_btl_openib_endpoint_send(newep, frag);
-    if (OMPI_SUCCESS == rc || OMPI_ERR_RESOURCE_BUSY == rc) {
+    if (OMPI_SUCCESS == rc ||OMPI_ERR_RESOURCE_BUSY == rc) {
         return;
     }
 
@@ -717,10 +714,10 @@ static void dump_local_rdma_frags(mca_btl_openib_endpoint_t * endpoint) {
 
         frag->hdr = (mca_btl_openib_header_t*)(((char*)frag->ftr) -
                size + sizeof(mca_btl_openib_footer_t));
-        to_base_frag(frag)->segment.base.seg_addr.pval =
+        to_base_frag(frag)->segment.seg_addr.pval =
                ((unsigned char* )frag->hdr) + sizeof(mca_btl_openib_header_t);
 
-        chdr = to_base_frag(frag)->segment.base.seg_addr.pval;
+        chdr = to_base_frag(frag)->segment.seg_addr.pval;
         if ((MCA_BTL_TAG_BTL == frag->hdr->tag) &&
             (MCA_BTL_OPENIB_CONTROL_CREDITS == chdr->type)) {
             opal_output(0, "tag[%d] is credit message", i);
@@ -753,7 +750,7 @@ void mca_btl_openib_dump_all_local_rdma_frags(mca_btl_openib_device_t *device) {
 
 /**
  * This function is a debugging tool.  If you notify a hang, you can
- * call this function from a debugger and see if there are any
+ * call this function from a debugger and see if there are any 
  * messages stuck in any of the queues.  If you call it with
  * errout=true, then it will error them out.  Otherwise, it will
  * just print out the size of the queues with data in them.
@@ -769,7 +766,7 @@ void mca_btl_openib_dump_all_internal_queues(bool errout) {
         btl = mca_btl_openib_component.openib_btls[i];
         module = &btl->super;
         num_eps = opal_pointer_array_get_size(btl->device->endpoints);
-
+        
         /* Now, find the endpoint associated with it */
         for (j = 0; j < num_eps; j++) {
             ep = (mca_btl_openib_endpoint_t*)

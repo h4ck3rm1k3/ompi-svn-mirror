@@ -17,7 +17,6 @@ bbenton     Brad Benton                 IBM
 bosilca     George Bosilca              UTK
 bouteill    Aurelien Bouteiller         UTK
 brbarret    Brian Barrett               IU, LANL, SNL
-bricka      Alex Brick                  NU
 casswell    Laura Casswell              LANL
 coti        Camille Coti                UTK, INRIA
 csbell      Christian Bell              QLogic
@@ -28,7 +27,6 @@ derbeyn     Nadia Derby                 Bull
 dgdimick    Denis Dimick                LANL
 dkerr       Donald Kerr                 Sun, Oracle
 dlacher     Dan Lacher                  Sun
-dorons      Doron Shoham                Mellanox
 edgar       Edgar Gabriel               HLRS, UH, UTK
 emallove    Ethan Mallove               Sun, Oracle
 eugene      Eugene Loh                  Sun, Oracle
@@ -38,24 +36,21 @@ gleb        Gleb Natapov                Voltaire
 gshipman    Galen Shipman               LANL
 gwatson     Greg Watson                 LANL
 herault     Thomas Herault              INRIA
-hjelmn      Nathan Hjelm                LANL
 hpcstork    Sven Stork                  HLRS
 htor        Torsten Hoefler             IU, TUC
 igb         Iain Bason                  Sun, Oracle
 jdmason     Jon Mason                   Chelsio
-jjhursey    Josh Hursey                 IU, ORNL, LANL, LBNL, UWL
+jjhursey    Josh Hursey                 IU, ORNL, LANL, LBNL
 jnysal      Nysal Jan                   IBM
 jsquyres    Jeff Squyres                Cisco, IU
 jurenz      Matthias Jurenz             ZIH
 karenn      Karen Norteman              Sun
-kliteyn     Yevgeny Kliteynik           Mellanox
 kmroz       Karl Mroz                   UBC
 knuepfer    Andreas Knuepfer            ZIH
 koenig      Greg Koenig                 ORNL
 lemarini    Pierre Lemarinier           UTK
 lennyve     Lenny Verkhovsky            Voltaire
 lums        Andrew Lumsdaine            IU
-manjugv     Manjunath Gorentla Venkata  ORNL
 matney      Ken Matney                  ORNL
 miked       Mike Dubman                 Voltaire
 mitch       Mitch Sukalski              SNL
@@ -63,25 +58,23 @@ mschaara    Mohamad Chaarawi            UH
 mt          Mark Taylor                 LANL
 ollie       Li-Ta Lo                    LANL
 paklui      Pak Lui                     Sun
-pasha       Pavel Shamis                Mellanox, ORNL
+pasha       Pavel Shamis                Mellanox
 patrick     Patrick Geoffray            Myricom
 penoff      Brad Penoff                 UBC
 pjesa       Jelena Pjesivac-Grbovic     UTK
 pkambadu    Prabhanjan Kambadur         IU
-rasmussn    Craig Rasmussen             LANL, UO
+rasmussn    Craig Rasmussen             LANL
 rbbrigh     Ron Brightwell              SNL
 rhc         Ralph Castain               LANL, Cisco
-rlgraham    Rich Graham                 ORNL, LANL, Mellanox
-rolfv       Rolf Vandevaart             Sun, Oracle, NVIDIA
+rlgraham    Rich Graham                 ORNL, LANL
+rolfv       Rolf Vandevaart             Sun, Oracle
 rta         Rob Awles                   LANL
 rusraink    Rainer Keller               HLRS, ORNL
 sami        Sami Ayyorgun               LANL
 samuel      Samuel K. Gutierrez         LANL
-sboehm      Swen Boehm                  ORNL
 santhana    Gopal Santhanaraman         OSU
 sharonm     Sharon Melamed              Voltaire
 shiqing     Shiqing Fan                 HLRS
-sjeaugey    Sylvain Jeaugey             Bull
 surs        Sayantan Sur                OSU
 sushant     Sushant Sharma              LANL
 swise       Steve Wise                  Chelsio
@@ -91,9 +84,6 @@ tprins      Tim Prins                   IU, LANL
 twoodall    Tim Woodall                 LANL
 vasily      Vasily Filipov              Mellanox
 vsahay      Vishal Sahay                IU
-vvenkatesan Vishwanath Venkatesan       UH
-wbland      Wesley Bland                UTK
-yaeld       Yael Dalen                  Mellanox
 yuw         Weikuan Yu                  LANL, OSU
 
 Affiliaion abbreviations:
@@ -107,7 +97,6 @@ LANL = Los Alamos National Laboratory
 LBNL = Lawrence Berkeley National Laboratory
 Mellanox = Mellanox
 Myricom = Myricom, Inc.
-NU = Northeastern University
 Oracle = Oracle
 ORNL = Oak Ridge National Laboratory
 OSU = The Ohio State University
@@ -117,9 +106,6 @@ Sun = Sun Microsystems, Inc.
 TUC = Technische Universtaet Chemnitz
 UBC = University of British Columbia
 UJ = Friedrich-Schiller-Universitat Jena
-UH = University of Houston
-OU = University of Oregon
 UTK = University of Tennessee, Knoxville
-UWL = University of Wisconsin-La Crosse
 Voltaire = Voltaire
 ZIH = Technische Universitaet Dresden

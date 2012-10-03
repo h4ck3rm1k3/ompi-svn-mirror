@@ -10,8 +10,6 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2010      Oracle and/or its affiliates.  All rights 
-#                         reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -21,10 +19,17 @@
 
 EXTRA_DIST = \
         distscript.csh \
-	opal_get_version.m4sh \
+	ompi_get_version.m4sh \
+	libltdl_dlopen_global.diff \
 	libltdl-preopen-error.diff \
+        lt-sun-fortran.diff \
+	lt1522-pathCC.diff \
+	lt21a-pathCC.diff \
+	ltmain_otool.diff \
+	lt-sun-fortran.diff \
 	ltmain_pgi_tp.diff \
-        ompi_mca_priority_sort.pl
+	libtool-ibm-xlf.diff \
+        modify-configure-for-sun-fortran.pl
 
 maintainer-clean-local:
-	rm -f opal_get_version.sh
+	rm -f ompi_get_version.sh

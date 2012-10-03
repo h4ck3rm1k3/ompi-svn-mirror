@@ -1,7 +1,6 @@
 /*
  * Copyright (c) 2004-2007 The Trustees of the University of Tennessee.
  *                         All rights reserved.
- * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -16,16 +15,16 @@
 #include "opal/mca/base/mca_base_component_repository.h"
 #include "ompi/constants.h"
 #include "ompi/mca/pml/base/base.h"
-#include "ompi/mca/vprotocol/vprotocol.h"
-#include "ompi/mca/vprotocol/base/base.h"
 #include "pml_v_output.h"
 #include "pml_v.h"
+#include "mca/vprotocol/vprotocol.h"
+#include "mca/vprotocol/base/base.h"
 
 static int mca_pml_v_component_open(void);
 static int mca_pml_v_component_close(void);
 static int mca_pml_v_component_parasite_close(void);
 
-static mca_pml_base_module_t *mca_pml_v_component_init(int* priority, bool enable_progress_threads, bool enable_mpi_thread_multiple);
+static mca_pml_base_module_t *mca_pml_v_component_init(int* priority, bool enable_threads, bool enable_progress_threads);
 static int mca_pml_v_component_finalize(void);
 static int mca_pml_v_component_parasite_finalize(void);
 
@@ -55,8 +54,8 @@ mca_pml_base_component_2_0_0_t mca_pml_v_component =
   mca_pml_v_component_finalize   /* component finalize */
 };
 
-static bool pml_v_enable_progress_treads = OMPI_ENABLE_PROGRESS_THREADS;
-static bool pml_v_enable_mpi_thread_multiple = OMPI_ENABLE_THREAD_MULTIPLE;
+static bool pml_v_enable_progress_treads = OPAL_ENABLE_PROGRESS_THREADS;
+static bool pml_v_enable_mpi_threads = OMPI_ENABLE_THREAD_MULTIPLE;
 
 /*******************************************************************************
  * MCA level functions - parasite setup
@@ -77,7 +76,6 @@ static int mca_pml_v_component_open(void)
                                    false, false, "", &vprotocol_include_list);
    
     pml_v_output_open(output, verbose);
-    free(output);
 
     if(-1 != priority)
         V_OUTPUT_ERR("pml_v: Overriding priority setting (%d) with -1. The PML V should NEVER be the selected component; even when enabling fault tolerance.", priority);
@@ -89,16 +87,24 @@ static int mca_pml_v_component_open(void)
  
 static int mca_pml_v_component_close(void)
 {
+    int ret;
+    
     /* Save original PML before making any changes  */
     mca_pml_v.host_pml_component = mca_pml_base_selected_component;
     mca_pml_v.host_pml = mca_pml;
     mca_pml_v.host_request_fns = ompi_request_functions;
     
     /* Do not load anything if no FT protocol is selected */
-    if (NULL != mca_vprotocol_base_include_list && !mca_vprotocol_base_include_list[0]) {
+    if(! mca_vprotocol_base_include_list[0])
         return mca_pml_v_component_parasite_close();
-    }
         
+    V_OUTPUT_VERBOSE(500, "component_close: I don't want to be unloaded now.");
+    ret = mca_base_component_repository_retain_component("pml", "v");
+    if(OPAL_SUCCESS != ret)
+    {
+        V_OUTPUT_ERR("pml_v: component_close: can't retain myself. If Open MPI is build static you can ignore this error. Otherwise it should crash soon.");
+    }
+    
     /* Mark that we have changed something */ 
     snprintf(mca_pml_base_selected_component.pmlm_version.mca_component_name, 
              MCA_BASE_MAX_TYPE_NAME_LEN, "%s]v%s", 
@@ -162,12 +168,12 @@ static int mca_pml_v_component_parasite_close(void)
  */
 static mca_pml_base_module_t *mca_pml_v_component_init(int *priority,
                                                       bool enable_progress_threads,
-                                                      bool enable_mpi_thread_multiple)
+                                                      bool enable_mpi_threads)
 {
     V_OUTPUT_VERBOSE(1, "init: I'm not supposed to be here until BTL loading stuff gets fixed!? That's strange...");
 
     pml_v_enable_progress_treads = enable_progress_threads;
-    pml_v_enable_mpi_thread_multiple = enable_mpi_thread_multiple;
+    pml_v_enable_mpi_threads = enable_mpi_threads;
     
     /* I NEVER want to be the selected PML, so I report less than possible 
      * priority and a NULL module 
@@ -203,7 +209,7 @@ static int mca_pml_v_enable(bool enable)
         /* Check if a protocol have been selected during init */
         if(! mca_vprotocol_base_selected())
             mca_vprotocol_base_select(pml_v_enable_progress_treads, 
-                                      pml_v_enable_mpi_thread_multiple);
+                                      pml_v_enable_mpi_threads);
 
         /* Check if we succeeded selecting a protocol */
         if(mca_vprotocol_base_selected()) {

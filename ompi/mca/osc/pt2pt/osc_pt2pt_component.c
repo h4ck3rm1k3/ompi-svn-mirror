@@ -12,7 +12,6 @@
  *                         reserved. 
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
- * Copyright (c) 2010      Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -41,7 +40,10 @@
 #include "ompi/mca/pml/pml.h"
 
 static int component_open(void);
-static int component_fragment_cb(ompi_request_t *request);
+static void component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq);
+#if OPAL_ENABLE_PROGRESS_THREADS
+static void* component_thread_fn(opal_object_t *obj);
+#endif
 
 ompi_osc_pt2pt_component_t mca_osc_pt2pt_component = {
     { /* ompi_osc_base_component_t */
@@ -55,6 +57,7 @@ ompi_osc_pt2pt_component_t mca_osc_pt2pt_component = {
             NULL
         },
         { /* mca_base_component_data */
+            /* The component is checkpoint ready - JJH Double check this... */
             MCA_BASE_METADATA_PARAM_CHECKPOINT
         },
         ompi_osc_pt2pt_component_init,
@@ -87,16 +90,62 @@ ompi_osc_pt2pt_module_t ompi_osc_pt2pt_module_template = {
 };
 
 
+/* look up parameters for configuring this window.  The code first
+   looks in the info structure passed by the user, then through mca
+   parameters. */
+static bool
+check_config_value_bool(char *key, ompi_info_t *info)
+{
+    char *value_string;
+    int value_len, ret, flag, param;
+    bool result;
+
+    ret = ompi_info_get_valuelen(info, key, &value_len, &flag);
+    if (OMPI_SUCCESS != ret) goto info_not_found;
+    if (flag == 0) goto info_not_found;
+    value_len++;
+
+    value_string = (char*)malloc(sizeof(char) * value_len + 1); /* Should malloc 1 char for NUL-termination */
+    if (NULL == value_string) goto info_not_found;
+
+    ret = ompi_info_get(info, key, value_len, value_string, &flag);
+    if (OMPI_SUCCESS != ret) {
+        free(value_string);
+        goto info_not_found;
+    }
+    assert(flag != 0);
+    ret = ompi_info_value_to_bool(value_string, &result);
+    free(value_string);
+    if (OMPI_SUCCESS != ret) goto info_not_found;
+    return result;
+
+ info_not_found:
+    param = mca_base_param_find("osc", "pt2pt", key);
+    if (param == OPAL_ERROR) return false;
+
+    ret = mca_base_param_lookup_int(param, &flag);
+    if (OMPI_SUCCESS != ret) return false;
+
+    return OPAL_INT_TO_BOOL(flag);
+}
+
+
 static int
 component_open(void)
 {
     int tmp;
 
     mca_base_param_reg_int(&mca_osc_pt2pt_component.super.osc_version,
+                           "no_locks",
+                           "Enable optimizations available only if MPI_LOCK is not used.",
+                           false, false, 0, NULL);
+
+    mca_base_param_reg_int(&mca_osc_pt2pt_component.super.osc_version,
                            "eager_limit",
                            "Max size of eagerly sent data",
                            false, false, 16 * 1024, 
                            &tmp);
+
     mca_osc_pt2pt_component.p2p_c_eager_size = tmp;
 
     return OMPI_SUCCESS;
@@ -108,6 +157,22 @@ ompi_osc_pt2pt_component_init(bool enable_progress_threads,
                              bool enable_mpi_threads)
 {
     size_t aligned_size;
+
+    /* we can run with either threads or not threads (may not be able
+       to do win locks)... */
+    mca_osc_pt2pt_component.p2p_c_have_progress_threads = 
+        enable_progress_threads;
+
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_lock, opal_mutex_t);
+
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_modules,
+                  opal_hash_table_t);
+    opal_hash_table_init(&mca_osc_pt2pt_component.p2p_c_modules, 2);
+
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_request_lock,
+                  opal_mutex_t);
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_request_cond,
+                  opal_condition_t);
 
     OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_sendreqs, opal_free_list_t);
     opal_free_list_init(&mca_osc_pt2pt_component.p2p_c_sendreqs,
@@ -137,6 +202,14 @@ ompi_osc_pt2pt_component_init(bool enable_progress_threads,
                         OBJ_CLASS(ompi_osc_pt2pt_buffer_t),
                         1, -1, 1);
 
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                  opal_list_t);
+
+#if OPAL_ENABLE_PROGRESS_THREADS
+    OBJ_CONSTRUCT(&mca_osc_pt2pt_component.p2p_c_thread, opal_thread_t);
+    mca_osc_pt2pt_component.p2p_c_thread_run = false;
+#endif
+
     return OMPI_SUCCESS;
 }
 
@@ -144,10 +217,35 @@ ompi_osc_pt2pt_component_init(bool enable_progress_threads,
 int 
 ompi_osc_pt2pt_component_finalize(void)
 {
+    size_t num_modules;
+#if OPAL_ENABLE_PROGRESS_THREADS
+    void* ret;
+#endif
+
+    if (0 !=
+        (num_modules = opal_hash_table_get_size(&mca_osc_pt2pt_component.p2p_c_modules))) {
+        opal_output(ompi_osc_base_output,
+                    "WARNING: There were %d Windows created but not freed.",
+                    (int) num_modules); 
+#if OPAL_ENABLE_PROGRESS_THREADS
+        mca_osc_pt2pt_component.p2p_c_thread_run = false;
+        opal_condition_broadcast(&ompi_request_cond);
+        opal_thread_join(&mca_osc_pt2pt_component.p2p_c_thread, &ret);
+#else
+        opal_progress_unregister(ompi_osc_pt2pt_component_progress);
+#endif
+    }
+
+    OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_pending_requests);
     OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_buffers);
     OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_longreqs);
     OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_replyreqs);
     OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_sendreqs);
+    OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_request_lock);
+    OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_request_cond);
+
+    OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_modules);
+    OBJ_DESTRUCT(&mca_osc_pt2pt_component.p2p_c_lock);
 
     return OMPI_SUCCESS;
 }
@@ -262,29 +360,58 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
     module->p2p_shared_count = 0;
     module->p2p_lock_received_ack = 0;
 
+    /* update component data */
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_hash_table_set_value_uint32(&mca_osc_pt2pt_component.p2p_c_modules,
+                                     ompi_comm_get_cid(module->p2p_comm),
+                                     module);
+    ret = opal_hash_table_get_size(&mca_osc_pt2pt_component.p2p_c_modules);
+    if (ret == 1) {
+#if OPAL_ENABLE_PROGRESS_THREADS
+        mca_osc_pt2pt_component.p2p_c_thread_run = true;
+        mca_osc_pt2pt_component.p2p_c_thread.t_run = component_thread_fn;
+        mca_osc_pt2pt_component.p2p_c_thread.t_arg = NULL;
+        ret = opal_thread_start(&mca_osc_pt2pt_component.p2p_c_thread);
+#else
+        ret = opal_progress_register(ompi_osc_pt2pt_component_progress);
+#endif
+    } else {
+        ret = OMPI_SUCCESS;
+    }
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock); 
+    if (OMPI_SUCCESS != ret) goto cleanup;
+
     /* fill in window information */
     win->w_osc_module = (ompi_osc_base_module_t*) module;
+    if (check_config_value_bool("no_locks", info)) {
+        win->w_flags |= OMPI_WIN_NO_LOCKS;
+    }
 
     /* sync memory - make sure all initialization completed */
     opal_atomic_mb();
 
     /* start up receive for protocol headers */
-    OPAL_FREE_LIST_GET(&mca_osc_pt2pt_component.p2p_c_buffers,
+    OPAL_FREE_LIST_WAIT(&mca_osc_pt2pt_component.p2p_c_buffers,
                         item, ret);
     if (OMPI_SUCCESS != ret) goto cleanup;
-    buffer = (ompi_osc_pt2pt_buffer_t*) item;
-    buffer->data = (void*) module;
 
-    ret = ompi_osc_pt2pt_component_irecv(buffer->payload,
-                                         mca_osc_pt2pt_component.p2p_c_eager_size,
-                                         MPI_BYTE,
-                                         MPI_ANY_SOURCE,
-                                         CONTROL_MSG_TAG,
-                                         module->p2p_comm,
-                                         &(buffer->request),
-                                         component_fragment_cb,
-                                         buffer);
+    buffer = (ompi_osc_pt2pt_buffer_t*) item;
+    buffer->mpireq.cbfunc = component_fragment_cb;
+    buffer->mpireq.cbdata = (void*) module;
+    
+    ret = MCA_PML_CALL(irecv(buffer->payload,
+                             mca_osc_pt2pt_component.p2p_c_eager_size,
+                             MPI_BYTE,
+                             MPI_ANY_SOURCE,
+                             CONTROL_MSG_TAG,
+                             module->p2p_comm,
+                             &buffer->mpireq.request));
     if (OMPI_SUCCESS != ret) goto cleanup;
+
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                     &buffer->mpireq.super.super);
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
 
     return OMPI_SUCCESS;
 
@@ -327,16 +454,17 @@ ompi_osc_pt2pt_component_select(ompi_win_t *win,
 
 
 /* dispatch for callback on message completion */
-static int
-component_fragment_cb(ompi_request_t *request)
+static void
+component_fragment_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     int ret;
     ompi_osc_pt2pt_buffer_t *buffer =
-        (ompi_osc_pt2pt_buffer_t*) request->req_complete_cb_data;
+        (ompi_osc_pt2pt_buffer_t*) mpireq;
     ompi_osc_pt2pt_module_t *module = 
-        (ompi_osc_pt2pt_module_t*) buffer->data;
+        (ompi_osc_pt2pt_module_t*) mpireq->cbdata;
 
-    assert(request->req_status._ucount >= (int) sizeof(ompi_osc_pt2pt_base_header_t));
+
+    assert(mpireq->status._ucount >= sizeof(ompi_osc_pt2pt_base_header_t));
 
     /* handle message */
     switch (((ompi_osc_pt2pt_base_header_t*) buffer->payload)->hdr_type) {
@@ -556,97 +684,90 @@ component_fragment_cb(ompi_request_t *request)
         opal_output_verbose(5, ompi_osc_base_output,
                             "received one-sided packet for with unknown type");
     }
-
-    ompi_request_free(&request);
-    ret = ompi_osc_pt2pt_component_irecv(buffer->payload,
-                                         mca_osc_pt2pt_component.p2p_c_eager_size,
-                                         MPI_BYTE,
-                                         MPI_ANY_SOURCE,
-                                         CONTROL_MSG_TAG,
-                                         module->p2p_comm,
-                                         &buffer->request,
-                                         component_fragment_cb,
-                                         buffer);
-
-    return ret;
+    
+    ret = MCA_PML_CALL(irecv(buffer->payload,
+                             mca_osc_pt2pt_component.p2p_c_eager_size,
+                             MPI_BYTE,
+                             MPI_ANY_SOURCE,
+                             CONTROL_MSG_TAG,
+                             module->p2p_comm,
+                             &buffer->mpireq.request));
+    /* BWB -- FIX ME -- handle irecv errors */
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                     &buffer->mpireq.super.super);
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
 }
 
 
 int
-ompi_osc_pt2pt_component_irecv(void *buf,
-                               size_t count,
-                               struct ompi_datatype_t *datatype,
-                               int src,
-                               int tag,
-                               struct ompi_communicator_t *comm,
-                               ompi_request_t **request,
-                               ompi_request_complete_fn_t callback,
-                               void *cbdata)
+ompi_osc_pt2pt_component_progress(void)
 {
-    int ret;
-    bool missed_callback;
-    ompi_request_complete_fn_t tmp;
+    opal_list_item_t *item;
+    int ret, done = 0;
 
-    ret = MCA_PML_CALL(irecv(buf, count, datatype,
-                             src, tag, comm, request));
-    if (OMPI_SUCCESS != ret) return ret;
+#if OPAL_ENABLE_PROGRESS_THREADS
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+#else
+    ret = OPAL_THREAD_TRYLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    if (ret != 0) return 0;
+#endif
 
-    /* lock the giant request mutex to update the callback data so
-       that the PML can't mark the request as complete while we're
-       updating the callback data, which means we can
-       deterministically ensure the callback is only fired once and
-       that we didn't miss it.  */
-    OPAL_THREAD_LOCK(&ompi_request_lock);
-    (*request)->req_complete_cb = callback;
-    (*request)->req_complete_cb_data = cbdata;
-    missed_callback = (*request)->req_complete;
-    OPAL_THREAD_UNLOCK(&ompi_request_lock);
+    for (item = opal_list_get_first(&mca_osc_pt2pt_component.p2p_c_pending_requests) ;
+         item != opal_list_get_end(&mca_osc_pt2pt_component.p2p_c_pending_requests) ;
+         item = opal_list_get_next(item)) {
+        ompi_osc_pt2pt_mpireq_t *buffer = 
+            (ompi_osc_pt2pt_mpireq_t*) item;
 
-    if (missed_callback) {
-        tmp = (*request)->req_complete_cb;
-        (*request)->req_complete_cb = NULL;
-        tmp(*request);
+        /* BWB - FIX ME */
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
+        if (buffer->request->req_state == OMPI_REQUEST_INACTIVE ||
+            buffer->request->req_complete) {
+            ret = ompi_request_test(&buffer->request,
+                                    &done,
+                                    &buffer->status);
+        } else {
+            done = 0;
+            ret = OMPI_SUCCESS;
+        }
+#else
+        ret = ompi_request_test(&buffer->request,
+                                &done,
+                                &buffer->status);
+#endif
+        if (OMPI_SUCCESS == ret && 0 != done) {
+            opal_list_remove_item(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                                  item);
+            OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+            buffer->cbfunc(buffer);
+            OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+            break;
+        }
     }
+        
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
 
-    return OMPI_SUCCESS;
+    return done;
 }
 
-
-int
-ompi_osc_pt2pt_component_isend(void *buf,
-                               size_t count,
-                               struct ompi_datatype_t *datatype,
-                               int dest,
-                               int tag,
-                               struct ompi_communicator_t *comm,
-                               ompi_request_t **request,
-                               ompi_request_complete_fn_t callback,
-                               void *cbdata)
+#if OPAL_ENABLE_PROGRESS_THREADS
+static void*
+component_thread_fn(opal_object_t *obj)
 {
-    int ret;
-    bool missed_callback;
-    ompi_request_complete_fn_t tmp;
+    struct timespec waittime;
 
-    ret = MCA_PML_CALL(isend(buf, count, datatype,
-                             dest, tag, MCA_PML_BASE_SEND_STANDARD, comm, request));
-    if (OMPI_SUCCESS != ret) return ret;
-
-    /* lock the giant request mutex to update the callback data so
-       that the PML can't mark the request as complete while we're
-       updating the callback data, which means we can
-       deterministically ensure the callback is only fired once and
-       that we didn't miss it.  */
-    OPAL_THREAD_LOCK(&ompi_request_lock);
-    (*request)->req_complete_cb = callback;
-    (*request)->req_complete_cb_data = cbdata;
-    missed_callback = (*request)->req_complete;
-    OPAL_THREAD_UNLOCK(&ompi_request_lock);
-
-    if (missed_callback) {
-        tmp = (*request)->req_complete_cb;
-        (*request)->req_complete_cb = NULL;
-        tmp(*request);
+    while (mca_osc_pt2pt_component.p2p_c_thread_run) {
+        /* wake up whenever a request completes, to make sure it's not
+           for us */
+        waittime.tv_sec = 1;
+        waittime.tv_nsec = 0;
+        OPAL_THREAD_LOCK(&ompi_request_lock);
+        opal_condition_timedwait(&ompi_request_cond, &ompi_request_lock, &waittime);
+        OPAL_THREAD_UNLOCK(&ompi_request_lock);
+        ompi_osc_pt2pt_component_progress();
     }
 
-    return OMPI_SUCCESS;
+    return NULL;
 }
+#endif
+

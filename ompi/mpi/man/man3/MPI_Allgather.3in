@@ -1,4 +1,3 @@
-.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
 .\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Allgather 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
@@ -33,33 +32,17 @@ void MPI::Comm::Allgather(const void* \fIsendbuf\fP, int \fIsendcount\fP, const
 	const MPI::Datatype& \fIrecvtype\fP) const = 0
 
 .fi
-.SH Java Syntax
-.nf
-import mpi.*;
-void MPI.COMM_WORLD.Allgather(Object \fIsendbuf\fP, int \fIsendoffset\fP, int \fIsendcount\fP, MPI.Datatype \fIsendtype\fP,
-                              Object \fIrecvbuf\fP, int \fIrecvoffset\fP, int \fIrecvcount\fP, Datatype \fIrecvtype\fP)
-
-.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
 sendbuf    
 Starting address of send buffer (choice).
 .TP 1i
-sendoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
-.TP 1i
 sendcount    
 Number of elements in send buffer (integer).
 .TP 1i
 sendtype    
 Datatype of send buffer elements (handle).
-.TP 1i
-recvbuf    
-Starting address of recv buffer (choice).
-.TP 1i
-recvoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
 .TP 1i
 recvcount    
 Number of elements received from any process (integer).
@@ -135,7 +118,7 @@ When the communicator is an intra-communicator, these groups are the same, and t
 
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler

@@ -39,8 +39,6 @@ mca_mtl_mxm_module_t ompi_mtl_mxm = {
        ompi_mtl_mxm_isend,
        ompi_mtl_mxm_irecv,
        ompi_mtl_mxm_iprobe,
-       ompi_mtl_mxm_imrecv,
-       ompi_mtl_mxm_improbe,
        ompi_mtl_mxm_cancel,
        ompi_mtl_mxm_add_comm,
        ompi_mtl_mxm_del_comm
@@ -174,6 +172,7 @@ int ompi_mtl_mxm_module_init(void)
 
     mxlr = 0;
     lr = -1;
+    nlps = 0;
 
     mp = ompi_proc_local();
     jobid = ompi_mtl_mxm_get_job_id();
@@ -188,21 +187,19 @@ int ompi_mtl_mxm_module_init(void)
     }
 
     if (totps < (size_t)ompi_mtl_mxm.mxm_np) {
-        MXM_VERBOSE(1, "MXM support will be disabled because of total number "
-                    "of processes (%lu) is less than the minimum set by the "
-                    "mtl_mxm_np MCA parameter (%u)", totps, ompi_mtl_mxm.mxm_np);
-        return OMPI_ERR_NOT_SUPPORTED;
+        MXM_VERBOSE(1, "MXM support will be disabled because of total number of processes"
+                "(%lu) is less then default (%u)",totps, ompi_mtl_mxm.mxm_np);
+                return OMPI_ERR_NOT_SUPPORTED;
     }
     MXM_VERBOSE(1, "MXM support enabled");
 
-    if (ORTE_NODE_RANK_INVALID == (lr = orte_process_info.my_node_rank)) {
+    if ((lr = orte_ess.get_node_rank(ORTE_PROC_MY_NAME)) == ORTE_NODE_RANK_INVALID) {
         MXM_ERROR("Unable to obtain local node rank");
         return OMPI_ERROR;
     }
-    nlps = orte_process_info.num_local_peers + 1;
 
     for (proc = 0; proc < totps; proc++) {
-        if (OPAL_PROC_ON_LOCAL_NODE(procs[proc]->proc_flags)) {
+        if(OPAL_PROC_ON_LOCAL_NODE(orte_ess.proc_get_locality(&procs[proc]->proc_name))) {
             mxlr = max(mxlr, procs[proc]->proc_name.vpid);
         }
     }
@@ -441,11 +438,3 @@ int ompi_mtl_mxm_progress(void)
     }
     return 1;
 }
-
-#if MXM_API >= MXM_VERSION(1,5)
-OBJ_CLASS_INSTANCE(
-        ompi_mtl_mxm_message_t,
-        ompi_free_list_item_t,
-        NULL,
-        NULL);
-#endif

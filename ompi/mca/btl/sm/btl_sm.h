@@ -1,8 +1,9 @@
+
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -10,10 +11,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire. All rights reserved.
- * Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010      Los Alamos National Security, LLC.  
- *                         All rights reserved. 
- * Copyright (c) 2010-2012 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -36,13 +36,39 @@
 #ifdef HAVE_SCHED_H
 #include <sched.h>
 #endif  /* HAVE_SCHED_H */
+#ifdef HAVE_SYS_IOCTL_H
+#include <sys/ioctl.h>
+#endif  /* HAVE_SYS_IOCTL_H */
+#ifdef HAVE_SYS_MMAN_H
+#include <sys/mman.h>
+#endif  /* HAVE_SYS_MMAN_H */
+#ifdef HAVE_FCNTL_H
+#include <fcntl.h>
+#endif  /* HAVE_FCNTL_H */
 #if OMPI_BTL_SM_HAVE_KNEM
 #include "knem_io.h"
 #endif  /* OMPI_BTL_SM_HAVE_KNEM */
 
-#include "opal/util/bit_ops.h"
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif  /* HAVE_SYS_TYPES_H */
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif  /* HAVE_SYS_SOCKET_H */
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif  /* HAVE_NETINET_IN_H */
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif  /* HAVE_UNISTD_H */
 #include "opal/class/opal_free_list.h"
+#include "ompi/class/ompi_free_list.h"
+#include "opal/event/event.h"
+#include "opal/threads/threads.h"
 #include "ompi/mca/btl/btl.h"
+#include "ompi/mca/btl/base/base.h"
+
+#include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/common/sm/common_sm.h"
 
 BEGIN_C_DECLS
@@ -112,7 +138,7 @@ typedef struct sm_fifo_t sm_fifo_t;
  * Shared Memory resource managment
  */
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 #define DATA (char)0
 #define DONE (char)1
 #endif
@@ -132,7 +158,7 @@ struct mca_btl_sm_component_t {
     int32_t sm_max_procs;              /**< upper limit on the number of processes using the shared memory pool */
     int sm_extra_procs;                /**< number of extra procs to allow */
     char* sm_mpool_name;               /**< name of shared memory pool module */
-    mca_mpool_base_module_t **sm_mpools; /**< shared memory pools (one for each memory node) */
+    mca_mpool_base_module_t **sm_mpools; /**< shared memory pools (one for each memory node */
     mca_mpool_base_module_t *sm_mpool; /**< mpool on local node */
     void* sm_mpool_base;               /**< base address of shared memory pool */
     size_t eager_limit;                /**< first fragment size */
@@ -168,7 +194,7 @@ struct mca_btl_sm_component_t {
     int mem_node;
     int num_mem_nodes;
     
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     char sm_fifo_path[PATH_MAX];   /**< path to fifo used to signal this process */
     int  sm_fifo_fd;               /**< file descriptor corresponding to opened fifo */
     opal_thread_t sm_fifo_thread;
@@ -198,10 +224,6 @@ struct mca_btl_sm_component_t {
     /** If we want DMA and DMA is supported, this will be loaded with
         KNEM_FLAG_DMA.  Otherwise, it'll be 0. */
     int knem_dma_flag;
-
-    /** MCA: should we be using CMA or not?
-        0 = no, 1 = yes */
-    int use_cma;
 };
 typedef struct mca_btl_sm_component_t mca_btl_sm_component_t;
 OMPI_MODULE_DECLSPEC extern mca_btl_sm_component_t mca_btl_sm_component;
@@ -239,6 +261,10 @@ struct mca_btl_sm_t {
 typedef struct mca_btl_sm_t mca_btl_sm_t;
 OMPI_MODULE_DECLSPEC extern mca_btl_sm_t mca_btl_sm;
 
+
+
+
+
 struct btl_sm_pending_send_item_t
 {
     opal_free_list_item_t super;
@@ -267,7 +293,9 @@ static inline int sm_fifo_init(int fifo_size, mca_mpool_base_module_t *mpool,
     int i, qsize;
 
     /* figure out the queue size (a power of two that is at least 1) */
-    qsize = opal_next_poweroftwo_inclusive (fifo_size);
+    qsize = 1;
+    while ( qsize < fifo_size )
+        qsize <<= 1;
 
     /* allocate the queue in the receiver's address space */
     fifo->queue_recv = (volatile void **)mpool->mpool_alloc(
@@ -311,7 +339,7 @@ static inline int sm_fifo_write(void *value, sm_fifo_t *fifo)
 
     /* otherwise, write to the slot and advance the head index */
     q[fifo->head] = value;
-    opal_atomic_wmb();
+    opal_atomic_wmb(); 
     fifo->head = (fifo->head + 1) & fifo->mask;
     return OMPI_SUCCESS;
 }
@@ -347,6 +375,30 @@ static inline void *sm_fifo_read(sm_fifo_t *fifo)
 
     return value;
 }
+
+/**
+ * Register shared memory module parameters with the MCA framework
+ */
+extern int mca_btl_sm_component_open(void);
+
+/**
+ * Any final cleanup before being unloaded.
+ */
+extern int mca_btl_sm_component_close(void);
+
+/**
+ * SM module initialization.
+ *
+ * @param num_btls (OUT)                  Number of BTLs returned in BTL array.
+ * @param enable_progress_threads (IN)    Flag indicating whether BTL is allowed to have progress threads
+ * @param enable_mpi_threads (IN)         Flag indicating whether BTL must support multilple simultaneous invocations from different threads
+ *
+ */
+extern mca_btl_base_module_t** mca_btl_sm_component_init(
+    int *num_btls,
+    bool enable_progress_threads,
+    bool enable_mpi_threads
+);
 
 /**
  * shared memory component progress.
@@ -493,11 +545,18 @@ extern int mca_btl_sm_send(
     mca_btl_base_tag_t tag
 );
 
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
+#if OMPI_BTL_SM_HAVE_KNEM
 /*
- * Synchronous knem/cma get
+ * Synchronous knem get
  */
 extern int mca_btl_sm_get_sync(
+		struct mca_btl_base_module_t* btl,
+		struct mca_btl_base_endpoint_t* endpoint,
+		struct mca_btl_base_descriptor_t* des );
+/*
+ * Asynchronous knem get
+ */
+extern int mca_btl_sm_get_async(
 		struct mca_btl_base_module_t* btl,
 		struct mca_btl_base_endpoint_t* endpoint,
 		struct mca_btl_base_descriptor_t* des );
@@ -513,21 +572,6 @@ extern struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_dst(
 		uint32_t flags);
 #endif
 
-#if OMPI_BTL_SM_HAVE_KNEM
-/*
- * Asynchronous knem get
- */
-extern int mca_btl_sm_get_async(
-                struct mca_btl_base_module_t* btl,
-                struct mca_btl_base_endpoint_t* endpoint,
-                struct mca_btl_base_descriptor_t* des );
-
-#endif
-
-extern void mca_btl_sm_dump(struct mca_btl_base_module_t* btl,
-                            struct mca_btl_base_endpoint_t* endpoint,
-                            int verbose);
-
 /**
  * Fault Tolerance Event Notification Function
  * @param state Checkpoint Stae
@@ -535,11 +579,11 @@ extern void mca_btl_sm_dump(struct mca_btl_base_module_t* btl,
  */
 int mca_btl_sm_ft_event(int state);
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 void mca_btl_sm_component_event_thread(opal_object_t*);
 #endif
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 #define MCA_BTL_SM_SIGNAL_PEER(peer) \
 { \
     unsigned char cmd = DATA; \

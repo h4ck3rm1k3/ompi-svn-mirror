@@ -40,7 +40,7 @@ extern orte_ess_base_module_t orte_ess_slurm_module;
  */
 orte_ess_base_component_t mca_ess_slurm_component = {
     {
-        ORTE_ESS_BASE_VERSION_3_0_0,
+        ORTE_ESS_BASE_VERSION_2_0_0,
 
         /* Component name and version */
         "slurm",
@@ -72,12 +72,12 @@ int orte_ess_slurm_component_query(mca_base_module_t **module, int *priority)
     /* Are we running under a SLURM job? Were
      * we given a path back to the HNP? If the
      * answer to both is "yes", then we were launched
-     * by mpirun in a slurm world, so make ourselves available
+     * by mpirun in a slurm world
      */
     
     if (NULL != getenv("SLURM_JOBID") &&
         NULL != orte_process_info.my_hnp_uri) {
-        *priority = 50;
+        *priority = 30;
         *module = (mca_base_module_t *)&orte_ess_slurm_module;
         return ORTE_SUCCESS;
     }

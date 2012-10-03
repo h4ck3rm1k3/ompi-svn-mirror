@@ -10,9 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -107,7 +106,6 @@ struct ompi_request_t {
     ompi_request_free_fn_t req_free;            /**< Called by free */
     ompi_request_cancel_fn_t req_cancel;        /**< Optional function to cancel the request */
     ompi_request_complete_fn_t req_complete_cb; /**< Called when the request is MPI completed */
-    void *req_complete_cb_data;
     ompi_mpi_object_t req_mpi_object;           /**< Pointer to MPI object that created this request */
 };
 
@@ -307,12 +305,10 @@ typedef struct ompi_request_fns_t {
 OMPI_DECLSPEC extern opal_pointer_array_t  ompi_request_f_to_c_table;
 OMPI_DECLSPEC extern size_t                ompi_request_waiting;
 OMPI_DECLSPEC extern size_t                ompi_request_completed;
-OMPI_DECLSPEC extern size_t                ompi_request_failed;
 OMPI_DECLSPEC extern int32_t               ompi_request_poll;
 OMPI_DECLSPEC extern opal_mutex_t          ompi_request_lock;
 OMPI_DECLSPEC extern opal_condition_t      ompi_request_cond;
 OMPI_DECLSPEC extern ompi_predefined_request_t        ompi_request_null;
-OMPI_DECLSPEC extern ompi_predefined_request_t        *ompi_request_null_addr;
 OMPI_DECLSPEC extern ompi_request_t        ompi_request_empty;
 OMPI_DECLSPEC extern ompi_status_public_t  ompi_status_empty;
 OMPI_DECLSPEC extern ompi_request_fns_t    ompi_request_functions;
@@ -370,7 +366,7 @@ static inline int ompi_request_free(ompi_request_t** request)
 static inline void ompi_request_wait_completion(ompi_request_t *req)
 {
     if(false == req->req_complete) {
-#if OMPI_ENABLE_PROGRESS_THREADS
+#if OPAL_ENABLE_PROGRESS_THREADS
         if(opal_progress_spin(&req->req_complete)) {
             return;
         }
@@ -396,16 +392,11 @@ static inline void ompi_request_wait_completion(ompi_request_t *req)
  */
 static inline int ompi_request_complete(ompi_request_t* request, bool with_signal)
 {
-    ompi_request_complete_fn_t tmp = request->req_complete_cb;
-    if( NULL != tmp ) {
-        request->req_complete_cb = NULL;
-        tmp( request );
+    if( NULL != request->req_complete_cb ) {
+        request->req_complete_cb( request );
     }
     ompi_request_completed++;
     request->req_complete = true;
-    if( OPAL_UNLIKELY(MPI_SUCCESS != request->req_status.MPI_ERROR) ) {
-        ompi_request_failed++;
-    }
     if(with_signal && ompi_request_waiting) {
         /* Broadcast the condition, otherwise if there is already a thread
          * waiting on another request it can use all signals.

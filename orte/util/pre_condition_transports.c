@@ -41,6 +41,7 @@
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/util/opal_environ.h"
 
+
 #include "orte/constants.h"
 #include "orte/types.h"
 #include "orte/mca/errmgr/errmgr.h"
@@ -166,7 +167,7 @@ int orte_pre_condition_transports(orte_job_t *jdata)
         return ORTE_ERR_OUT_OF_RESOURCE;
     }
     
-    for (n=0; n < jdata->apps->size; n++) {
+    for (n=0; n < jdata->num_apps; n++) {
         if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, n))) {
             continue;
         }

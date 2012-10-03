@@ -7,7 +7,7 @@
  *                         reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,7 +18,7 @@
 #include "ompi_config.h"
 
 #include "pml_cm.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
@@ -158,7 +158,7 @@ mca_pml_cm_component_init(int* priority,
     } else if((strcmp(ompi_mtl_base_selected_component->mtl_version.mca_component_name, "psm") == 0) ||
               (strcmp(ompi_mtl_base_selected_component->mtl_version.mca_component_name, "mxm") == 0)) {
         /*
-         * If MTL is MXM or PSM then up our priority
+         * If MTL is PSM or MXM then up our priority
          * For every other communication layer having MTLs and BTLs, the user/admin
          * may still select PML/ob1 (BTLs) or PML/cm (MTLs) if preferable for the app/site.
          */
@@ -178,8 +178,8 @@ mca_pml_cm_component_init(int* priority,
 static int
 mca_pml_cm_component_fini(void)
 {
-    if (NULL != ompi_mtl) {
-        return OMPI_MTL_CALL(finalize(ompi_mtl));
+    if (NULL != ompi_mtl && NULL != ompi_mtl->mtl_finalize) {
+        return ompi_mtl->mtl_finalize(ompi_mtl);
     }
 
     return OMPI_SUCCESS;

@@ -3,7 +3,6 @@
 #                         All rights reserved.
 # Copyright (c) 2009      High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -27,7 +26,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_opal_crs_none_DSO
+if OMPI_BUILD_crs_none_DSO
 component_noinst =
 component_install = mca_crs_none.la
 else

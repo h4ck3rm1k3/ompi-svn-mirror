@@ -11,7 +11,6 @@
  *                         All rights reserved.
  * Copyright (c) 2008      Voltaire. All rights reserved
  * 
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -31,18 +30,23 @@
 #include "orte_config.h"
 
 #include "opal/class/opal_object.h"
+#include "opal/mca/paffinity/paffinity.h"
 
 #include "orte/mca/rmaps/rmaps.h"
 
 BEGIN_C_DECLS
 
-struct orte_rmaps_rf_component_t {
+/**
+ * RMGR Component 
+ */
+struct orte_rmaps_rank_file_component_t {
     orte_rmaps_base_component_t super;
-    char *slot_list;
+    int debug;
+    int priority;
 };
-typedef struct orte_rmaps_rf_component_t orte_rmaps_rf_component_t;
+typedef struct orte_rmaps_rank_file_component_t orte_rmaps_rank_file_component_t;
 
-ORTE_MODULE_DECLSPEC extern orte_rmaps_rf_component_t mca_rmaps_rank_file_component;
+ORTE_MODULE_DECLSPEC extern orte_rmaps_rank_file_component_t mca_rmaps_rank_file_component;
 extern orte_rmaps_base_module_t orte_rmaps_rank_file_module;
 
 

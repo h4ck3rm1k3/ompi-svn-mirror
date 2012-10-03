@@ -2,15 +2,15 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  *
@@ -39,12 +39,10 @@
 
 #include "opal/util/cmd_line.h"
 #include "opal/util/argv.h"
-#include "opal/util/show_help.h"
-#include "opal/util/opal_environ.h"
 #include "opal/dss/dss.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/opal_environ.h"
 #include "opal/runtime/opal.h"
-#include "opal/mca/event/event.h"
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
@@ -57,19 +55,19 @@
 #include "orte/util/proc_info.h"
 #include "orte/runtime/orte_wait.h"
 #include "orte/mca/rml/base/rml_contact.h"
-#include "orte/runtime/orte_quit.h"
 
 /*
  * Local variables & functions
  */
 static void abort_exit_callback(int fd, short flags, void *arg);
-static opal_event_t term_handler;
-static opal_event_t int_handler;
+static struct opal_event term_handler;
+static struct opal_event int_handler;
 static opal_list_t hnp_list;
 static bool all_recvd;
 static int32_t num_replies;
 static int32_t num_recvd;
 static opal_buffer_t cmdbuf;
+static opal_event_t *my_exit_event;
 static FILE *fp = NULL;
 static bool help;
 static char *hnppidstr;
@@ -95,6 +93,7 @@ static int thrfield = 0;
 static int vsizefield = 0;
 static int rssfield = 0;
 static int pkvfield = 0;
+static int shfield = 0;
 static int pfield = 0;
 
 /* flag what fields were actually found */
@@ -103,6 +102,7 @@ static bool thr_found = false;
 static bool vsize_found = false;
 static bool rss_found = false;
 static bool pkv_found = false;
+static bool sh_found = false;
 static bool p_found = false;
 
 #define MAX_LINES 20
@@ -180,8 +180,23 @@ static void send_cmd(int fd, short dummy, void *arg)
     num_recvd = 0;
     if (0 > (ret = orte_rml.send_buffer(&(target_hnp->name), &cmdbuf, ORTE_RML_TAG_DAEMON, 0))) {
         ORTE_ERROR_LOG(ret);
-        orte_quit(0,0,NULL);
+        orte_trigger_event(&orteds_exit);
         return;
+    }
+    
+    ORTE_PROGRESSED_WAIT(all_recvd, 0, 1);
+    
+    /* flag that field sizes are set */
+    fields_set = true;
+    
+    /* pretty-print what we got */
+    pretty_print();
+
+    /* see if we want to do it again */
+    if (0 < update_rate) {
+        ORTE_TIMER_EVENT(update_rate, 0, send_cmd);
+    } else {
+        orte_trigger_event(&orte_exit);
     }
 }
 
@@ -226,30 +241,17 @@ main(int argc, char *argv[])
     
     mca_base_open();
     mca_base_cmd_line_setup(&cmd_line);
-    ret = opal_cmd_line_parse(&cmd_line, false, argc, argv);
-    if (OPAL_SUCCESS != ret) {
-        if (OPAL_ERR_SILENT != ret) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
-                    opal_strerror(ret));
-        }
-        return 1;
-    }
+    ret = opal_cmd_line_parse(&cmd_line, true, argc, argv);
     
     /**
      * Now start parsing our specific arguments
      */
-    if (help) {
-        char *str, *args = NULL;
+    if (OPAL_SUCCESS != ret || help) {
+        char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        str = opal_show_help_string("help-orte-top.txt", "orte-top:usage", 
-                                    true, "orte-top", args);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
+        orte_show_help("help-orte-top.txt", "orte-top:usage", true, "orte-top", args);
         free(args);
-        /* If we show the help message, that should be all we do */
-        return 0;
+        return ORTE_ERROR;
     }
     
     /***************************
@@ -260,19 +262,26 @@ main(int argc, char *argv[])
         return 1;
     }
     
-   /* setup the list for recvd stats */
+    OBJ_CONSTRUCT(&orte_exit, orte_trigger_event_t);
+    
+    if (ORTE_SUCCESS != orte_wait_event(&my_exit_event, &orte_exit, "job_complete", abort_exit_callback)) {
+        orte_finalize();
+        exit(1);
+    }
+    
+    /* setup the list for recvd stats */
     OBJ_CONSTRUCT(&recvd_stats, opal_list_t);
     
     /** setup callbacks for abort signals - from this point
      * forward, we need to abort in a manner that allows us
      * to cleanup
      */
-    opal_event_signal_set(orte_event_base, &term_handler, SIGTERM,
-                          abort_exit_callback, &term_handler);
-    opal_event_signal_add(&term_handler, NULL);
-    opal_event_signal_set(orte_event_base, &int_handler, SIGINT,
-                          abort_exit_callback, &int_handler);
-    opal_event_signal_add(&int_handler, NULL);
+    opal_signal_set(&term_handler, SIGTERM,
+                    abort_exit_callback, &term_handler);
+    opal_signal_add(&term_handler, NULL);
+    opal_signal_set(&int_handler, SIGINT,
+                    abort_exit_callback, &int_handler);
+    opal_signal_add(&int_handler, NULL);
     
     /*
      * Must specify the mpirun pid
@@ -518,17 +527,15 @@ SEND:
     send_cmd(0, 0, NULL);
 
     /* now wait until the termination event fires */
-    while (orte_event_base_active) {
-        opal_event_loop(orte_event_base, OPAL_EVLOOP_ONCE);
-    }
+    opal_event_dispatch();
 
     /***************
      * Cleanup
      ***************/
 cleanup:
     /* Remove the TERM and INT signal handlers */
-    opal_event_signal_del(&term_handler);
-    opal_event_signal_del(&int_handler);
+    opal_signal_del(&term_handler);
+    opal_signal_del(&int_handler);
 
     while (NULL != (item  = opal_list_remove_first(&recvd_stats))) {
         OBJ_RELEASE(item);
@@ -548,10 +555,8 @@ static void abort_exit_callback(int fd, short ign, void *arg)
     opal_list_item_t *item;
     
     /* Remove the TERM and INT signal handlers */
-    opal_event_signal_del(&term_handler);
-    OBJ_DESTRUCT(&term_handler);
-    opal_event_signal_del(&int_handler);
-    OBJ_DESTRUCT(&int_handler);
+    opal_signal_del(&term_handler);
+    opal_signal_del(&int_handler);
     
     while (NULL != (item  = opal_list_remove_first(&recvd_stats))) {
         OBJ_RELEASE(item);
@@ -561,14 +566,15 @@ static void abort_exit_callback(int fd, short ign, void *arg)
     if (NULL != fp && fp != stdout) {
         fclose(fp);
     }
-    ORTE_UPDATE_EXIT_STATUS(1);
-    orte_quit(0,0,NULL);
+    orte_finalize();
+    exit(1);
 }
 
-static void recv_stats(int status, orte_process_name_t* sender,
-                       opal_buffer_t *buffer, orte_rml_tag_t tag,
-                       void* cbdata)
+static void process_stats(int fd, short event, void *data)
 {
+    orte_message_event_t *mev = (orte_message_event_t*)data;
+    opal_buffer_t *buffer = mev->buffer;
+    orte_process_name_t *sender = &(mev->sender);
     int32_t n;
     opal_pstats_t *stats;
     orte_process_name_t proc;
@@ -648,7 +654,7 @@ static void recv_stats(int status, orte_process_name_t* sender,
             
             if (0 < stats->vsize) {
                 vsize_found = true;
-                asprintf(&ctmp, "%8.2f", stats->vsize);
+                asprintf(&ctmp, "%lu", (unsigned long)stats->vsize);
                 tmp = strlen(ctmp);
                 free(ctmp);
                 if (vsizefield < tmp) {
@@ -658,7 +664,7 @@ static void recv_stats(int status, orte_process_name_t* sender,
             
             if (0 < stats->rss) {
                 rss_found = true;
-                asprintf(&ctmp, "%8.2f", stats->rss);
+                asprintf(&ctmp, "%lu", (unsigned long)stats->rss);
                 tmp = strlen(ctmp);
                 free(ctmp);
                 if (rssfield < tmp) {
@@ -668,11 +674,21 @@ static void recv_stats(int status, orte_process_name_t* sender,
             
             if (0 < stats->peak_vsize) {
                 pkv_found = true;
-                asprintf(&ctmp, "%8.2f", stats->peak_vsize);
+                asprintf(&ctmp, "%lu", (unsigned long)stats->peak_vsize);
                 tmp = strlen(ctmp);
                 free(ctmp);
                 if (pkvfield < tmp) {
                     pkvfield = tmp;
+                }
+            }
+            
+            if (0 < stats->shared_size) {
+                sh_found = true;
+                asprintf(&ctmp, "%lu", (unsigned long)stats->shared_size);
+                tmp = strlen(ctmp);
+                free(ctmp);
+                if (shfield < tmp) {
+                    shfield = tmp;
                 }
             }
             
@@ -689,24 +705,14 @@ static void recv_stats(int status, orte_process_name_t* sender,
         /* add it to the list */
         opal_list_append(&recvd_stats, &stats->super);
     }
-
- cleanup:    
+    
+cleanup:
+    OBJ_RELEASE(mev);
+    
     /* check for completion */
     num_recvd++;
     if (num_replies <= num_recvd) {
-        /* flag that field sizes are set */
-        fields_set = true;
-    
-        /* pretty-print what we got */
-        pretty_print();
-
-        /* see if we want to do it again */
-        if (0 < update_rate) {
-            ORTE_TIMER_EVENT(update_rate, 0, send_cmd, ORTE_SYS_PRI);
-        } else {
-            orte_finalize();
-            exit(0);
-        }
+        all_recvd = true;
     }
 
     /* repost the receive */
@@ -715,6 +721,26 @@ static void recv_stats(int status, orte_process_name_t* sender,
     if (ret != ORTE_SUCCESS) {
         ORTE_ERROR_LOG(ret);
     }
+}
+
+static void recv_stats(int status, orte_process_name_t* sender,
+                       opal_buffer_t *buffer, orte_rml_tag_t tag,
+                       void* cbdata)
+{
+    /* don't process this right away - we need to get out of the recv before
+     * we process the message as it may ask us to do something that involves
+     * more messaging! Instead, setup an event so that the message gets processed
+     * as soon as we leave the recv.
+     *
+     * The macro makes a copy of the buffer, which we release when processed - the incoming
+     * buffer, however, is NOT released here, although its payload IS transferred
+     * to the message buffer for later processing
+     */
+    ORTE_MESSAGE_EVENT(sender, buffer, tag, process_stats);
+    
+    OPAL_OUTPUT_VERBOSE((1, orte_debug_output,
+                         "%s recv_stats: reissued recv",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
 }
 
 /* static values needed for printing */
@@ -754,13 +780,13 @@ static void print_ranks(opal_list_t *statlist)
             }
         }
         memset(pretty_time, 0, sizeof(pretty_time));
-        if (pstats->time.tv_sec >= 3600) {
+        if (pstats->time >= 3600) {
             snprintf(pretty_time, sizeof(pretty_time), "%5.1fH", 
-                     (double)pstats->time.tv_sec / (double)(3600));
+                     (double)pstats->time / (double)(3600));
         } else {
             snprintf(pretty_time, sizeof(pretty_time), "%3ld:%02ld",
-                     (unsigned long)pstats->time.tv_sec/60,
-                     (unsigned long)pstats->time.tv_sec % 60);
+                     (unsigned long)pstats->time/60,
+                     (unsigned long)pstats->time & 60);
         }
         
         if (bynode) {
@@ -777,7 +803,7 @@ static void print_ranks(opal_list_t *statlist)
         }
         fprintf(fp, "%*s | ", lencmd, pstats->cmd);
         fprintf(fp, "%*lu | ", lenpid, (unsigned long)pstats->pid);
-        fprintf(fp, "%*c | ", lenstate, pstats->state[0]);
+        fprintf(fp, "%*c | ", lenstate, pstats->state);
         fprintf(fp, "%*s | ", lentime, pretty_time);
         if (pri_found) {
             fprintf(fp, "%*d | ", lenpri, pstats->priority);
@@ -793,6 +819,9 @@ static void print_ranks(opal_list_t *statlist)
         }
         if (pkv_found) {
             fprintf(fp, "%*lu | ", lenpkv, (unsigned long)pstats->peak_vsize);
+        }
+        if (sh_found) {
+            fprintf(fp, "%*lu | ", lensh, (unsigned long)pstats->shared_size);
         }
         if (p_found) {
             fprintf(fp, "%*d | ", lenp, pstats->processor);
@@ -954,6 +983,14 @@ static void print_headers(void)
         num_fields++;
     }
 
+    if (sh_found) {
+        lensh = strlen("Shr Size");
+        if (shfield > lensh) {
+            lensh = shfield;
+        }
+        num_fields++;
+    }
+
     if (p_found) {
         lenp = strlen("Processor");
         if (pfield > lenp) {
@@ -998,6 +1035,9 @@ static void print_headers(void)
     }
     if (pkv_found) {
         fprintf(fp, "%*s | ", lenpkv   , "Peak Vsize");
+    }
+    if (sh_found) {
+        fprintf(fp, "%*s | ", lensh   , "Shr Size");
     }
     if (p_found) {
         fprintf(fp, "%*s | ", lenp   , "Processor");

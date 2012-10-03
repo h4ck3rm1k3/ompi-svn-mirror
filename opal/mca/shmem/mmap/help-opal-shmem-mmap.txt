@@ -34,7 +34,7 @@ node.  Possible sources of the location of this temporary directory
 include the $TEMPDIR, $TEMP, and $TMP environment variables.
 
 Note, too, that system administrators can set a list of filesystems
-where Open MPI is disallowed from creating temporary files by setting
+where Open MPI is disallowed from creating temporary files by settings
 the MCA parameter "orte_no_session_dir".
 
   Local host: %s

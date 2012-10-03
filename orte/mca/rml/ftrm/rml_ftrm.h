@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2006 The University of Tennessee and The University
@@ -64,6 +64,8 @@ BEGIN_C_DECLS
      * Set URI
      */
     int orte_rml_ftrm_set_contact_info(const char* uri);
+
+    int orte_rml_ftrm_get_new_name(orte_process_name_t *name);
 
     /*
      * Ping
@@ -160,8 +162,6 @@ BEGIN_C_DECLS
      * FT Event
      */
     int orte_rml_ftrm_ft_event(int state);
-
-    int orte_rml_ftrm_purge(orte_process_name_t *peer);
 
 END_C_DECLS
 

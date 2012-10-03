@@ -29,7 +29,7 @@ dnl
 # latter 3 will be added to WRAPPER_EXTRA_* if that component wins.
 
 dnl We only want one winning component.
-m4_define(MCA_opal_hwloc_CONFIGURE_MODE, STOP_AT_FIRST_PRIORITY)
+m4_define(MCA_hwloc_CONFIGURE_MODE, STOP_AT_FIRST_PRIORITY)
 
 # Other components may depend on at least 1 hwloc component being
 # available.  As such, we may need to artificially force this
@@ -39,16 +39,16 @@ m4_define(MCA_opal_hwloc_CONFIGURE_MODE, STOP_AT_FIRST_PRIORITY)
 # OPAL_HAVE_HWLOC is set to 0 or 1 *before* some component needs to
 # check it.
 
-AC_DEFUN([MCA_opal_hwloc_CONFIG],[
+AC_DEFUN([MCA_hwloc_CONFIG],[
     # Use a crude shell variable to know whether this component is
     # being required "early".  See below.
     opal_hwloc_its_time_to_configure=1
-    AC_REQUIRE([MCA_opal_hwloc_CONFIG_REQUIRE])
+    AC_REQUIRE([MCA_hwloc_CONFIG_REQUIRE])
 ])
 
 # See comments above for why this is a separate macro.
 
-AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
+AC_DEFUN([MCA_hwloc_CONFIG_REQUIRE],[
 
    # If this shell variable is not 1, then this m4 is being invoked
    # "early" via AC REQUIRE.  Therefore, since we like having fairly
@@ -63,42 +63,6 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
         AC_HELP_STRING([--with-hwloc(=DIR)],
                        [Build hwloc support.  DIR can take one of three values: "internal", "external", or a valid directory name.  "internal" (or no DIR value) forces Open MPI to use its internal copy of hwloc.  "external" forces Open MPI to use an external installation of hwloc.  Supplying a valid directory name also forces Open MPI to use an external installation of hwloc, and adds DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries.]))
 
-    # Whether to enable or disable PCI support in embedded hwloc
-    # support.
-    AC_ARG_ENABLE([hwloc-pci],
-        AC_HELP_STRING([When building the embedded hwloc, whether to enable or disable PCI device support.  Some operating system distros (e.g., SuSE 10) have a broken libpci.a that will cause Open MPI to fail to build due to relocation errors.  Normally, Open MPI's configure script will automatically choose whether to enable or disable PCI device support in hwloc, but this option can be used to override Open MPI's default decision.]))
-
-    # This is terrible.  :-( Suse 10.1 has only libpci.a (no
-    # libpci.so) for 64 bit, and it apparently isn't compiled with
-    # -fPIC (their 32 bit version is fine).  Hence, if we try to build
-    # mca_hwloc_hwloc132.so and link against -lpci, the suse linker
-    # will choke because libpci wasn't built with -fPIC.  But it gets
-    # worse: we can't reliably test for linking against libpci here
-    # because only libtool knows how to build DSOs, and we haven't
-    # setup libtool yet.  So we can't actually test for this bad
-    # behavior. :-(
-    #
-    # As a terrible, terrible workaround, we're just going to test for
-    # Suse 10.  If you're on suse 10, we're going to assume libpci is
-    # broken, and will disable it by default.  I hate making tests
-    # based on specific version numbers, but I'm out of ideas here.
-    # :-(
-    AC_MSG_CHECKING([whether to enable hwloc PCI device support])
-    AS_IF([test "$enable_hwloc_pci" = "yes"],
-          [AC_MSG_RESULT([yes (--enable-hwloc-pci specified)])
-           enable_pci=yes],
-          [AS_IF([test "$enable_hwloc_pci" = "no"],
-                 [AC_MSG_RESULT([no (--disable-hwloc-pci specified)])
-                  enable_pci=no],
-                 [hwloc_base_pci=`grep "SUSE Linux Enterprise Server 10 SP1" /etc/issue`
-                  AS_IF([test "$hwloc_base_pci" != "" -a "$ac_cv_sizeof_void_p" = "8"],
-                        [AC_MSG_RESULT([no (SuSE 10/64 bit)])
-                         enable_pci=no],
-                        [AC_MSG_RESULT([defer (default)])
-                         enable_pci=])
-                 ])
-          ])
-
     # set defaults of not having any support
     opal_hwloc_base_enable_xml=0
     OPAL_HAVE_HWLOC=0
@@ -110,11 +74,8 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
     # REQUIRE.
     MCA_CONFIGURE_FRAMEWORK([opal], [hwloc], 1)
 
-    # Restore the --enable-pci flag
-    enable_pci=$opal_hwloc_hwloc132_save_enable_pci
-
     # Strip any leading/trailing spaces
-    opal_hwloc_winner=`echo $MCA_opal_hwloc_STATIC_COMPONENTS | sed -e 's/^[ ]+//' | sed -e 's/[ ]+$//'`
+    opal_hwloc_winner=`echo $MCA_hwloc_STATIC_COMPONENTS | sed -e 's/^[ ]+//' | sed -e 's/[ ]+$//'`
 
     # Give a blank line to separate these messages from the last
     # component's configure.m4 output.
@@ -125,7 +86,7 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
     AS_IF([test "$with_hwloc" = "no" -o "$with_hwloc" = ""], [],
        [ # STOP_AT_FIRST_PRIORITY will guarantee that we find at most
         # one.  We need to check here that we found *at least* one.
-        AS_IF([test "$MCA_opal_hwloc_STATIC_COMPONENTS" = ""],
+        AS_IF([test "$MCA_hwloc_STATIC_COMPONENTS" = ""],
               [AC_MSG_WARN([Did not find a suitable static opal hwloc component])
                AC_MSG_ERROR([Cannot continue])])
 
@@ -139,7 +100,7 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
    ])
 
    # If we have a winning component, do some more logic
-   AS_IF([test "$MCA_opal_hwloc_STATIC_COMPONENTS" != ""],
+   AS_IF([test "$MCA_hwloc_STATIC_COMPONENTS" != ""],
        [ # We had a winner -- w00t!
         OPAL_HAVE_HWLOC=1
 
@@ -184,7 +145,7 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
                    -L*)
                        dir=`echo $token | cut -c3-`
                        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$dir
-                       AC_MSG_WARN([Adding to LD_LIBRARY_PATH: $dir])
+                       AC_MSG_WARN([Adding to (DY)LD_LIBRARY_PATH: $dir])
                        ;;
                    esac
                done])
@@ -203,6 +164,8 @@ AC_DEFUN([MCA_opal_hwloc_CONFIG_REQUIRE],[
           echo "<== We now return you to your regularly scheduled programming."
           echo " "]);
 ])
+
+
 
 
 dnl Helper function

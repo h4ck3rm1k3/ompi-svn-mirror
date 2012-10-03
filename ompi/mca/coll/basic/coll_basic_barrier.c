@@ -9,7 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -152,9 +151,6 @@ mca_coll_basic_barrier_intra_log(struct ompi_communicator_t *comm,
         err = MCA_PML_CALL(recv(NULL, 0, MPI_BYTE, peer,
                                 MCA_COLL_BASE_TAG_BARRIER,
                                 comm, MPI_STATUS_IGNORE));
-        if (MPI_SUCCESS != err) {
-            return err;
-        }
     }
 
     /* Send to children. */

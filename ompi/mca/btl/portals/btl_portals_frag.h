@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,18 +21,12 @@
 
 BEGIN_C_DECLS
 
-struct mca_btl_portals_segment_t {
-  mca_btl_base_segment_t base;
-  ptl_match_bits_t key;
-};
-typedef struct mca_btl_portals_segment_t mca_btl_portals_segment_t;
-
 /**
  * Portals send fragment derived type
  */
 struct mca_btl_portals_frag_t {
     mca_btl_base_descriptor_t base; 
-    mca_btl_portals_segment_t segments[1]; 
+    mca_btl_base_segment_t segments[1]; 
     /* needed for retransmit case */
     struct mca_btl_base_endpoint_t *endpoint; 
     /* needed for retransmit case */
@@ -75,7 +67,7 @@ OBJ_CLASS_DECLARATION(mca_btl_portals_frag_recv_t);
     ompi_free_list_item_t *item;                                        \
     OMPI_FREE_LIST_GET(&((mca_btl_portals_module_t*)btl_macro)->portals_frag_eager, item, rc); \
     frag = (mca_btl_portals_frag_t*) item;                         \
-    if (rc == OMPI_ERR_TEMP_OUT_OF_RESOURCE) { \
+    if (rc == OMPI_ERR_TEMP_OUT_OF_RESOURCE) {                     \
         OMPI_BTL_PORTALS_FRAG_ALLOC_MAX(btl_macro, frag, rc);      \
     }                                                              \
 }

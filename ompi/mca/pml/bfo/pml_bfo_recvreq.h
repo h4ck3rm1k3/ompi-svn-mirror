@@ -11,8 +11,6 @@
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -196,7 +194,7 @@ recv_request_pml_complete(mca_pml_bfo_recv_request_t *recvreq)
 static inline bool
 recv_request_pml_complete_check(mca_pml_bfo_recv_request_t *recvreq)
 {
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_rmb();
 #endif
     if(recvreq->req_match_received &&
@@ -243,7 +241,7 @@ static inline void recv_req_matched(mca_pml_bfo_recv_request_t *req,
 #if PML_BFO
     req->req_msgseq = hdr->hdr_seq;
 #endif /* PML_BFO */
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_wmb();
 #endif
     if(req->req_recv.req_bytes_packed > 0) {

@@ -2,15 +2,12 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -24,11 +21,9 @@
 
 #include <sys/types.h>
 
+#include "orte/mca/errmgr/errmgr.h"
 #include "opal/dss/dss.h"
 #include "opal/dss/dss_internal.h"
-#include "opal/mca/hwloc/hwloc.h"
-
-#include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/data_type_support/orte_dt_support.h"
 
 /*
@@ -155,9 +150,9 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
                        int32_t *num_vals, opal_data_type_t type)
 {
     int rc;
-    int32_t i, n;
+    int32_t i, j, n, np, nprocs;
     orte_job_t **jobs;
-    orte_app_idx_t j;
+    orte_proc_t *proc;
     
     /* unpack into array of orte_job_t objects */
     jobs = (orte_job_t**) dest;
@@ -181,7 +176,7 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
         /* unpack the num apps */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                (&(jobs[i]->num_apps)), &n, ORTE_APP_IDX))) {
+                                (&(jobs[i]->num_apps)), &n, OPAL_INT32))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -222,6 +217,32 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
                          (&(jobs[i]->total_slots_alloc)), &n, ORTE_STD_CNTR))) {
             ORTE_ERROR_LOG(rc);
             return rc;
+        }
+        
+        /* unpack the number of procs */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                         (void*)(&(jobs[i]->num_procs)), &n, ORTE_VPID))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the actual number of proc entries in the message */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, (void*)&nprocs, &n, OPAL_INT32))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        if (0 < nprocs) {
+            for (np=0; np < nprocs; np++) {
+                n = 1;
+                if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                                 (void**)&proc, &n, ORTE_PROC))) {
+                    ORTE_ERROR_LOG(rc);
+                    return rc;
+                }
+                opal_pointer_array_set_item(jobs[i]->procs, proc->name.vpid, proc);
+            }
         }
         
         /* if the map is NULL, then we din't pack it as there was
@@ -281,22 +302,6 @@ int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                          (&(jobs[i]->abort)), &n, OPAL_BOOL))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-
-        /* unpack the recovery policy defined flag */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                         (&(jobs[i]->recovery_defined)), &n, OPAL_BOOL))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-
-        /* unpack the recovery flag */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                         (&(jobs[i]->enable_recovery)), &n, OPAL_BOOL))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -417,6 +422,8 @@ int orte_dt_unpack_node(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
+        /* do not unpack the board, socket, and core info */
+        
         /* do not unpack the username */
     }
     return ORTE_SUCCESS;
@@ -451,6 +458,14 @@ int orte_dt_unpack_proc(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
+        /* unpack the pid */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                         (&(procs[i]->pid)), &n, OPAL_PID))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
         /* unpack the local rank */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
@@ -459,7 +474,7 @@ int orte_dt_unpack_proc(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
-        /* unpack the node rank */
+        /* unpack the local rank */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                           (&(procs[i]->node_rank)), &n, ORTE_NODE_RANK))) {
@@ -467,16 +482,6 @@ int orte_dt_unpack_proc(opal_buffer_t *buffer, void *dest,
             return rc;
         }
         
-#if OPAL_HAVE_HWLOC
-        /* unpack the binding pattern */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                         (void*)(&(procs[i]->cpu_bitmap)), &n, OPAL_STRING))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-#endif
-
         /* unpack the state */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
@@ -489,6 +494,13 @@ int orte_dt_unpack_proc(opal_buffer_t *buffer, void *dest,
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                          (&(procs[i]->app_idx)), &n, ORTE_STD_CNTR))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the name of the node where this proc is executing */
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                          (void*)(&(procs[i]->nodename)), &n, OPAL_STRING))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -553,7 +565,7 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
         /* get the app index number */
         max_n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(app_context[i]->idx),
-                    &max_n, ORTE_STD_CNTR))) {
+                    &max_n, OPAL_INT32))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -570,14 +582,6 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
         max_n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(app_context[i]->num_procs),
                     &max_n, ORTE_STD_CNTR))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-
-        /* get the first rank for this app */
-        max_n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(app_context[i]->first_rank),
-                    &max_n, ORTE_VPID))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -797,39 +801,7 @@ int orte_dt_unpack_app_context(opal_buffer_t *buffer, void *dest,
         } else {
             app_context[i]->preload_files_src_dir = NULL;
         }
-
-        /* Unpack the recovery_defined flag */
-        max_n=1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(app_context[i]->recovery_defined),
-                                                         &max_n, OPAL_BOOL))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-        /* unpack the restart limit */
-        max_n=1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &app_context[i]->max_restarts,
-                                                         &max_n, OPAL_INT32))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-
-#if OPAL_ENABLE_FT_CR == 1
-        /* Unpack the sstore_load */
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &have_preload_files_dest_dir,
-                                                         &max_n, OPAL_INT8))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-        if (have_preload_files_dest_dir) {
-            if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &app_context[i]->sstore_load,
-                                                             &max_n, OPAL_STRING))) {
-                ORTE_ERROR_LOG(rc);
-                return rc;
-            }
-        } else {
-            app_context[i]->sstore_load = NULL;
-        }
-#endif
+        
     }
 
     return ORTE_SUCCESS;
@@ -901,7 +873,7 @@ int orte_dt_unpack_job_state(opal_buffer_t *buffer, void *dest,
  * sending a map - hence, we do not pack that field, so don't unpack it here
  */
 int orte_dt_unpack_map(opal_buffer_t *buffer, void *dest,
-                       int32_t *num_vals, opal_data_type_t type)
+                               int32_t *num_vals, opal_data_type_t type)
 {
     int rc;
     int32_t i, n;
@@ -918,39 +890,26 @@ int orte_dt_unpack_map(opal_buffer_t *buffer, void *dest,
             return ORTE_ERR_OUT_OF_RESOURCE;
         }
         
-        /* unpack the requested mapper */
+        /* unpack the policy */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(maps[i]->req_mapper), &n, OPAL_STRING))) {
+                                                         &(maps[i]->policy), &n, ORTE_MAPPING_POLICY))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
         
-        /* unpack the policies */
+        /* unpack the #procs/node */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(maps[i]->mapping), &n, ORTE_MAPPING_POLICY))) {
+                                                         &(maps[i]->npernode), &n, ORTE_STD_CNTR))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
+        
+        /* unpack the oversubscribe flag */
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(maps[i]->ranking), &n, ORTE_RANKING_POLICY))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-#if OPAL_HAVE_HWLOC
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(maps[i]->binding), &n, OPAL_BINDING_POLICY))) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-#endif
-        /* unpack the ppr */
-        n = 1;
-        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
-                                                         &(maps[i]->ppr), &n, OPAL_STRING))) {
+                                                         &(maps[i]->oversubscribe), &n, OPAL_BOOL))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -959,6 +918,28 @@ int orte_dt_unpack_map(opal_buffer_t *buffer, void *dest,
         n = 1;
         if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
                                                          &(maps[i]->display_map), &n, OPAL_BOOL))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the number of daemons to be created */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(maps[i]->num_new_daemons), &n, ORTE_STD_CNTR))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the starting vpid of the new daemons */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer, &(maps[i]->daemon_vpid_start), &n, ORTE_VPID))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        
+        /* unpack the number of nodes */
+        n = 1;
+        if (ORTE_SUCCESS != (rc = opal_dss_unpack_buffer(buffer,
+                                                         &(maps[i]->num_nodes), &n, ORTE_STD_CNTR))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -993,6 +974,20 @@ int orte_dt_unpack_daemon_cmd(opal_buffer_t *buffer, void *dest, int32_t *num_va
     
     /* turn around and unpack the real type */
     ret = opal_dss_unpack_buffer(buffer, dest, num_vals, ORTE_DAEMON_CMD_T);
+    
+    return ret;
+}
+
+/*
+ * ORTE_GRPCOMM_MODE
+ */
+int orte_dt_unpack_grpcomm_mode(opal_buffer_t *buffer, void *dest, int32_t *num_vals,
+                                opal_data_type_t type)
+{
+    int ret;
+    
+    /* turn around and unpack the real type */
+    ret = opal_dss_unpack_buffer(buffer, dest, num_vals, ORTE_GRPCOMM_MODE_T);
     
     return ret;
 }

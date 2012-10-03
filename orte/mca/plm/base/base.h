@@ -81,18 +81,7 @@ ORTE_DECLSPEC int orte_plm_base_close(void);
  */
 ORTE_DECLSPEC void orte_plm_base_app_report_launch(int fd, short event, void *data);
 ORTE_DECLSPEC void orte_plm_base_receive_process_msg(int fd, short event, void *data);
-
-ORTE_DECLSPEC void orte_plm_base_setup_job(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_setup_job_complete(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_complete_setup(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_daemons_reported(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_allocation_complete(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_daemons_launched(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_vm_ready(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_mapping_complete(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_launch_apps(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_post_launch(int fd, short args, void *cbdata);
-ORTE_DECLSPEC void orte_plm_base_registered(int fd, short args, void *cbdata);
+ORTE_DECLSPEC void orte_plm_base_check_job_completed(orte_job_t *jdata);
 
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
 

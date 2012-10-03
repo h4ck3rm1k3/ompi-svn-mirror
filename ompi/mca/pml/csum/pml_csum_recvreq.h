@@ -10,9 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -41,7 +38,7 @@ struct mca_pml_csum_recv_request_t {
     int32_t req_lock;
     size_t  req_pipeline_depth;
     size_t  req_bytes_received;  /**< amount of data transferred into the user buffer */
-    size_t  req_bytes_expected; /**< local size of the data as suggested by the user */
+    size_t  req_bytes_delivered; /**< local size of the data as suggested by the user */
     size_t  req_rdma_offset;
     size_t  req_send_offset;
     uint32_t req_rdma_cnt;
@@ -168,7 +165,7 @@ recv_request_pml_complete(mca_pml_csum_recv_request_t *recvreq)
         recvreq->req_recv.req_base.req_pml_complete = true;
         recvreq->req_recv.req_base.req_ompi.req_status._ucount =
             recvreq->req_bytes_received;
-        if (recvreq->req_recv.req_bytes_packed > recvreq->req_bytes_expected) {
+        if (recvreq->req_recv.req_bytes_packed > recvreq->req_bytes_delivered) {
             recvreq->req_recv.req_base.req_ompi.req_status._ucount =
                 recvreq->req_recv.req_bytes_packed;
             recvreq->req_recv.req_base.req_ompi.req_status.MPI_ERROR =
@@ -182,7 +179,7 @@ recv_request_pml_complete(mca_pml_csum_recv_request_t *recvreq)
 static inline bool
 recv_request_pml_complete_check(mca_pml_csum_recv_request_t *recvreq)
 {
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_rmb();
 #endif
     if(recvreq->req_match_received &&
@@ -198,6 +195,7 @@ recv_request_pml_complete_check(mca_pml_csum_recv_request_t *recvreq)
 extern void mca_pml_csum_recv_req_start(mca_pml_csum_recv_request_t *req);
 #define MCA_PML_CSUM_RECV_REQUEST_START(r) mca_pml_csum_recv_req_start(r)
 
+
 static inline void prepare_recv_req_converter(mca_pml_csum_recv_request_t *req)
 {
     if( req->req_recv.req_base.req_datatype->super.size | req->req_recv.req_base.req_count ) {
@@ -209,7 +207,7 @@ static inline void prepare_recv_req_converter(mca_pml_csum_recv_request_t *req)
                 0,
                 &req->req_recv.req_base.req_convertor);
         opal_convertor_get_unpacked_size(&req->req_recv.req_base.req_convertor,
-                                         &req->req_bytes_expected);
+                &req->req_bytes_delivered);
     }
 }
 
@@ -222,7 +220,7 @@ static inline void recv_req_matched(mca_pml_csum_recv_request_t *req,
     req->req_recv.req_base.req_ompi.req_status.MPI_SOURCE = hdr->hdr_src;
     req->req_recv.req_base.req_ompi.req_status.MPI_TAG = hdr->hdr_tag;
     req->req_match_received = true;
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_wmb();
 #endif
     if(req->req_recv.req_bytes_packed > 0) {
@@ -231,7 +229,7 @@ static inline void recv_req_matched(mca_pml_csum_recv_request_t *req,
             prepare_recv_req_converter(req);
         }
         PERUSE_TRACE_COMM_EVENT(PERUSE_COMM_REQ_XFER_BEGIN,
-                                &req->req_recv.req_base, PERUSE_RECV);
+                &req->req_recv.req_base, PERUSE_RECV);
     }
 }
 

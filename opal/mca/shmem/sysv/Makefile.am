@@ -27,7 +27,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_opal_shmem_sysv_DSO
+if OMPI_BUILD_shmem_sysv_DSO 
 component_noinst =
 component_install = mca_shmem_sysv.la
 else

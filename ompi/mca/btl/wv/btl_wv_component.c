@@ -10,9 +10,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies. All rights reserved.
- * Copyright (c) 2006-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved.
@@ -41,30 +41,24 @@
 #include "opal/util/argv.h"
 #include "opal/memoryhooks/memory.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/mca/hwloc/base/base.h"
-/* Define this before including hwloc.h so that we also get the hwloc
-   verbs helper header file, too.  We have to do this level of
-   indirection because the hwloc subsystem is a component -- we don't
-   know its exact path.  We have to rely on the framework header files
-   to find the right hwloc verbs helper file for us. */
-#define OPAL_HWLOC_WANT_VERBS_HELPER 1
-#include "opal/mca/hwloc/hwloc.h"
-#include "opal/mca/hwloc/base/base.h"
-#include "hwloc/openfabrics-verbs.h"
-
+#include "opal/mca/carto/carto.h"
+#include "opal/mca/carto/base/base.h"
+#include "opal/mca/paffinity/base/base.h"
 #include "opal/mca/installdirs/installdirs.h"
 #include "opal_stdint.h"
 
 #include "orte/util/show_help.h"
 #include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
+#include "orte/mca/notifier/notifier.h"
 
 #include "ompi/constants.h"
 #include "ompi/proc/proc.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/mpool/base/base.h"
-#include "ompi/mca/mpool/grdma/mpool_grdma.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "ompi/mca/btl/base/base.h"
+#include "ompi/mca/mpool/mpool.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 #include "ompi/runtime/mpiruntime.h"
 
@@ -154,7 +148,6 @@ static int btl_wv_component_register(void)
 static int btl_wv_component_open(void)
 {
     /* initialize state */
-    int ret = OMPI_SUCCESS;
     mca_btl_wv_component.ib_num_btls = 0;
     mca_btl_wv_component.wv_btls = NULL;
     OBJ_CONSTRUCT(&mca_btl_wv_component.devices, opal_pointer_array_t);
@@ -359,7 +352,7 @@ static void btl_wv_control(mca_btl_base_module_t* btl,
     mca_btl_wv_module_t *obtl = (mca_btl_wv_module_t*)btl;
     mca_btl_wv_endpoint_t* ep = to_com_frag(des)->endpoint;
     mca_btl_wv_control_header_t *ctl_hdr =
-        (mca_btl_wv_control_header_t *) to_base_frag(des)->segment.base.seg_addr.pval;
+        (mca_btl_wv_control_header_t *) to_base_frag(des)->segment.seg_addr.pval;
     mca_btl_wv_eager_rdma_header_t *rdma_hdr;
     mca_btl_wv_header_coalesced_t *clsc_hdr =
         (mca_btl_wv_header_coalesced_t*)(ctl_hdr + 1);
@@ -790,8 +783,8 @@ static int prepare_device_for_use(mca_btl_wv_device_t *device)
     if (OMPI_SUCCESS != rc) {
         /* If we're "out of memory", this usually means that we ran
            out of registered memory, so show that error message */
-        if (OMPI_ERR_OUT_OF_RESOURCE == rc ||
-            OMPI_ERR_TEMP_OUT_OF_RESOURCE == rc) {
+        if (OMPI_ERR_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc) ||
+            OMPI_ERR_TEMP_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc)) {
             errno = ENOMEM;
             mca_btl_wv_show_init_error(__FILE__, __LINE__,
                                        "ompi_free_list_init_ex_new",
@@ -826,8 +819,8 @@ static int prepare_device_for_use(mca_btl_wv_device_t *device)
             /* If we're "out of memory", this usually means that we
                ran out of registered memory, so show that error
                message */
-            if (OMPI_ERR_OUT_OF_RESOURCE == rc ||
-                OMPI_ERR_TEMP_OUT_OF_RESOURCE == rc) {
+            if (OMPI_ERR_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc) ||
+                OMPI_ERR_TEMP_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc)) {
                 errno = ENOMEM;
                 mca_btl_wv_show_init_error(__FILE__, __LINE__,
                                            "ompi_free_list_init_ex_new",
@@ -1000,7 +993,7 @@ static void merge_values(ompi_btl_wv_ini_values_t *target,
 static bool inline is_credit_message(const mca_btl_wv_recv_frag_t *frag)
 {
     mca_btl_wv_control_header_t* chdr =
-        (mca_btl_wv_control_header_t *) to_base_frag(frag)->segment.base.seg_addr.pval;
+        (mca_btl_wv_control_header_t *) to_base_frag(frag)->segment.seg_addr.pval;
     return (MCA_BTL_TAG_BTL == frag->hdr->tag) &&
         (MCA_BTL_WV_CONTROL_CREDITS == chdr->type);
 }
@@ -1008,7 +1001,7 @@ static bool inline is_credit_message(const mca_btl_wv_recv_frag_t *frag)
 static bool inline is_cts_message(const mca_btl_wv_recv_frag_t *frag)
 {
     mca_btl_wv_control_header_t* chdr =
-        (mca_btl_wv_control_header_t *) to_base_frag(frag)->segment.base.seg_addr.pval;
+        (mca_btl_wv_control_header_t *) to_base_frag(frag)->segment.seg_addr.pval;
     return (MCA_BTL_TAG_BTL == frag->hdr->tag) &&
         (MCA_BTL_WV_CONTROL_CTS == chdr->type);
 }
@@ -1318,11 +1311,11 @@ static int init_one_device(opal_list_t *btl_list, struct wv_device* ib_dev)
                                 device->ib_dev_attr.VendorPartId,
                                 &values);
     if (OMPI_SUCCESS != ret &&
-        OMPI_ERR_NOT_FOUND != ret) {
+        OMPI_ERR_NOT_FOUND != OPAL_SOS_GET_ERROR_CODE(ret)) {
         /* If we get a serious error, propagate it upwards */
         goto error;
     }
-    if (OMPI_ERR_NOT_FOUND == ret) {
+    if (OMPI_ERR_NOT_FOUND == OPAL_SOS_GET_ERROR_CODE(ret)) {
         /* If we didn't find a matching device in the INI files, output a
            warning that we're using default values (unless overridden
            that we don't want to see these warnings) */
@@ -1339,7 +1332,7 @@ static int init_one_device(opal_list_t *btl_list, struct wv_device* ib_dev)
        be set indicating that it does not have good values */
     ret = ompi_btl_wv_ini_query(0, 0, &default_values);
     if (OMPI_SUCCESS != ret &&
-        OMPI_ERR_NOT_FOUND != ret) {
+        OMPI_ERR_NOT_FOUND != OPAL_SOS_GET_ERROR_CODE(ret)) {
         /* If we get a serious error, propagate it upwards */
         goto error;
     }
@@ -1426,7 +1419,6 @@ static int init_one_device(opal_list_t *btl_list, struct wv_device* ib_dev)
         device->use_eager_rdma = values.use_eager_rdma;
     }
 
-    asprintf (&mpool_resources.pool_name, "verbs.%" PRIu64, device->ib_dev_attr.NodeGuid);
     mpool_resources.reg_data = (void*)device;
     mpool_resources.sizeof_reg = sizeof(mca_btl_wv_reg_t);
     mpool_resources.register_mem = wv_reg_mr;
@@ -1436,7 +1428,7 @@ static int init_one_device(opal_list_t *btl_list, struct wv_device* ib_dev)
                 device, &mpool_resources);
     if(NULL == device->mpool){
         /* Don't print an error message here -- we'll get one from
-           mpool_create anyway */
+           mpool_create anyway (OPAL_SOS would be good here...) */
          goto error;
     }
 
@@ -1488,7 +1480,7 @@ static int init_one_device(opal_list_t *btl_list, struct wv_device* ib_dev)
             if (OMPI_SUCCESS != ret) {
                 /* Out of bounds error indicates that we hit max btl number
                  * don't propagate the error to the caller */
-                if (OMPI_ERR_VALUE_OUT_OF_BOUNDS == ret) {
+                if (OMPI_ERR_VALUE_OUT_OF_BOUNDS == OPAL_SOS_GET_ERROR_CODE(ret)) {
                     ret = OMPI_SUCCESS;
                 }
                 break;
@@ -1933,148 +1925,62 @@ static void wv_free_device_list_compat(struct wv_device **ib_devs)
     free(ib_devs);
 }
 
+static opal_carto_graph_t *host_topo;
+
+static int get_ib_dev_distance(struct wv_device *dev)
+{
+    opal_paffinity_base_cpu_set_t cpus;
+    opal_carto_base_node_t *device_node;
+    int min_distance = -1, i, num_processors;
+    const char *device = dev->name;
+
+    if(opal_paffinity_base_get_processor_info(&num_processors) != OMPI_SUCCESS) {
+        num_processors = 100; /* Choose something big enough */
+    }
+
+    device_node = opal_carto_base_find_node(host_topo, device);
+
+    /* no topology info for device found. Assume that it is close */
+    if(NULL == device_node)
+        return 0;
+
+    OPAL_PAFFINITY_CPU_ZERO(cpus);
+    opal_paffinity_base_get(&cpus);
+
+    for (i = 0; i < num_processors; i++) {
+        opal_carto_base_node_t *slot_node;
+        int distance, socket, core;
+        char *slot;
+
+        if(!OPAL_PAFFINITY_CPU_ISSET(i, cpus))
+            continue;
+
+        opal_paffinity_base_get_map_to_socket_core(i, &socket, &core);
+        asprintf(&slot, "slot%d", socket);
+
+        slot_node = opal_carto_base_find_node(host_topo, slot);
+
+        free(slot);
+
+        if(NULL == slot_node)
+            return 0;
+
+        distance = opal_carto_base_spf(host_topo, slot_node, device_node);
+
+        if(distance < 0)
+            return 0;
+
+        if(min_distance < 0 || min_distance > distance)
+            min_distance = distance;
+    }
+
+    return min_distance;
+}
+
 struct dev_distance {
     struct wv_device *ib_dev;
     int distance;
 };
-
-static int get_ib_dev_distance(struct ibv_device *dev)
-{
-    /* If we don't have hwloc, we'll default to a distance of 0,
-       because we have no way of measuring. */
-    int distance = 0;
-
-#if OPAL_HAVE_HWLOC
-    int a, b, i;
-    hwloc_cpuset_t my_cpuset = NULL, ibv_cpuset = NULL;
-    hwloc_obj_t my_obj, ibv_obj, node_obj;
-
-    /* Note that this struct is owned by hwloc; there's no need to
-       free it at the end of time */
-    static const struct hwloc_distances_s *hwloc_distances = NULL;
-
-    if (NULL == hwloc_distances) {
-        hwloc_distances = 
-            hwloc_get_whole_distance_matrix_by_type(opal_hwloc_topology, 
-                                                    HWLOC_OBJ_NODE);
-    }
-
-    /* If we got no info, just return 0 */
-    if (NULL == hwloc_distances || NULL == hwloc_distances->latency) {
-        goto out;
-    }
-
-    /* Next, find the NUMA node where this IBV device is located */
-    ibv_cpuset = hwloc_bitmap_alloc();
-    if (NULL == ibv_cpuset) {
-        goto out;
-    }
-    if (0 != hwloc_ibv_get_device_cpuset(opal_hwloc_topology, dev, ibv_cpuset)) {
-        goto out;
-    }
-    ibv_obj = hwloc_get_obj_covering_cpuset(opal_hwloc_topology, ibv_cpuset);
-    if (NULL == ibv_obj) {
-        goto out;
-    }
-
-    /* If ibv_obj is a NUMA node or below, we're good. */
-    switch (ibv_obj->type) {
-    case HWLOC_OBJ_NODE:
-    case HWLOC_OBJ_SOCKET:
-    case HWLOC_OBJ_CACHE:
-    case HWLOC_OBJ_CORE:
-    case HWLOC_OBJ_PU:
-        while (NULL != ibv_obj && ibv_obj->type != HWLOC_OBJ_NODE) {
-            ibv_obj = ibv_obj->parent;
-        }
-        break;
-
-    default: 
-        /* If it's above a NUMA node, then I don't know how to compute
-           the distance... */
-        ibv_obj = NULL;
-        break;
-    }
-
-    /* If we don't have an object for this ibv device, give up */
-    if (NULL == ibv_obj) {
-        goto out;
-    }
-
-    /* This function is only called if the process is bound, so let's
-       find out where we are bound to.  For the moment, we only care
-       about the NUMA node to which we are bound. */
-    my_cpuset = hwloc_bitmap_alloc();
-    if (NULL == my_cpuset) {
-        goto out;
-    }
-    if (0 != hwloc_get_cpubind(opal_hwloc_topology, my_cpuset, 0)) {
-        hwloc_bitmap_free(my_cpuset);
-        goto out;
-    }
-    my_obj = hwloc_get_obj_covering_cpuset(opal_hwloc_topology, my_cpuset);
-    if (NULL == my_obj) {
-        goto out;
-    }
-
-    /* If my_obj is a NUMA node or below, we're good. */
-    switch (my_obj->type) {
-    case HWLOC_OBJ_NODE:
-    case HWLOC_OBJ_SOCKET:
-    case HWLOC_OBJ_CACHE:
-    case HWLOC_OBJ_CORE:
-    case HWLOC_OBJ_PU:
-        while (NULL != my_obj && my_obj->type != HWLOC_OBJ_NODE) {
-            my_obj = my_obj->parent;
-        }
-        if (NULL != my_obj) {
-            /* Distance may be asymetrical, so calculate both of them
-               and take the max */
-            a = hwloc_distances->latency[my_obj->logical_index *
-                                         (ibv_obj->logical_index * 
-                                          hwloc_distances->nbobjs)];
-            b = hwloc_distances->latency[ibv_obj->logical_index *
-                                         (my_obj->logical_index * 
-                                          hwloc_distances->nbobjs)];
-            distance = (a > b) ? a : b;
-        }
-        break;
-
-    default: 
-        /* If the obj is above a NUMA node, then we're bound to more than
-           one NUMA node.  Find the max distance. */
-        i = 0;
-        for (node_obj = hwloc_get_obj_inside_cpuset_by_type(opal_hwloc_topology,
-                                                            ibv_obj->cpuset, 
-                                                            HWLOC_OBJ_NODE, i);
-             NULL != node_obj; 
-             node_obj = hwloc_get_obj_inside_cpuset_by_type(opal_hwloc_topology,
-                                                            ibv_obj->cpuset, 
-                                                            HWLOC_OBJ_NODE, ++i)) {
-
-            a = hwloc_distances->latency[node_obj->logical_index *
-                                         (ibv_obj->logical_index * 
-                                          hwloc_distances->nbobjs)];
-            b = hwloc_distances->latency[ibv_obj->logical_index *
-                                         (node_obj->logical_index * 
-                                          hwloc_distances->nbobjs)];
-            a = (a > b) ? a : b;
-            distance = (a > distance) ? a : distance;
-        }
-        break;
-    }
-
- out:
-    if (NULL != ibv_cpuset) {
-        hwloc_bitmap_free(ibv_cpuset);
-    }
-    if (NULL != my_cpuset) {
-        hwloc_bitmap_free(my_cpuset);
-    }
-#endif
-
-    return distance;
-}
 
 static int compare_distance(const void *p1, const void *p2)
 {
@@ -2094,27 +2000,22 @@ sort_devs_by_distance(struct wv_device **ib_devs, int count)
      * if we have found more than one device, search for the shortest path.
      * otherwise, just use the one we got
      */
-    if (1 == count) {
+    if( count == 1) {
         devs[0].ib_dev = ib_devs[0];
         devs[0].distance = 0;
 
         return devs;
     }
+    opal_carto_base_get_host_graph(&host_topo, "Infiniband");
 
     for (i = 0; i < count; i++) {
         devs[i].ib_dev = ib_devs[i];
-        if (orte_proc_is_bound) {
-            /* If this process is bound to one or more PUs, we can get
-               an accurate distance. */
-            devs[i].distance = get_ib_dev_distance((ibv_device *)ib_devs[i]);
-        } else {
-            /* Since we're not bound, just assume that the device is
-               close. */
-            devs[i].distance = 0;
-        }
+        devs[i].distance = get_ib_dev_distance(ib_devs[i]);
     }
 
     qsort(devs, count, sizeof(struct dev_distance), compare_distance);
+
+    opal_carto_base_free_graph(host_topo);
 
     return devs;
 }
@@ -2411,7 +2312,7 @@ btl_wv_component_init(int *num_btl_modules,
         /* If we get NOT_SUPPORTED, then no CPC was found for this
            port.  But that's not a fatal error -- just keep going;
            let's see if we find any usable wv modules or not. */
-        if (OMPI_ERR_NOT_SUPPORTED == ret) {
+        if (OMPI_ERR_NOT_SUPPORTED == OPAL_SOS_GET_ERROR_CODE(ret)) {
             continue;
         } else if (OMPI_SUCCESS != ret) {
             /* All others *are* fatal.  Note that we already did a
@@ -2567,7 +2468,7 @@ static int progress_no_credits_pending_frags(mca_btl_base_endpoint_t *ep)
                    error upward. */
                 rc = mca_btl_wv_endpoint_post_send(ep, to_send_frag(frag));
                 if (OPAL_UNLIKELY(OMPI_SUCCESS != rc &&
-                                  OMPI_ERR_RESOURCE_BUSY != rc)) {
+                                  OMPI_ERR_RESOURCE_BUSY != OPAL_SOS_GET_ERROR_CODE(rc))) {
                     OPAL_THREAD_UNLOCK(&ep->endpoint_lock);
                     return rc;
                 }
@@ -2595,7 +2496,7 @@ void mca_btl_wv_frag_progress_pending_put_get(mca_btl_base_endpoint_t *ep,
             break;
         rc = mca_btl_wv_get((mca_btl_base_module_t *)wv_btl, ep, 
                                 &to_base_frag(frag)->base); 
-        if(OMPI_ERR_OUT_OF_RESOURCE == rc)            
+        if(OMPI_ERR_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc))            
             break;
     }
 
@@ -2608,7 +2509,7 @@ void mca_btl_wv_frag_progress_pending_put_get(mca_btl_base_endpoint_t *ep,
             break;
         rc = mca_btl_wv_put((mca_btl_base_module_t *)wv_btl, ep, 
                                 &to_base_frag(frag)->base); 
-        if(OMPI_ERR_OUT_OF_RESOURCE == rc)
+        if(OMPI_ERR_OUT_OF_RESOURCE == OPAL_SOS_GET_ERROR_CODE(rc))
             break;
     }
 }
@@ -2970,6 +2871,13 @@ error:
                        cq_name[cq], btl_wv_component_status_to_string(wc->Status),
                        wc->Status, wc->WrId, 
                        wc->Opcode, wc->VendorCode, qp));
+        orte_notifier.log_peer(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE,
+                               remote_proc ? &remote_proc->proc_name : NULL,
+                               "\n\tIB polling %s with status %s "
+                               "status number %d for wr_id %llu opcode %d vendor error %d qp_idx %d",
+                               cq_name[cq], btl_wv_component_status_to_string(wc->Status),
+                               wc->Status, wc->WrId, 
+                               wc->Opcode, wc->VendorCode, qp);
     }
 
     if (WvWcRnrRetryError == wc->Status ||
@@ -2988,11 +2896,23 @@ error:
                            "srq rnr retry exceeded", true,
                            orte_process_info.nodename, device_name,
                            peer_hostname);
+            orte_notifier.show_help(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE,
+                                    "help-mpi-btl-wv.txt",
+                                    BTL_WV_QP_TYPE_PP(qp) ? 
+                                    "pp rnr retry exceeded" : 
+                                    "srq rnr retry exceeded",
+                                    orte_process_info.nodename, device_name,
+                                    peer_hostname);
         } else if (-2 == wc->Status) {
             orte_show_help("help-mpi-btl-wv.txt", 
                            "pp retry exceeded", true,
                            orte_process_info.nodename,
                            device_name, peer_hostname);
+            orte_notifier.show_help(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE,
+                                    "help-mpi-btl-wv.txt", 
+                                    "pp retry exceeded",
+                                    orte_process_info.nodename,
+                                    device_name, peer_hostname);
         }
     }
 
@@ -3075,7 +2995,7 @@ static int progress_one_device(mca_btl_wv_device_t *device)
             OPAL_THREAD_UNLOCK(&endpoint->eager_rdma_local.lock);
             frag->hdr = (mca_btl_wv_header_t*)(((char*)frag->ftr) -
                     size + sizeof(mca_btl_wv_footer_t));
-            to_base_frag(frag)->segment.base.seg_addr.pval =
+            to_base_frag(frag)->segment.seg_addr.pval =
                 ((unsigned char* )frag->hdr) + sizeof(mca_btl_wv_header_t);
             ret = btl_wv_handle_incoming(btl, to_com_frag(frag)->endpoint,
                     frag, size - sizeof(mca_btl_wv_footer_t));

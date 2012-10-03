@@ -20,12 +20,10 @@
 # $HEADER$
 #
 
-# MCA_opal_shmem_sysv_CONFIG(action-if-can-compile,
-#                        [action-if-cant-compile])
+# MCA_shmem_sysv_CONFIG(action-if-can-compile,
+#                       [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_opal_shmem_sysv_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/shmem/sysv/Makefile])
-
+AC_DEFUN([MCA_shmem_sysv_CONFIG],[
     # do we have the sysv shm stuff?
     AC_MSG_CHECKING([if want SYSV shared memory support])
     AC_ARG_ENABLE(sysv-shmem,

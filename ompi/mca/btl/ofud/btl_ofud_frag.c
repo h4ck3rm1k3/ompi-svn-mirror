@@ -20,6 +20,7 @@
 
 #include "btl_ofud.h"
 #include "btl_ofud_frag.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 
 
 static inline void mca_btl_ud_frag_common_constructor(mca_btl_ud_frag_t* frag)

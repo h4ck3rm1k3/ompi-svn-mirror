@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -34,7 +34,7 @@
 #endif
 
 /* Open MPI includes */
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
@@ -53,7 +53,7 @@ BEGIN_C_DECLS
 struct mca_btl_tcp_component_t {
     mca_btl_base_component_2_0_0_t super;   /**< base BTL component */ 
     uint32_t tcp_addr_count;                /**< total number of addresses */
-    uint32_t tcp_num_btls;                  /**< number of interfaces available to the TCP component */
+    uint32_t tcp_num_btls;                  /**< number of hcas available to the TCP component */
     uint32_t tcp_num_links;                 /**< number of logical links per physical device */
     struct mca_btl_tcp_module_t **tcp_btls; /**< array of available BTL modules */
     struct mca_btl_tcp_proc_t* tcp_local;   /**< local proc struct */
@@ -108,10 +108,10 @@ struct mca_btl_tcp_module_t {
     mca_btl_base_module_t  super;  /**< base BTL interface */
     uint16_t           tcp_ifkindex; /** <BTL kernel interface index */
 #if 0
-    int                tcp_ifindex; /**< BTL interface index */
+    int                tcp_ifindex; /**< PTL interface index */
 #endif
-    struct sockaddr_storage tcp_ifaddr; /**< BTL interface address */
-    uint32_t           tcp_ifmask;  /**< BTL interface netmask */
+    struct sockaddr_storage tcp_ifaddr; /**< PTL interface address */
+    uint32_t           tcp_ifmask;  /**< PTL interface netmask */
     opal_list_t        tcp_endpoints;
 #if MCA_BTL_TCP_STATISTICS
     size_t tcp_bytes_sent;
@@ -139,6 +139,15 @@ extern mca_btl_base_module_t** mca_btl_tcp_component_init(
     int *num_btl_modules, 
     bool allow_multi_user_threads,
     bool have_hidden_threads
+);
+
+/**
+ * TCP component control.
+ */
+int mca_btl_tcp_component_control(
+    int param, 
+    void* value, 
+    size_t size
 );
 
 

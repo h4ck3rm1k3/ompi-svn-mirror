@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
@@ -86,11 +86,7 @@ typedef struct {
 #      define OMPI_DECLSPEC        __declspec(dllexport)
 #      define OMPI_MODULE_DECLSPEC
 #    else
-#      if defined(OMPI_IMPORTS)
-#        define OMPI_DECLSPEC      __declspec(dllimport)
-#      else
-#        define OMPI_DECLSPEC
-#      endif  /*defined(OMPI_IMPORTS)*/
+#      define OMPI_DECLSPEC        __declspec(dllimport)
 #      if defined(OMPI_MODULE_EXPORTS)
 #        define OMPI_MODULE_DECLSPEC __declspec(dllexport)
 #      else
@@ -124,12 +120,5 @@ typedef struct {
 #    endif
 #  endif
 #endif  /* defined(__WINDOWS__) */
-
-/* Convenience */
-#if OMPI_BUILD_FORTRAN_MPIFH_BINDINGS || OMPI_BUILD_FORTRAN_USEMPI_BINDINGS || OMPI_BUILD_FORTRAN_USEMPIF08_BINDINGS
-#define OMPI_BUILD_FORTRAN_BINDINGS 1
-#else
-#define OMPI_BUILD_FORTRAN_BINDINGS 0
-#endif
 
 #endif

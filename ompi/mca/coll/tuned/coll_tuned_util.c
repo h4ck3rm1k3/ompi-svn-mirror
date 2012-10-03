@@ -27,10 +27,10 @@
 #include "ompi/mca/pml/pml.h"
 #include "coll_tuned_util.h"
 
-int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount, 
+int ompi_coll_tuned_sendrecv_actual( void* sendbuf, int scount, 
                                      ompi_datatype_t* sdatatype,
                                      int dest, int stag,
-                                     void* recvbuf, size_t rcount, 
+                                     void* recvbuf, int rcount, 
                                      ompi_datatype_t* rdatatype,
                                      int source, int rtag,
                                      struct ompi_communicator_t* comm,
@@ -52,7 +52,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
     if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler; }
 
     err = ompi_request_wait_all( 2, reqs, statuses );
-    if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler; }
+    if (err != MPI_SUCCESS) { line = __LINE__; goto error_handler_waitall; }
 
     if (MPI_STATUS_IGNORE != status) {
         *status = statuses[0];
@@ -60,15 +60,15 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
     
     return (MPI_SUCCESS);
 
- error_handler:
+ error_handler_waitall:
     /* As we use wait_all we will get MPI_ERR_IN_STATUS which is not an error
      * code that we can propagate up the stack. Instead, look for the real
      * error code from the MPI_ERROR in the status.
      */
     if( MPI_ERR_IN_STATUS == err ) {
-        /* At least we know the error was detected during the wait_all */
+        /* At least we know he error was detected during the wait_all */
         int err_index = 0;
-        if( MPI_SUCCESS == statuses[0].MPI_ERROR ) {
+        if( MPI_SUCCESS != statuses[1].MPI_ERROR ) {
             err_index = 1;
         }
         if (MPI_STATUS_IGNORE != status) {
@@ -78,6 +78,7 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
         OPAL_OUTPUT ((ompi_coll_tuned_stream, "%s:%d: Error %d occurred (req index %d)\n",
                       __FILE__, line, err, err_index));
     } else {
+ error_handler:
         /* Error discovered during the posting of the irecv or isend,
          * and no status is available.
          */
@@ -96,10 +97,10 @@ int ompi_coll_tuned_sendrecv_actual( void* sendbuf, size_t scount,
  * version when available
  */
 
-int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount, 
+int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, int scount, 
                                                     ompi_datatype_t* sdatatype, 
                                                     int dest, int stag,
-                                                    void* recvbuf, size_t rcount, 
+                                                    void* recvbuf, int rcount, 
                                                     ompi_datatype_t* rdatatype, 
                                                     int source, int rtag, 
                                                     struct ompi_communicator_t* comm, 
@@ -135,9 +136,8 @@ int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount
      * error code from the MPI_ERROR in the status.
      */
     if( MPI_ERR_IN_STATUS == err ) { 
-        /* At least we know the error was detected during the wait_all */
         int err_index = 0;
-        if( MPI_SUCCESS == statuses[0].MPI_ERROR ) {
+        if( MPI_SUCCESS != statuses[1].MPI_ERROR ) {
             err_index = 1;
         }
         if (MPI_STATUS_IGNORE != status) {
@@ -147,11 +147,8 @@ int ompi_coll_tuned_sendrecv_actual_localcompleted( void* sendbuf, size_t scount
         OPAL_OUTPUT ((ompi_coll_tuned_stream, "%s:%d: Error %d occurred (req index %d)\n",
                       __FILE__,line,err, err_index));
     } else {
-        /* Error discovered during the posting of the irecv or isend,
-         * and no status is available.
-         */
         OPAL_OUTPUT ((ompi_coll_tuned_stream, "%s:%d: Error %d occurred\n",
-                      __FILE__, line, err));
+                      __FILE__,line,err));
         if (MPI_STATUS_IGNORE != status) {
             status->MPI_ERROR = err;
         }

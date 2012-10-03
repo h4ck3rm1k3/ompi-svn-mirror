@@ -11,7 +11,6 @@
 #                         All rights reserved.
 # Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -25,7 +24,7 @@ man_pages = orte-restart.1
 EXTRA_DIST = orte-restart.1in CMakeLists.txt
 
 if !ORTE_DISABLE_FULL_SUPPORT
-if WANT_FT_CR
+if WANT_FT
 if OMPI_INSTALL_BINARIES
 
 bin_PROGRAMS = orte-restart
@@ -44,7 +43,7 @@ endif # OMPI_INSTALL_BINARIES
 orte_restart_SOURCES = orte-restart.c
 orte_restart_LDADD = $(top_builddir)/orte/libopen-rte.la
 
-endif # WANT_FT_CR
+endif # WANT_FT
 endif # ORTE_DISABLE_FULL_SUPPORT
 
 distclean-local:

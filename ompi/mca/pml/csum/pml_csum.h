@@ -1,4 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -11,9 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -49,7 +47,6 @@ BEGIN_C_DECLS
 struct mca_pml_csum_t {
     mca_pml_base_module_t super; 
 
-    int priority;
     int free_list_num;      /* initial size of free list */
     int free_list_max;      /* maximum size of free list */
     int free_list_inc;      /* number of elements to grow free list */
@@ -86,7 +83,6 @@ struct mca_pml_csum_t {
 typedef struct mca_pml_csum_t mca_pml_csum_t; 
 
 extern mca_pml_csum_t mca_pml_csum;
-extern int mca_pml_csum_output;
 
 /*
  * PML interface functions.
@@ -123,19 +119,6 @@ extern int mca_pml_csum_iprobe( int dst,
 extern int mca_pml_csum_probe( int dst,
                               int tag,
                               struct ompi_communicator_t* comm,
-                              ompi_status_public_t* status );
-
-extern int mca_pml_csum_improbe( int dst,
-                               int tag,
-                               struct ompi_communicator_t* comm,
-                               int *matched,
-                               struct ompi_message_t **message,
-                               ompi_status_public_t* status );
-
-extern int mca_pml_csum_mprobe( int dst,
-                              int tag,
-                              struct ompi_communicator_t* comm,
-                              struct ompi_message_t **message,
                               ompi_status_public_t* status );
 
 extern int mca_pml_csum_isend_init( void *buf,
@@ -188,18 +171,6 @@ extern int mca_pml_csum_recv( void *buf,
                              struct ompi_communicator_t* comm,
                              ompi_status_public_t* status );
 
-extern int mca_pml_csum_imrecv( void *buf,
-                               size_t count,
-                               ompi_datatype_t *datatype,
-                               struct ompi_message_t **message,
-                               struct ompi_request_t **request );
-
-extern int mca_pml_csum_mrecv( void *buf,
-                              size_t count,
-                              ompi_datatype_t *datatype,
-                              struct ompi_message_t **message,
-                              ompi_status_public_t* status );
-
 extern int mca_pml_csum_dump( struct ompi_communicator_t* comm,
                              int verbose );
 
@@ -241,7 +212,7 @@ do {                                                            \
                                                                     \
         MCA_PML_CSUM_PCKT_PENDING_ALLOC(_pckt,_rc);                  \
         _pckt->hdr.hdr_common.hdr_type = MCA_PML_CSUM_HDR_TYPE_FIN;  \
-        _pckt->hdr.hdr_fin.hdr_des = (D);                           \
+        _pckt->hdr.hdr_fin.hdr_des.pval = (D);                      \
         _pckt->hdr.hdr_fin.hdr_fail = (S);                          \
         _pckt->proc = (P);                                          \
         _pckt->bml_btl = (B);                                       \
@@ -254,7 +225,7 @@ do {                                                            \
 
 
 int mca_pml_csum_send_fin(ompi_proc_t* proc, mca_bml_base_btl_t* bml_btl, 
-        ompi_ptr_t hdr_des, uint8_t order, uint32_t status);
+        void *hdr_des, uint8_t order, uint32_t status);
 
 /* This function tries to resend FIN/ACK packets from pckt_pending queue.
  * Packets are added to the queue when sending of FIN or ACK is failed due to
@@ -284,30 +255,15 @@ void mca_pml_csum_process_pending_rdma(void);
 /*
  * Compute the total number of bytes on supplied descriptor
  */
-static inline int mca_pml_csum_compute_segment_length (size_t seg_size, void *segments, size_t count,
-                                                       size_t hdrlen) {
-    size_t i, length;
-
-    for (i = 0, length = -hdrlen ; i < count ; ++i) {
-        mca_btl_base_segment_t *segment =
-            (mca_btl_base_segment_t *)((char *) segments + i * seg_size);
-
-        length += segment->seg_len;
-    }
-
-    return length;
-}
-
-static inline int mca_pml_csum_compute_segment_length_base (mca_btl_base_segment_t *segments,
-                                                            size_t count, size_t hdrlen) {
-    size_t i, length;
-
-    for (i = 0, length = -hdrlen ; i < count ; ++i) {
-        length += segments[i].seg_len;
-    }
-
-    return length;
-}
+#define MCA_PML_CSUM_COMPUTE_SEGMENT_LENGTH(segments, count, hdrlen, length) \
+do {                                                                        \
+   size_t i;                                                                \
+                                                                            \
+   for( i = 0; i < count; i++ ) {                                           \
+       length += segments[i].seg_len;                                       \
+   }                                                                        \
+   length -= hdrlen;                                                        \
+} while(0)
 
 /* represent BTL chosen for sending request */
 struct mca_pml_csum_com_btl_t {

@@ -17,9 +17,8 @@
 # 
 # $HEADER$
 #
-AC_DEFUN([MCA_opal_memory_linux_PRIORITY], [40])
 
-AC_DEFUN([MCA_opal_memory_linux_COMPILE_MODE], [
+AC_DEFUN([MCA_memory_linux_COMPILE_MODE], [
     AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
     $4="static"
     AC_MSG_RESULT([$$4])
@@ -29,10 +28,8 @@ AC_DEFUN([MCA_opal_memory_linux_COMPILE_MODE], [
 # MCA_memory_linux_CONFIG(action-if-can-compile, 
 #                        [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_opal_memory_linux_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/memory/linux/Makefile])
-
-    OPAL_VAR_SCOPE_PUSH([memory_linux_ptmalloc2_happy memory_linux_ummu_happy memory_linux_requested icc_major_ver icc_minor_ver memory_linux_mmap memory_linux_munmap memory_linux_LIBS_SAVE])
+AC_DEFUN([MCA_memory_linux_CONFIG],[
+    OMPI_VAR_SCOPE_PUSH([memory_linux_ptmalloc2_happy memory_linux_ummu_happy memory_linux_requested icc_major_ver icc_minor_ver memory_linux_mmap memory_linux_munmap memory_linux_LIBS_SAVE])
 
     # Only allow this component to build on Linux-based systems
 
@@ -195,5 +192,5 @@ AC_DEFUN([MCA_opal_memory_linux_CONFIG],[
            memory_base_include=
            $2])
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])

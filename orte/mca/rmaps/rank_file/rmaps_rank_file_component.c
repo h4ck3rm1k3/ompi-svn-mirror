@@ -11,7 +11,6 @@
  *                         All rights reserved.
  * Copyright (c) 2008      Voltaire. All rights reserved
  *  
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,11 +25,10 @@
 #include <string.h>
 #endif
 
+#include "orte/mca/ras/ras_types.h"
+
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/mca/hwloc/base/base.h"
-
-#include "orte/util/show_help.h"
 
 #include "orte/mca/rmaps/base/base.h"
 #include "orte/mca/rmaps/base/rmaps_private.h"
@@ -45,28 +43,26 @@ static int orte_rmaps_rank_file_open(void);
 static int orte_rmaps_rank_file_close(void);
 static int orte_rmaps_rank_file_query(mca_base_module_t **module, int *priority);
 
-static int my_priority;
-
-orte_rmaps_rf_component_t mca_rmaps_rank_file_component = {
+orte_rmaps_rank_file_component_t mca_rmaps_rank_file_component = {
     {
-        /* First, the mca_base_component_t struct containing meta
-           information about the component itself */
+      /* First, the mca_base_component_t struct containing meta
+         information about the component itself */
 
-        {
-            ORTE_RMAPS_BASE_VERSION_2_0_0,
+      {
+        ORTE_RMAPS_BASE_VERSION_2_0_0,
 
-            "rank_file", /* MCA component name */
-            ORTE_MAJOR_VERSION,  /* MCA component major version */
-            ORTE_MINOR_VERSION,  /* MCA component minor version */
-            ORTE_RELEASE_VERSION,  /* MCA component release version */
-            orte_rmaps_rank_file_open,  /* component open  */
-            orte_rmaps_rank_file_close, /* component close */
-            orte_rmaps_rank_file_query  /* component query */
-        },
-        {
-            /* The component is checkpoint ready */
-            MCA_BASE_METADATA_PARAM_CHECKPOINT
-        }
+        "rank_file", /* MCA component name */
+        ORTE_MAJOR_VERSION,  /* MCA component major version */
+        ORTE_MINOR_VERSION,  /* MCA component minor version */
+        ORTE_RELEASE_VERSION,  /* MCA component release version */
+        orte_rmaps_rank_file_open,  /* component open  */
+        orte_rmaps_rank_file_close, /* component close */
+        orte_rmaps_rank_file_query  /* component query */
+      },
+      {
+          /* The component is checkpoint ready */
+          MCA_BASE_METADATA_PARAM_CHECKPOINT
+      }
     }
 };
 
@@ -76,41 +72,11 @@ orte_rmaps_rf_component_t mca_rmaps_rank_file_component = {
   */
 static int orte_rmaps_rank_file_open(void)
 {
-    mca_base_component_t *c = &mca_rmaps_rank_file_component.super.base_version;
-    int tmp;
-
-    mca_base_param_reg_int(c, "priority",
-                           "Priority of the rank_file rmaps component",
-                           false, false, 0,
-                           &my_priority);
+    mca_rmaps_rank_file_component.priority = 0;
     
-    tmp = mca_base_param_reg_string(c, "path",
-                                    "Name of the rankfile to be used for mapping processes (relative or absolute path)",
-                                    false, false, NULL, NULL);
-    mca_base_param_reg_syn_name(tmp, "orte", "rankfile", false);
-    mca_base_param_lookup_string(tmp, &orte_rankfile);
-
-    /* ensure we flag mapping by user */
-#if OPAL_HAVE_HWLOC
-    if (NULL != opal_hwloc_base_slot_list || NULL != orte_rankfile) {
-#else
-    if (NULL != orte_rankfile) {
-#endif
-        if (ORTE_MAPPING_GIVEN & ORTE_GET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping)) {
-            /* if a non-default mapping is already specified, then we
-             * have an error
-             */
-            orte_show_help("help-orte-rmaps-base.txt", "redefining-policy", true, "mapping",
-                           "RANK_FILE", orte_rmaps_base_print_mapping(orte_rmaps_base.mapping));
-            ORTE_SET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping, ORTE_MAPPING_CONFLICTED);
-            return ORTE_ERR_SILENT;
-        }
-        ORTE_SET_MAPPING_POLICY(orte_rmaps_base.mapping, ORTE_MAPPING_BYUSER);
-        ORTE_SET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping, ORTE_MAPPING_GIVEN);
-        /* we are going to bind to cpuset since the user is specifying the cpus */
-        OPAL_SET_BINDING_POLICY(opal_hwloc_binding_policy, OPAL_BIND_TO_CPUSET);
-        /* make us first */
-        my_priority = 10000;
+    if (NULL != orte_rankfile ||
+        NULL != orte_rmaps_base.slot_list) {
+        mca_rmaps_rank_file_component.priority = 100;
     }
     
     return ORTE_SUCCESS;
@@ -118,7 +84,11 @@ static int orte_rmaps_rank_file_open(void)
 
 static int orte_rmaps_rank_file_query(mca_base_module_t **module, int *priority)
 {
-    *priority = my_priority;
+    /* the RMAPS framework is -only- opened on HNP's,
+     * so no need to check for that here
+     */
+
+    *priority = mca_rmaps_rank_file_component.priority;
     *module = (mca_base_module_t *)&orte_rmaps_rank_file_module;
     return ORTE_SUCCESS;
 }

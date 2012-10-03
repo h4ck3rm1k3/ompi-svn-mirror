@@ -1,6 +1,7 @@
 . -*- nroff -*-
-.\" Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 .\" Copyright (c) 2008-2009 Sun Microsystems, Inc.  All rights reserved.
+.\" Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
 .\"
 .\" Man page for ORTE's orterun command
 .\" 
@@ -681,15 +682,12 @@ will launch ranks 0-3 on node aa and ranks 4-5 on node bb.  The remaining
 slots in the hostfile will not be used since the \fI-np\fP option indicated
 that only 6 processes should be launched.
 .
-.SS Mapping Processes to Nodes:  Using Policies
+.SS Mapping Processes to Nodes
 .
 The examples above illustrate the default mapping of process ranks
 to nodes.  This mapping can also be controlled with various
-\fImpirun\fP options that describe mapping policies.
-.
-.
-.PP
-Consider the same hostfile as above, again with \fI-np\fP 6:
+\fImpirun\fP options.  Here, we consider the same hostfile as
+above with \fI-np\fP 6 again:
 .
 
                           node aa      node bb      node cc
@@ -774,27 +772,6 @@ mpirun -H aa -np 1 hostname : -H bb,cc -np 2 uptime
 will launch process 0 running \fIhostname\fP on node aa and processes 1 and 2
 each running \fIuptime\fP on nodes bb and cc, respectively.
 .
-.SS Mapping Processes to Nodes:  Using Arbitrary Mappings
-.
-The mapping of process ranks to nodes can be prescribed not just
-with general policies but also, if necessary, using arbitrary mappings
-that cannot be described by a simple policy.  One can use the "sequential
-mapper," which reads the hostfile line by line, assigning processes
-to nodes in whatever order the hostfile specifies.  Use the
-\fI-mca rmaps seq\fP option.  For example, using the same hostfile
-as before
-.
-.TP 4
-mpirun -hostfile myhostfile ./a.out
-will launch three processes, on ranks aa, bb, and cc, respectively.
-The slot counts don't matter;  one process is launched per line on
-whatever node is listed on the line.
-.
-.PP
-Another way to specify arbitrary mappings is with a rank file, which
-gives you detailed control over process binding as well.  Rank files
-are discussed below.
-.
 .SS Process Binding
 .
 Processes may be bound to specific resources on a node.  This can
@@ -859,12 +836,12 @@ the masks 0001, 0002, 0004, and 0008.  In the second case, processes bind
 to all cores on successive sockets as indicated by the masks 000f and 00f0.
 The processes cycle through the processor sockets in a round-robin fashion
 as many times as are needed.  In the third case, the masks show us that
-2 cores have been bound per process.  In the fourth case, binding is
+2 cores have been bind per process.  In the fourth case, binding is
 turned off and no bindings are reported.
 .
 .PP
 Open MPI's support for process binding depends on the underlying
-operating system.  Therefore, certain process binding options may not be available
+operating system.  Therefore, processing binding may not be available
 on every system.
 .
 .PP

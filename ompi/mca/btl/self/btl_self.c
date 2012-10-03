@@ -46,7 +46,6 @@ mca_btl_base_module_t mca_btl_self = {
     0, /* btl_latency */
     0, /* btl_bandwidth */
     0, /* btl flags */
-    0, /* btl segment size */
     mca_btl_self_add_procs,
     mca_btl_self_del_procs,
     NULL,
@@ -229,14 +228,14 @@ mca_btl_self_prepare_src( struct mca_btl_base_module_t* btl,
             MCA_BTL_SELF_FRAG_RETURN_RDMA(frag);
             return NULL;
         }
-        frag->segment.seg_addr.lval = (uint64_t)(uintptr_t) iov.iov_base;
+        frag->segment.seg_addr.pval = iov.iov_base;
         frag->segment.seg_len = max_data;
         *size = max_data;
     }
     frag->base.des_flags = flags;
     frag->base.des_src          = &frag->segment;
     frag->base.des_src_cnt      = 1;
-
+    frag->segment.seg_key.key64 = (uint64_t)(intptr_t)convertor;
     return &frag->base;
 }
 
@@ -255,7 +254,6 @@ mca_btl_self_prepare_dst( struct mca_btl_base_module_t* btl,
 {
     mca_btl_self_frag_t* frag;
     size_t max_data = *size;
-    void *ptr;
     int rc;
 
     MCA_BTL_SELF_FRAG_ALLOC_RDMA(frag, rc);
@@ -264,10 +262,9 @@ mca_btl_self_prepare_dst( struct mca_btl_base_module_t* btl,
     }
 
     /* setup descriptor to point directly to user buffer */
-    opal_convertor_get_current_pointer( convertor, &ptr );
-    frag->segment.seg_addr.lval = (uint64_t)(uintptr_t) ptr;
-
+    opal_convertor_get_current_pointer( convertor, (void**)&(frag->segment.seg_addr.pval) );
     frag->segment.seg_len = reserve + max_data;
+    frag->segment.seg_key.key64 = (uint64_t)(intptr_t)convertor;
     frag->base.des_dst = &frag->segment;
     frag->base.des_dst_cnt = 1;
     frag->base.des_flags = flags;
@@ -325,9 +322,9 @@ int mca_btl_self_rdma( struct mca_btl_base_module_t* btl,
     mca_btl_base_segment_t* dst = des->des_dst;
     size_t src_cnt = des->des_src_cnt;
     size_t dst_cnt = des->des_dst_cnt;
-    unsigned char* src_addr = (unsigned char *)(uintptr_t) src->seg_addr.lval;
+    unsigned char* src_addr = (unsigned char*)src->seg_addr.pval;
     size_t src_len = src->seg_len;
-    unsigned char* dst_addr = (unsigned char *)(uintptr_t) dst->seg_addr.lval;
+    unsigned char* dst_addr = (unsigned char*)ompi_ptr_ltop(dst->seg_addr.lval);
     size_t dst_len = dst->seg_len;
     int btl_ownership = (des->des_flags & MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
 

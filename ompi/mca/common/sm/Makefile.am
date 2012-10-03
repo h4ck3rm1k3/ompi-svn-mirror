@@ -79,7 +79,7 @@ noinst_LTLIBRARIES =
 comp_inst = libmca_common_sm.la
 comp_noinst = libmca_common_sm_noinst.la
 
-if MCA_BUILD_ompi_common_sm_DSO
+if OMPI_BUILD_common_sm_DSO
 lib_LTLIBRARIES += $(comp_inst)
 else
 noinst_LTLIBRARIES += $(comp_noinst)
@@ -92,8 +92,10 @@ libmca_common_sm_noinst_la_SOURCES = $(libmca_common_sm_la_SOURCES)
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-ompidir = $(includedir)/openmpi/$(subdir)
+ompidir = $(includedir)/openmpi/ompi/mca/common/sm
 ompi_HEADERS = $(headers)
+else
+ompidir = $(includedir)
 endif
 
 # These two rules will sym link the "noinst" libtool library filename

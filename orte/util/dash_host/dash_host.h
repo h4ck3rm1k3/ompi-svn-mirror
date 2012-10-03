@@ -30,14 +30,11 @@
 BEGIN_C_DECLS
 
 ORTE_DECLSPEC int orte_util_add_dash_host_nodes(opal_list_t *nodes,
+                                                bool *override_oversubscribed,
                                                 char ** host_argv);
     
 ORTE_DECLSPEC int orte_util_filter_dash_host_nodes(opal_list_t *nodes,
-                                                   char ** host_argv,
-                                                   bool remove);
-
-ORTE_DECLSPEC int orte_util_get_ordered_dash_host_list(opal_list_t *nodes,
-                                                       char ** host_argv);
+                                                   char ** host_argv);
 
 END_C_DECLS
 

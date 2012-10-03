@@ -10,12 +10,11 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2006-2008 Sun Microsystems, Inc.  All rights reserved.
 # Copyright (c) 2006-2011 Los Alamos National Security, LLC.  All rights
-#                         reserved.
+#                         reserved. 
 # Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
-# Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -28,22 +27,22 @@
 # Initialization, version number, and other random setup/init stuff
 ############################################################################
 
-# Load in everything found by autogen.pl
-m4_include([config/autogen_found_items.m4])
+# Load project list and names
+m4_include([config/project_list.m4])
 # Load the version code.  Because this is also used directly as a
 # shell script, no ac_defun
-m4_include([config/opal_get_version.m4])
+m4_pattern_allow([m4_ifval])
 AC_LANG([C])
 
 # Init autoconf
 
 # We don't have the version number to put in here yet, and we can't
-# call OPAL_GET_VERSION (etc.) before AC_INIT.  So use the shell
+# call OMPI_GET_VERSION (etc.) before AC_INIT.  So use the shell
 # version.  project_name_* comes from config/project_list.m4, which
 # was set during autogen.sh.
 
 AC_INIT([project_name_long],
-        [m4_normalize(esyscmd([config/opal_get_version.sh VERSION --base]))],
+        [m4_normalize(esyscmd([config/ompi_get_version.sh VERSION --base]))],
         [http://www.open-mpi.org/community/help/], [project_name_short])
 AC_PREREQ(2.60)
 AC_CONFIG_AUX_DIR(config)
@@ -54,13 +53,13 @@ AC_CONFIG_MACRO_DIR(config)
 OMPI_LOAD_PLATFORM
 
 #
+#
 # Start it up
 #
 
-OPAL_CONFIGURE_SETUP
+OMPI_CONFIGURE_SETUP
 ompi_show_title "Configuring project_name_long"
 
-#
 # Setup some things that must be done before AM-INIT-AUTOMAKE
 #
 
@@ -72,25 +71,16 @@ AS_IF([test "$host" != "$target"],
       [AC_MSG_WARN([Cross-compile detected])
        AC_MSG_WARN([Cross-compiling is only partially supported])
        AC_MSG_WARN([Proceed at your own risk!])])
-# AC_USE_SYSTEM_EXTENSIONS alters CFLAGS (e.g., adds -g -O2)
-CFLAGS_save=$CFLAGS
 AC_USE_SYSTEM_EXTENSIONS
-# AC_USE_SYSTEM_EXTENSIONS will modify CFLAGS if nothing was in there
-# beforehand.  We don't want that.  So if there was nothing in
-# CFLAGS, put nothing back in there.
-AS_IF([test -z "$CFLAGS_save"], [CFLAGS=])
-CFLAGS_save=
+
 
 #
 # Init automake
 #
 AM_INIT_AUTOMAKE([foreign dist-bzip2 subdir-objects no-define 1.11 tar-ustar])
 
-# SILENT_RULES is new in AM 1.11, but we require 1.11 or higher via
-# autogen.  Limited testing shows that calling SILENT_RULES directly
-# works in more cases than adding "silent-rules" to INIT_AUTOMAKE
-# (even though they're supposed to be identical).  Shrug.
-AM_SILENT_RULES([yes])
+# If Automake supports silent rules, enable them.
+m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 # Make configure depend on the VERSION file, since it's used in AC_INIT
 AC_SUBST([CONFIGURE_DEPENDENCIES], ['$(top_srcdir)/VERSION'])
@@ -104,15 +94,15 @@ ompi_show_subtitle "Checking versions"
 # Get the version of OMPI that we are installing
 
 m4_ifdef([project_ompi],
-         [OPAL_SAVE_VERSION([OMPI], [Open MPI], [$srcdir/VERSION],
+         [OMPI_SAVE_VERSION([OMPI], [Open MPI], [$srcdir/VERSION],
                             [ompi/include/ompi/version.h])])
 
 m4_ifdef([project_orte],
-         [OPAL_SAVE_VERSION([ORTE], [Open MPI Run-Time Environment], 
+         [OMPI_SAVE_VERSION([ORTE], [Open MPI Run-Time Environment], 
                             [$srcdir/VERSION],
                             [orte/include/orte/version.h])])
 
-OPAL_SAVE_VERSION([OPAL], [Open Portable Access Layer], [$srcdir/VERSION],
+OMPI_SAVE_VERSION([OPAL], [Open Portable Access Layer], [$srcdir/VERSION],
                   [opal/include/opal/version.h])
 
 # Get shared library version numbers
@@ -121,10 +111,8 @@ OPAL_SAVE_VERSION([OPAL], [Open Portable Access Layer], [$srcdir/VERSION],
 m4_ifdef([project_ompi],
          [AC_SUBST(libmpi_so_version)
           AC_SUBST(libmpi_cxx_so_version)
-          AC_SUBST(libmpi_mpifh_so_version)
-          AC_SUBST(libmpi_usempi_tkr_so_version)
-          AC_SUBST(libmpi_usempi_ignore_tkr_so_version)
-          AC_SUBST(libmpi_java_so_version)
+          AC_SUBST(libmpi_f77_so_version)
+          AC_SUBST(libmpi_f90_so_version)
           # It's icky that we have to hard-code the names of the
           # common components here.  :-( This could probably be done
           # transparently by adding some intelligence in autogen.sh
@@ -132,25 +120,19 @@ m4_ifdef([project_ompi],
           # right now.
           AC_SUBST(libmca_common_sm_so_version)
           AC_SUBST(libmca_common_mx_so_version)
-          AC_SUBST(libmca_common_cuda_so_version)
           AC_SUBST(libmca_common_portals_so_version)])
 m4_ifdef([project_orte],
          [AC_SUBST(libopen_rte_so_version)])
-AC_SUBST(libmca_opal_common_hwloc_so_version)
 AC_SUBST(libopen_pal_so_version)
 
 #
-# Get the versions of the autotools that were used to bootstrap us
-# (helpful for debugging reports)
+# Hardwire OPAL progress threads to be off
 #
-AC_MSG_CHECKING([for bootstrap Autoconf version])
-acversion=`grep "Generated by GNU Autoconf" $0 | head -n 1 | awk '{ print $6 }'`
-AC_MSG_RESULT([$acversion])
-AC_MSG_CHECKING([for bootstrap Automake version])
-AC_MSG_RESULT([$am__api_version])
-AC_MSG_CHECKING([for boostrap Libtool version])
-ltversion=`grep VERSION= $srcdir/config/ltmain.sh | head -n 1 | cut -d= -f2`
-AC_MSG_RESULT([$ltversion])
+OPAL_ENABLE_PROGRESS_THREADS=0
+enable_progress_threads="no"
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_PROGRESS_THREADS], [$OPAL_ENABLE_PROGRESS_THREADS],
+                   [Hardcode the OPAL progress thread to be off])
+
 
 # List header files to generate
 
@@ -158,7 +140,7 @@ AM_CONFIG_HEADER([opal/include/opal_config.h])
 m4_ifdef([project_orte],
          [AM_CONFIG_HEADER([orte/include/orte_config.h])])
 m4_ifdef([project_ompi],
-         [AM_CONFIG_HEADER([ompi/include/ompi_config.h ompi/include/mpi.h])])
+         [AM_CONFIG_HEADER([ompi/include/ompi_config.h ompi/include/mpi.h ompi/include/mpi_portable_platform.h])])
 
 # override/fixup the version numbers set by AC_INIT, since on
 # developer builds, there's no good way to know what the version is
@@ -213,9 +195,6 @@ AH_TOP([/* -*- c -*-
 
 #ifndef OPAL_CONFIG_H
 #define OPAL_CONFIG_H
-
-#include "opal_config_top.h"
-
 ])
 AH_BOTTOM([
 #include "opal_config_bottom.h"
@@ -224,7 +203,7 @@ AH_BOTTOM([
 
 # Other basic setup stuff (shared with components)
 
-OPAL_BASIC_SETUP
+OMPI_BASIC_SETUP
 
 top_ompi_srcdir="$OMPI_TOP_SRCDIR"
 AC_SUBST(top_ompi_srcdir)
@@ -302,7 +281,7 @@ ompi_show_title "Compiler and preprocessor tests"
 # C compiler characteristics
 ##################################
 
-OPAL_SETUP_CC
+OMPI_SETUP_CC
 
 # If we build on a windows environment with the windows compiler and linker
 # then we need some translation functions from the opal/win32 directory.
@@ -332,11 +311,9 @@ AC_CHECK_TYPES(int128_t)
 AC_CHECK_TYPES(uint128_t)
 AC_CHECK_TYPES(long long)
 
-AC_CHECK_TYPES(__float128)
 AC_CHECK_TYPES(long double)
 # We only need these types if we're building the OMPI project, but
 # OPAL currently doesn't protect for their lack of presence well.
-AC_CHECK_HEADERS(complex.h)
 AC_CHECK_TYPES(float _Complex)
 AC_CHECK_TYPES(double _Complex)
 AC_CHECK_TYPES(long double _Complex)
@@ -355,17 +332,15 @@ AC_CHECK_SIZEOF(char)
 AC_CHECK_SIZEOF(short)
 AC_CHECK_SIZEOF(int)
 AC_CHECK_SIZEOF(long)
-if test "$ac_cv_type_long_long" = yes; then
+if test $ac_cv_type_long_long = yes; then
     AC_CHECK_SIZEOF(long long)
 fi
 AC_CHECK_SIZEOF(float)
 AC_CHECK_SIZEOF(double)
-if test "$ac_cv_type_long_double" = yes; then
+if test $ac_cv_type_long_double = yes; then
     AC_CHECK_SIZEOF(long double)
 fi
-if test "$ac_cv_type___float128" = yes; then
-    AC_CHECK_SIZEOF(__float128)
-fi
+
 # We only need these types if we're building the OMPI project, but
 # OPAL currently doesn't protect for their lack of presence well.
 if test "$ac_cv_type_float__Complex" = yes; then
@@ -380,10 +355,10 @@ fi
 
 AC_CHECK_SIZEOF(void *)
 AC_CHECK_SIZEOF(size_t)
-if test "$ac_cv_type_ssize_t" = yes ; then
+if test $ac_cv_type_ssize_t = yes ; then
     AC_CHECK_SIZEOF(ssize_t)
 fi
-if test "$ac_cv_type_ptrdiff_t" = yes; then
+if test $ac_cv_type_ptrdiff_t = yes; then
     AC_CHECK_SIZEOF(ptrdiff_t)
 fi
 AC_CHECK_SIZEOF(wchar_t)
@@ -414,10 +389,6 @@ OMPI_C_GET_ALIGNMENT(double, OPAL_ALIGNMENT_DOUBLE)
 if test "$ac_cv_type_long_double" = yes; then
     OMPI_C_GET_ALIGNMENT(long double, OPAL_ALIGNMENT_LONG_DOUBLE)
 fi
-if test "$ac_cv_type___float128" = yes; then
-    OMPI_C_GET_ALIGNMENT(__float128, OPAL_ALIGNMENT___FLOAT128)
-fi
-
 
 # We only need these types if we're building the OMPI project, but
 # OPAL currently doesn't protect for their lack of presence well.
@@ -527,15 +498,9 @@ m4_ifdef([project_ompi], [OMPI_SETUP_MPI_PROFILING],
 # C++ compiler characteristics
 ##################################
 
-# We don't need C++ unless we're building Open MPI; ORTE and OPAL do
-# not use C++ at all.  The OPAL macro name appears to be a bit of a
-# misnomer; I'm not sure why it was split into a second macro and put
-# into OPAL...?  All it does is setup the C++ compiler (the OMPI macro
-# sets up the C++ MPI bindings, etc.).  Perhaps it was moved to OPAL
-# just on the rationale that all compiler setup should be done in
-# OPAL...?  Shrug.
-m4_ifdef([project_ompi], [OPAL_SETUP_CXX
-                          OMPI_SETUP_CXX])
+OPAL_SETUP_CXX
+# The MPI project has a boatload more C++ tests (ORTE does not).
+m4_ifdef([project_ompi], [OMPI_SETUP_CXX])
 
 ##################################
 # Only after setting up both
@@ -544,28 +509,9 @@ m4_ifdef([project_ompi], [OPAL_SETUP_CXX
 
 ompi_show_subtitle "Compiler characteristics"
 
-OPAL_CHECK_ATTRIBUTES
+OMPI_CHECK_ATTRIBUTES
+
 OPAL_CHECK_COMPILER_VERSION_ID
-
-
-##################################
-# Java compiler characteristics
-##################################
-# Needed for ORTE - OMPI will AC_REQUIRE where needed
-m4_ifdef([project_orte], [ORTE_SETUP_JAVA])
-
-##################################
-# Java MPI Binding request
-##################################
-# Only needed for OMPI
-m4_ifdef([project_ompi], [OMPI_SETUP_JAVA_BINDINGS])
-
-##################################
-# Hadoop support
-##################################
-
-# We can't use Hadoop support unless we're building ORTE
-m4_ifdef([project_orte], [ORTE_SETUP_HADOOP])
 
 
 ##################################
@@ -575,7 +521,7 @@ m4_ifdef([project_orte], [ORTE_SETUP_HADOOP])
 ompi_show_subtitle "Assembler"
 
 AM_PROG_AS
-OPAL_CONFIG_ASM
+OMPI_CONFIG_ASM
 
 
 ##################################
@@ -610,9 +556,8 @@ AC_CHECK_HEADERS([alloca.h aio.h arpa/inet.h dirent.h \
     stdarg.h sys/stat.h sys/statfs.h sys/statvfs.h sys/time.h sys/tree.h \
     sys/types.h sys/uio.h net/uio.h sys/utsname.h sys/vfs.h sys/wait.h syslog.h \
     time.h termios.h ulimit.h unistd.h util.h utmp.h malloc.h \
-    ifaddrs.h sys/sysctl.h crt_externs.h regex.h signal.h \
-    ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h limits.h db.h ndbm.h \
-    TargetConditionals.h])
+    ifaddrs.h sys/sysctl.h crt_externs.h regex.h \
+    ioLib.h sockLib.h hostLib.h shlwapi.h sys/synch.h])
 
 # Needed to work around Darwin requiring sys/socket.h for
 # net/if.h
@@ -743,7 +688,7 @@ OMPI_CHECK_FUNC_LIB([dirname], [gen])
 # Darwin doesn't need -lm, as it's a symlink to libSystem.dylib
 OMPI_CHECK_FUNC_LIB([ceil], [m])
 
-AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf openpty isatty getpwuid fork waitpid execve pipe ptsname setsid mmap tcgetpgrp posix_memalign strsignal sysconf syslog vsyslog regcmp regexec regfree _NSGetEnviron socketpair strncpy_s _strdup usleep mkfifo dbopen dbm_open])
+AC_CHECK_FUNCS([asprintf snprintf vasprintf vsnprintf openpty isatty getpwuid fork waitpid execve pipe ptsname setsid mmap tcgetpgrp posix_memalign strsignal sysconf syslog regcmp regexec regfree _NSGetEnviron socketpair strncpy_s _strdup usleep mkfifo])
 
 # On some hosts, htonl is a define, so the AC_CHECK_FUNC will get
 # confused.  On others, it's in the standard library, but stubbed with
@@ -928,7 +873,8 @@ LIBS="$LIBS $THREAD_LIBS"
 WRAPPER_EXTRA_CFLAGS="$WRAPPER_EXTRA_CFLAGS $THREAD_CFLAGS"
 m4_ifdef([project_ompi],
          [WRAPPER_EXTRA_CXXFLAGS="$WRAPPER_EXTRA_CXXFLAGS $THREAD_CXXFLAGS"
-          WRAPPER_EXTRA_FCFLAGS="$WRAPPER_EXTRA_FCFLAGS $THREAD_FCFLAGS"])
+          WRAPPER_EXTRA_FFLAGS="$WRAPPER_EXTRA_FFLAGS $THREAD_FFLAGS"
+          WRAPPER_EXTRA_FCFLAGS="$WRAPPER_EXTRA_FCFLAGS $THREAD_FFLAGS"])
 WRAPPER_EXTRA_LDFLAGS="$WRAPPER_EXTRA_LDFLAGS $THREAD_LDFLAGS"
 # no need to update WRAPPER_EXTRA_LIBS - we'll get it from LT later
 
@@ -1053,7 +999,7 @@ AC_CACHE_SAVE
 # the visibility feature.
 ompi_show_title "Symbol visibility feature"
 
-OPAL_CHECK_VISIBILITY
+OMPI_CHECK_VISIBILITY
 
 
 
@@ -1062,6 +1008,17 @@ OPAL_CHECK_VISIBILITY
 ############################################################################
 
 ompi_show_title "Final top-level OMPI configuration"
+
+############################################################################
+# Libevent setup
+############################################################################
+
+ompi_show_subtitle "Libevent 3rd party event handler"
+CFLAGS_save="$CFLAGS"
+CFLAGS="$OMPI_CFLAGS_BEFORE_PICKY"
+OPAL_SETUP_LIBEVENT
+CFLAGS="$CFLAGS_save"
+
 
 ############################################################################
 # Libtool: part two

@@ -12,8 +12,7 @@
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
  * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ * Copyright (c) 2011      Oracle and/or all affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -34,11 +33,12 @@
 #include "opal/prefetch.h"
 #include "orte/util/show_help.h"
 #include "ompi/mca/btl/btl.h"
-#include "opal/mca/timer/base/base.h"
 #include "opal/util/argv.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/mca/timer/base/base.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "ompi/mca/btl/base/base.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 #include "ompi/runtime/mpiruntime.h"
 
@@ -130,7 +130,7 @@ static int mca_btl_ud_component_register(void)
                                 NULL, &mca_btl_ofud_component.if_exclude);
 
     mca_btl_ud_param_reg_string("mpool", "Name of the memory pool to be used",
-                                "grdma", &mca_btl_ofud_component.ud_mpool_name);
+                                "rdma", &mca_btl_ofud_component.ud_mpool_name);
 
     mca_btl_ud_param_reg_int("ib_pkey_index", "IB pkey index",
                              0, (int*)&mca_btl_ofud_component.ib_pkey_ix);
@@ -173,8 +173,6 @@ static int mca_btl_ud_component_register(void)
     mca_btl_ud_param_reg_int("bandwidth",
                              "Approximate maximum bandwidth of interconnect",
                              800, (int*)&mca_btl_ofud_module.super.btl_bandwidth);
-
-    mca_btl_ofud_module.super.btl_seg_size = sizeof (mca_btl_base_segment_t);
 
     mca_btl_ofud_module.super.btl_eager_limit -= sizeof(mca_btl_ud_header_t);
     mca_btl_ofud_module.super.btl_max_send_size -= sizeof(mca_btl_ud_header_t);

@@ -35,7 +35,7 @@ sub replace {
     # "special" directories
     if ( -l $_ ) { return; }
     if ( -d $_ ) { 
-        if ((/\.svn/) || (/\.deps/) || (/\.libs/) || (/\.hg/) || (/\.git/)) {
+        if ((/\.svn/) || (/\.deps/) || (/\.libs/)) {
             $File::Find::prune = true;
         }
         return;

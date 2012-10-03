@@ -11,8 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010      Los Alamos National Security, LLC.  
- *                         All rights reserved. 
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 
 #include "ompi_config.h"
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 
 #include "ompi/mca/common/sm/common_sm.h"
 #include "ompi/mca/mpool/mpool.h"

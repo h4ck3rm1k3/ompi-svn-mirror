@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,8 +23,8 @@
 #
 
 M4_TARGET_VERSION=1.4.16
-AM_TARGET_VERSION=1.12.2
-AC_TARGET_VERSION=2.69
+AM_TARGET_VERSION=1.11.3
+AC_TARGET_VERSION=2.68
 LT_TARGET_VERSION=2.4.2
 FLEX_TARGET_VERSION=2.5.35
 
@@ -57,7 +57,6 @@ fi
 
 greekonly=0
 want_ompi=1
-autogen_args=
 while test "$1" != ""; do
     case $1 in
         -greekonly) greekonly=1 ;;
@@ -66,12 +65,6 @@ while test "$1" != ""; do
         --highok) highok=1 ;;
         -no-ompi) want_ompi=0 ;;
         --no-ompi) want_ompi=0 ;;
-        -autogen-args) autogen_args=$2; shift ;;
-        --autogen-args) autogen_args=$2; shift ;;
-        *)
-            echo Unrecognized argument: $1
-            exit 1
-            ;;
     esac
     shift
 done
@@ -227,12 +220,12 @@ make_tarball() {
     #
     # Autogen
     #
-    echo "*** Running autogen $autogen_args..."
+    echo "*** Running autogen.sh..."
     rm -f success
     if test "$want_ompi" = "1" ; then
-        (./autogen.pl $autogen_args 2>&1 && touch success) | tee auto.out
+        (./autogen.sh 2>&1 && touch success) | tee auto.out
     else
-        (./autogen.pl --no-ompi $autogen_args 2>&1 && touch success) | tee auto.out
+        (./autogen.sh -no-ompi 2>&1 && touch success) | tee auto.out
     fi
     if test ! -f success; then
         echo "Autogen failed.  Aborting"
@@ -257,7 +250,6 @@ make_tarball() {
     # happened to be in the tree already).
     #
     echo "*** Removing old generated flex files..."
-    chmod -R a+rw .
     find . -name \*_lex.c -exec rm -f {} \; -print
 
     #
@@ -304,7 +296,7 @@ check_gnu_version flex $FLEX_TARGET_VERSION
 # Verify that we're in a top Open MPI dir
 #
 echo "*** Checking to ensure in top-level Open MPI directory..."
-if test -f VERSION -a -f configure.ac -a -f config/opal_get_version.m4 ; then
+if test -f VERSION -a -f configure.ac -a -f config/ompi_get_version.m4 ; then
     happy=1
 else
     echo "Do not appear to be in an Open MPI top directory.  Abort!"
@@ -354,14 +346,13 @@ fi
 #
 # Ditch "svn/hg" from all version numbers
 #
-echo "*** Removing svn version numbers from VERSION..."
+echo "*** Removing svn version numbers..."
 version_files=VERSION
 release_date=`date '+%b %d, %Y'`
-echo "    Release date: $release_date"
 for file in $version_files; do
     echo " - $file"
-    sed -e 's/^want_repo_rev=.*/want_repo_rev=0/' \
-        -e 's/^repo_rev=.*/'repo_rev=$svn_r/ \
+    sed -e 's/^want_svn=.*/want_svn=0/' \
+        -e 's/^svn_r=.*/'svn_r=$svn_r/ \
         -e "s/^date=.*/date=\"$release_date\"/" \
         $file > $file.new
     cp -f $file.new $file
@@ -408,8 +399,6 @@ if test -d .svn; then
     svn revert VERSION
 elif test -d .hg; then
     hg revert VERSION
-elif test -d .git; then
-    git revert VERSION
 fi
 
 echo " "

@@ -1,4 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -13,7 +12,6 @@
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2012      NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -196,10 +194,6 @@ typedef uint8_t mca_btl_base_tag_t;
 /* btl can support failover if enabled */
 #define MCA_BTL_FLAGS_FAILOVER_SUPPORT 0x0200
 
-#define MCA_BTL_FLAGS_CUDA_PUT        0x0400
-#define MCA_BTL_FLAGS_CUDA_GET        0x0800
-#define MCA_BTL_FLAGS_CUDA_RDMA (MCA_BTL_FLAGS_CUDA_GET|MCA_BTL_FLAGS_CUDA_PUT)
-
 /* Default exclusivity levels */
 #define MCA_BTL_EXCLUSIVITY_HIGH     (64*1024) /* internal loopback */
 #define MCA_BTL_EXCLUSIVITY_DEFAULT  1024      /* GM/IB/etc. */
@@ -230,26 +224,23 @@ typedef void (*mca_btl_base_completion_fn_t)(
 /**
  * Describes a region/segment of memory that is addressable 
  * by an BTL.
- *
- * Note: In many cases the alloc and prepare methods of BTLs
- * do not return a mca_btl_base_segment_t but instead return a
- * subclass. Extreme care should be used when modifying
- * BTL segments to prevent overwriting internal BTL data.
- *
- * All BTLs MUST use base segments when calling registered
- * Callbacks.
- *
- * BTL MUST use mca_btl_base_segment_t or a subclass and
- * MUST store their segment length in btl_seg_size. BTLs
- * MIST specify a segment no larger than MCA_BTL_SEG_MAX_SIZE.
- *
  */
 
 struct mca_btl_base_segment_t {
     /** Address of the memory */
     ompi_ptr_t seg_addr;        
      /** Length in bytes */
-    uint64_t   seg_len;
+    uint32_t   seg_len;           
+#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
+    /** Heterogeneous padding */
+    uint8_t    seg_padding[4];     
+#endif
+    /** Memory segment key required by some RDMA networks */
+    union {
+        uint32_t key32[2];
+        uint64_t key64;
+        uint8_t  key8[8];
+    } seg_key;     
 };
 typedef struct mca_btl_base_segment_t mca_btl_base_segment_t;
 
@@ -298,21 +289,10 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(mca_btl_base_descriptor_t);
  */
 #define MCA_BTL_DES_SEND_ALWAYS_CALLBACK    0x0004
 
-/* Type of transfer that will be done with this frag.
- */
-#define MCA_BTL_DES_FLAGS_PUT               0x0010
-#define MCA_BTL_DES_FLAGS_GET               0x0020
-
 /**
  * Maximum number of allowed segments in src/dst fields of a descriptor.
  */
 #define MCA_BTL_DES_MAX_SEGMENTS 16
-
-/**
- * Maximum size of a BTL segment (NTH: does it really save us anything
- * to hardcode this?)
- */
-#define MCA_BTL_SEG_MAX_SIZE 256
 
 /* 
  *  BTL base header, stores the tag at a minimum 
@@ -380,8 +360,6 @@ typedef int (*mca_btl_base_component_progress_fn_t)(void);
  * completion function, this implies that all data payload in the 
  * mca_btl_base_descriptor_t must be copied out within this callback or 
  * forfeited back to the BTL.
- * Note also that descriptor segments (des_dst, des_src) must be base
- * segments for all callbacks.
  * 
  * @param[IN] btl        BTL module
  * @param[IN] tag        The active message receive callback tag value 
@@ -798,7 +776,6 @@ struct mca_btl_base_module_t {
     uint32_t    btl_latency;          /**< relative ranking of latency used to prioritize btls */
     uint32_t    btl_bandwidth;        /**< bandwidth (Mbytes/sec) supported by each endpoint */
     uint32_t    btl_flags;            /**< flags (put/get...) */
-    size_t      btl_seg_size;         /**< size of a btl segment */
 
     /* BTL function table */
     mca_btl_base_module_add_procs_fn_t      btl_add_procs;

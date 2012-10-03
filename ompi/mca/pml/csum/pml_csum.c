@@ -13,10 +13,9 @@
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -32,10 +31,12 @@
 #include "opal/class/opal_bitmap.h"
 #include "opal/util/crc.h"
 #include "opal/util/output.h"
+#include "opal/mca/paffinity/paffinity.h"
 
-#include "orte/runtime/orte_wait.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/grpcomm/grpcomm.h"
+#include "orte/util/name_fns.h"
+#include "orte/runtime/orte_globals.h"
 #include "orte/util/show_help.h"
 
 #include "ompi/mca/pml/pml.h"
@@ -72,10 +73,6 @@ mca_pml_csum_t mca_pml_csum = {
         mca_pml_csum_iprobe,
         mca_pml_csum_probe,
         mca_pml_csum_start,
-        mca_pml_csum_improbe,
-        mca_pml_csum_mprobe,
-        mca_pml_csum_imrecv,
-        mca_pml_csum_mrecv,
         mca_pml_csum_dump,
         mca_pml_csum_ft_event,
         65535,
@@ -205,7 +202,7 @@ int mca_pml_csum_add_comm(ompi_communicator_t* comm)
         OBJ_RELEASE(pml_comm);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
-
+    
     mca_pml_csum_comm_init_size(pml_comm, comm->c_remote_group->grp_proc_count);
     comm->c_pml_comm = pml_comm;
 
@@ -284,7 +281,7 @@ int mca_pml_csum_del_comm(ompi_communicator_t* comm)
 {
     mca_pml_csum_comm_t* pml_comm = comm->c_pml_comm;
     int i;
-
+    
     for( i = 0; i < comm->c_remote_group->grp_proc_count; i++ ) {
         OBJ_RELEASE(pml_comm->procs[i].ompi_proc);
     }
@@ -390,8 +387,6 @@ int mca_pml_csum_add_procs(ompi_proc_t** procs, size_t nprocs)
         }
     }
 
-
-    /* TODO: Move these callback registration to another place */
     rc = mca_bml.bml_register( MCA_PML_CSUM_HDR_TYPE_MATCH,
                                mca_pml_csum_recv_frag_callback_match,
                                NULL );
@@ -502,14 +497,14 @@ static void mca_pml_csum_fin_completion( mca_btl_base_module_t* btl,
  */
 int mca_pml_csum_send_fin( ompi_proc_t* proc,
                           mca_bml_base_btl_t* bml_btl,
-                          ompi_ptr_t hdr_des,
+                          void *hdr_des,
                           uint8_t order,
                           uint32_t status )
 {
     mca_btl_base_descriptor_t* fin;
     mca_pml_csum_fin_hdr_t* hdr;
     int rc;
-
+    
     mca_bml_base_alloc(bml_btl, &fin, order, sizeof(mca_pml_csum_fin_hdr_t),
                        MCA_BTL_DES_FLAGS_PRIORITY | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
 
@@ -525,9 +520,8 @@ int mca_pml_csum_send_fin( ompi_proc_t* proc,
     hdr->hdr_common.hdr_flags = 0;
     hdr->hdr_common.hdr_type = MCA_PML_CSUM_HDR_TYPE_FIN;
     hdr->hdr_common.hdr_csum = 0;
-    hdr->hdr_des = hdr_des;
+    hdr->hdr_des.pval = hdr_des;
     hdr->hdr_fail = status;
-
     hdr->hdr_common.hdr_csum = opal_csum16(hdr, sizeof(mca_pml_csum_fin_hdr_t));
     
     OPAL_OUTPUT_VERBOSE((1, mca_pml_base_output,
@@ -574,7 +568,7 @@ void mca_pml_csum_process_pending_packets(mca_bml_base_btl_t* bml_btl)
         if(NULL == send_dst) {
             OPAL_THREAD_LOCK(&mca_pml_csum.lock);
             opal_list_append(&mca_pml_csum.pckt_pending,
-                             (opal_list_item_t*)pckt);
+                            (opal_list_item_t*)pckt);
             OPAL_THREAD_UNLOCK(&mca_pml_csum.lock);
             continue;
         }
@@ -597,7 +591,7 @@ void mca_pml_csum_process_pending_packets(mca_bml_base_btl_t* bml_btl)
                 break;
             case MCA_PML_CSUM_HDR_TYPE_FIN:
                 rc = mca_pml_csum_send_fin(pckt->proc, send_dst,
-                                          pckt->hdr.hdr_fin.hdr_des,
+                                          pckt->hdr.hdr_fin.hdr_des.pval,
                                           pckt->order,
                                           pckt->hdr.hdr_fin.hdr_fail);
                 if( OPAL_UNLIKELY(OMPI_ERR_OUT_OF_RESOURCE == rc) ) {
@@ -655,15 +649,11 @@ int mca_pml_csum_ft_event( int state )
     ompi_proc_t** procs = NULL;
     size_t num_procs;
     int ret, p;
-    orte_grpcomm_collective_t *coll, *modex;
 
-    coll = OBJ_NEW(orte_grpcomm_collective_t);
-    coll->id = orte_process_info.peer_init_barrier;
     if(OPAL_CRS_CHECKPOINT == state) {
         if( opal_cr_timing_barrier_enabled ) {
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCPBR1);
-            orte_grpcomm.barrier(coll);
-            ORTE_WAIT_FOR_COMPLETION(coll->active);
+            orte_grpcomm.barrier();
         }
 
         OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P0);
@@ -674,20 +664,18 @@ int mca_pml_csum_ft_event( int state )
         if( !first_continue_pass ) { 
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_COREBR0);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P2);
         }
 
-        if( orte_cr_continue_like_restart && !first_continue_pass ) {
+        if( ompi_cr_continue_like_restart && !first_continue_pass ) {
             /*
              * Get a list of processes
              */
             procs = ompi_proc_all(&num_procs);
             if(NULL == procs) {
-                ret = OMPI_ERR_OUT_OF_RESOURCE;
-                goto clean;
+                return OMPI_ERR_OUT_OF_RESOURCE;
             }
 
             /*
@@ -705,7 +693,7 @@ int mca_pml_csum_ft_event( int state )
                     OBJ_RELEASE(procs[p]);
                 }
                 free (procs);
-                goto clean;
+                return ret;
             }
         }
     }
@@ -718,8 +706,7 @@ int mca_pml_csum_ft_event( int state )
          */
         procs = ompi_proc_all(&num_procs);
         if(NULL == procs) {
-            ret = OMPI_ERR_OUT_OF_RESOURCE;
-            goto clean;
+            return OMPI_ERR_OUT_OF_RESOURCE;
         }
 
         /*
@@ -745,7 +732,7 @@ int mca_pml_csum_ft_event( int state )
                 OBJ_RELEASE(procs[p]);
             }
             free (procs);
-            goto clean;
+            return ret;
         }
     }
     else if(OPAL_CRS_TERM == state ) {
@@ -777,28 +764,22 @@ int mca_pml_csum_ft_event( int state )
         if( !first_continue_pass ) {
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2PBR1);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P3);
         }
 
-        if( orte_cr_continue_like_restart && !first_continue_pass ) {
+        if( ompi_cr_continue_like_restart && !first_continue_pass ) {
             /*
              * Exchange the modex information once again.
              * BTLs will have republished their modex information.
              */
-            modex = OBJ_NEW(orte_grpcomm_collective_t);
-            modex->id = orte_process_info.peer_modex;
-            if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(modex))) {
+            if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(NULL))) {
                 opal_output(0,
                             "pml:csum: ft_event(Restart): Failed orte_grpcomm.modex() = %d",
                             ret);
-                OBJ_RELEASE(modex);
-                goto clean;
+                return ret;
             }
-            ORTE_WAIT_FOR_COMPLETION(modex->active);
-            OBJ_RELEASE(modex);
 
             /*
              * Startup the PML stack now that the modex is running again
@@ -806,15 +787,14 @@ int mca_pml_csum_ft_event( int state )
              */
             if( OMPI_SUCCESS != (ret = mca_pml_csum_add_procs(procs, num_procs) ) ) {
                 opal_output(0, "pml:csum: ft_event(Restart): Failed in add_procs (%d)", ret);
-                goto clean;
+                return ret;
             }
 
             /* Is this barrier necessary ? JJH */
-            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(coll))) {
+            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
                 opal_output(0, "pml:csum: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
-                goto clean;
+                return ret;
             }
-            ORTE_WAIT_FOR_COMPLETION(coll->active);
 
             if( NULL != procs ) {
                 for(p = 0; p < (int)num_procs; ++p) {
@@ -827,8 +807,7 @@ int mca_pml_csum_ft_event( int state )
         if( !first_continue_pass ) {
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2PBR2);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCP1);
         }
@@ -841,17 +820,12 @@ int mca_pml_csum_ft_event( int state )
          * Exchange the modex information once again.
          * BTLs will have republished their modex information.
          */
-        modex = OBJ_NEW(orte_grpcomm_collective_t);
-        modex->id = orte_process_info.peer_modex;
         if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(NULL))) {
             opal_output(0,
                         "pml:csum: ft_event(Restart): Failed orte_grpcomm.modex() = %d",
                         ret);
-            OBJ_RELEASE(modex);
-            goto clean;
+            return ret;
         }
-        ORTE_WAIT_FOR_COMPLETION(modex->active);
-        OBJ_RELEASE(modex);
 
         /*
          * Startup the PML stack now that the modex is running again
@@ -859,15 +833,14 @@ int mca_pml_csum_ft_event( int state )
          */
         if( OMPI_SUCCESS != (ret = mca_pml_csum_add_procs(procs, num_procs) ) ) {
             opal_output(0, "pml:csum: ft_event(Restart): Failed in add_procs (%d)", ret);
-            goto clean;
+            return ret;
         }
 
         /* Is this barrier necessary ? JJH */
-        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(coll))) {
+        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
             opal_output(0, "pml:csum: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
-            goto clean;
+            return ret;
         }
-        ORTE_WAIT_FOR_COMPLETION(coll->active);
 
         if( NULL != procs ) {
             for(p = 0; p < (int)num_procs; ++p) {
@@ -884,11 +857,7 @@ int mca_pml_csum_ft_event( int state )
         ;
     }
 
-    ret = OMPI_SUCCESS;
-
-clean:
-    OBJ_RELEASE(coll);
-    return ret;
+    return OMPI_SUCCESS;
 }
 #endif /* OPAL_ENABLE_FT_CR */
 

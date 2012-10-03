@@ -10,7 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -122,8 +121,6 @@ typedef struct opal_atomic_lock_t opal_atomic_lock_t;
 #define OPAL_HAVE_INLINE_ATOMIC_SUB_32 0
 #define OPAL_HAVE_INLINE_ATOMIC_ADD_64 0
 #define OPAL_HAVE_INLINE_ATOMIC_SUB_64 0
-#define OPAL_HAVE_INLINE_ATOMIC_SWAP_32 0
-#define OPAL_HAVE_INLINE_ATOMIC_SWAP_64 0
 #else
 #define OPAL_HAVE_INLINE_ATOMIC_MEM_BARRIER 1
 #define OPAL_HAVE_INLINE_ATOMIC_CMPSET_32 1
@@ -132,8 +129,6 @@ typedef struct opal_atomic_lock_t opal_atomic_lock_t;
 #define OPAL_HAVE_INLINE_ATOMIC_SUB_32 1
 #define OPAL_HAVE_INLINE_ATOMIC_ADD_64 1
 #define OPAL_HAVE_INLINE_ATOMIC_SUB_64 1
-#define OPAL_HAVE_INLINE_ATOMIC_SWAP_32 1
-#define OPAL_HAVE_INLINE_ATOMIC_SWAP_64 1
 #endif
 
 /**********************************************************************
@@ -169,8 +164,6 @@ typedef struct opal_atomic_lock_t opal_atomic_lock_t;
 #include "opal/sys/sparcv9/atomic.h"
 #elif OPAL_ASSEMBLY_ARCH == OMPI_SPARCV9_64
 #include "opal/sys/sparcv9/atomic.h"
-#elif OPAL_ASSEMBLY_ARCH == OMPI_SYNC_BUILTIN
-#include "opal/sys/sync_builtin/atomic.h"
 #endif
 
 #ifndef DOXYGEN

@@ -33,7 +33,6 @@ static int orte_rmaps_round_robin_open(void);
 static int orte_rmaps_round_robin_close(void);
 static int orte_rmaps_round_robin_query(mca_base_module_t **module, int *priority);
 
-static int my_priority;
 
 orte_rmaps_base_component_t mca_rmaps_round_robin_component = {
     {
@@ -59,12 +58,6 @@ orte_rmaps_base_component_t mca_rmaps_round_robin_component = {
   */
 static int orte_rmaps_round_robin_open(void)
 {
-    mca_base_component_t *c = &mca_rmaps_round_robin_component.base_version;
-
-    mca_base_param_reg_int(c, "priority",
-                           "Priority of the rr rmaps component",
-                           false, false, 10,
-                           &my_priority);
     return ORTE_SUCCESS;
 }
 
@@ -75,7 +68,7 @@ static int orte_rmaps_round_robin_query(mca_base_module_t **module, int *priorit
      * so no need to check for that here
      */
     
-    *priority = my_priority;
+    *priority = 70;  /* this is the default mapper */
     *module = (mca_base_module_t *)&orte_rmaps_round_robin_module;
     return ORTE_SUCCESS;
 }

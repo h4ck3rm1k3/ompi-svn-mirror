@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -63,29 +63,11 @@ int orte_iof_base_open(void)
 #else
 
 /* class instances */
-static void orte_iof_job_construct(orte_iof_job_t *ptr)
-{
-    ptr->jdata = NULL;
-    OBJ_CONSTRUCT(&ptr->xoff, opal_bitmap_t);
-}
-static void orte_iof_job_destruct(orte_iof_job_t *ptr)
-{
-    if (NULL != ptr->jdata) {
-        OBJ_RELEASE(ptr->jdata);
-    }
-    OBJ_DESTRUCT(&ptr->xoff);
-}
-OBJ_CLASS_INSTANCE(orte_iof_job_t,
-                   opal_object_t,
-                   orte_iof_job_construct,
-                   orte_iof_job_destruct);
-
 static void orte_iof_base_proc_construct(orte_iof_proc_t* ptr)
 {
     ptr->revstdout = NULL;
     ptr->revstderr = NULL;
     ptr->revstddiag = NULL;
-    ptr->sink = NULL;
 }
 static void orte_iof_base_proc_destruct(orte_iof_proc_t* ptr)
 {
@@ -110,7 +92,6 @@ static void orte_iof_base_sink_construct(orte_iof_sink_t* ptr)
     ptr->daemon.jobid = ORTE_JOBID_INVALID;
     ptr->daemon.vpid = ORTE_VPID_INVALID;
     ptr->wev = OBJ_NEW(orte_iof_write_event_t);
-    ptr->xoff = false;
 }
 static void orte_iof_base_sink_destruct(orte_iof_sink_t* ptr)
 {
@@ -130,20 +111,17 @@ OBJ_CLASS_INSTANCE(orte_iof_sink_t,
 
 static void orte_iof_base_read_event_construct(orte_iof_read_event_t* rev)
 {
-    rev->fd = -1;
-    rev->active = false;
-    rev->ev = opal_event_alloc();
+    memset(&rev->ev,0,sizeof(rev->ev));
 }
 static void orte_iof_base_read_event_destruct(orte_iof_read_event_t* rev)
 {
-    opal_event_free(rev->ev);
-    if (0 <= rev->fd) {
+    opal_event_del(&rev->ev);
+    if (0 <= rev->ev.ev_fd) {
         OPAL_OUTPUT_VERBOSE((20, orte_iof_base.iof_output,
                              "%s iof: closing fd %d for process %s",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             rev->fd, ORTE_NAME_PRINT(&rev->name)));
-        close(rev->fd);
-        rev->fd = -1;
+                             rev->ev.ev_fd, ORTE_NAME_PRINT(&rev->name)));
+        close(rev->ev.ev_fd);
     }
 }
 OBJ_CLASS_INSTANCE(orte_iof_read_event_t,
@@ -156,11 +134,12 @@ static void orte_iof_base_write_event_construct(orte_iof_write_event_t* wev)
     wev->pending = false;
     wev->fd = -1;
     OBJ_CONSTRUCT(&wev->outputs, opal_list_t);
-    wev->ev = opal_event_alloc();
 }
 static void orte_iof_base_write_event_destruct(orte_iof_write_event_t* wev)
 {
-    opal_event_free(wev->ev);
+    if (wev->pending) {
+        opal_event_del(&wev->ev);
+    }
     if (ORTE_PROC_IS_HNP) {
         int xmlfd = fileno(orte_xml_fp);
         if (xmlfd == wev->fd) {
@@ -224,14 +203,8 @@ int orte_iof_base_open(void)
         }
     }
     
-    /* check for files to be sent to stdin of procs */
-    mca_base_param_reg_string_name("iof", "base_input_files",
-                                   "Comma-separated list of input files to be read and sent to stdin of procs (default: NULL)",
-                                   false, false, NULL, &orte_iof_base.input_files);
-
     /* daemons do not need to do this as they do not write out stdout/err */
-    if (!ORTE_PROC_IS_DAEMON ||
-        (ORTE_PROC_IS_DAEMON && ORTE_PROC_IS_CM)) {
+    if (!ORTE_PROC_IS_DAEMON) {
         if (orte_xml_output) {
             if (NULL != orte_xml_fp) {
                 /* user wants all xml-formatted output sent to file */

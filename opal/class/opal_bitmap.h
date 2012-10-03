@@ -11,7 +11,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -182,69 +181,6 @@ static inline void opal_bitmap_copy(opal_bitmap_t *dest, opal_bitmap_t *src)
     memcpy(dest->bitmap, src->bitmap, src->array_size);
     dest->array_size = src->array_size;
 }
-
-/**
- * Bitwise AND operator (inplace)
- *
- * @param dest Pointer to the bitmap that should be modified
- * @param right Point to the other bitmap in the operation
- * @return OPAL error code if the length of the two bitmaps is not equal or one is NULL.
- */
-OPAL_DECLSPEC int opal_bitmap_bitwise_and_inplace(opal_bitmap_t *dest, opal_bitmap_t *right);
-
-/**
- * Bitwise OR operator (inplace)
- *
- * @param dest Pointer to the bitmap that should be modified
- * @param right Point to the other bitmap in the operation
- * @return OPAL error code if the length of the two bitmaps is not equal or one is NULL.
- */
-OPAL_DECLSPEC int opal_bitmap_bitwise_or_inplace(opal_bitmap_t *dest, opal_bitmap_t *right);
-
-/**
- * Bitwise XOR operator (inplace)
- *
- * @param dest Pointer to the bitmap that should be modified
- * @param right Point to the other bitmap in the operation
- * @return OPAL error code if the length of the two bitmaps is not equal or one is NULL.
- */
-OPAL_DECLSPEC int opal_bitmap_bitwise_xor_inplace(opal_bitmap_t *dest, opal_bitmap_t *right);
-
-/**
- * If the bitmaps are different
- * 
- * @param left Pointer to a bitmap
- * @param right Pointer to another bitmap
- * @return true if different, false if the same
- */
-OPAL_DECLSPEC bool opal_bitmap_are_different(opal_bitmap_t *left, opal_bitmap_t *right);
-
-/**
- * Get a string representation of the bitmap.
- * Useful for debugging.
- *
- * @param bitmap Point to the bitmap to represent
- * @return Pointer to the string (caller must free if not NULL)
- */
-OPAL_DECLSPEC char * opal_bitmap_get_string(opal_bitmap_t *bitmap);
-
-/**
- * Return the number of 'unset' bits, upto the specified length
- *
- * @param bitmap Pointer to the bitmap
- * @param len Number of bits to check
- * @return Integer
- */
-OPAL_DECLSPEC int opal_bitmap_num_unset_bits(opal_bitmap_t *bm, int len);
-
-/**
- * Return the number of 'set' bits, upto the specified length
- *
- * @param bitmap Pointer to the bitmap
- * @param len Number of bits to check
- * @return Integer
- */
-OPAL_DECLSPEC int opal_bitmap_num_set_bits(opal_bitmap_t *bm, int len);
 
 END_C_DECLS
 

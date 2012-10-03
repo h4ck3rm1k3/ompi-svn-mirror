@@ -3,14 +3,14 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -538,13 +538,12 @@ static int mca_bml_r2_del_proc_btl(ompi_proc_t* proc, mca_btl_base_module_t* btl
         /* compute total_bandwidth and 
            reset max_send_size to the min of all btl's */
         total_bandwidth = 0;
-        ep->btl_max_send_size = -1;
         for(b=0; b< mca_bml_base_btl_array_get_size(&ep->btl_send); b++) {
             bml_btl = mca_bml_base_btl_array_get_index(&ep->btl_send, b);
             ep_btl = bml_btl->btl;
 
             total_bandwidth += ep_btl->btl_bandwidth;
-            if (ep->btl_max_send_size > ep_btl->btl_max_send_size) {
+            if (ep_btl->btl_max_send_size < ep->btl_max_send_size) {
                 ep->btl_max_send_size = ep_btl->btl_max_send_size;
             }
         }
@@ -565,10 +564,8 @@ static int mca_bml_r2_del_proc_btl(ompi_proc_t* proc, mca_btl_base_module_t* btl
     /* remove btl from RDMA list */
     if(mca_bml_base_btl_array_remove(&ep->btl_rdma, btl)) { 
         
-        /* compute total bandwidth */
+        /* computer total bandwidth */
         total_bandwidth = 0;
-        ep->btl_pipeline_send_length = 0;
-        ep->btl_send_limit = 0;
         for(b=0; b< mca_bml_base_btl_array_get_size(&ep->btl_rdma); b++) {
             bml_btl = mca_bml_base_btl_array_get_index(&ep->btl_rdma, b);
             ep_btl = bml_btl->btl;
@@ -727,7 +724,7 @@ CLEANUP:
 
 static int mca_bml_r2_add_btl(mca_btl_base_module_t* btl)
 {
-    return OMPI_ERR_NOT_IMPLEMENTED;
+    return ORTE_ERR_NOT_IMPLEMENTED;
 }
 
 

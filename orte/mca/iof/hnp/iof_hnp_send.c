@@ -28,12 +28,12 @@
 #include <string.h>
 #endif  /* HAVE_STRING_H */
 
+
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/rml_types.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/grpcomm/grpcomm.h"
-#include "orte/util/name_fns.h"
 
 #include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
@@ -51,24 +51,14 @@ static void send_cb(int status, orte_process_name_t *peer,
     OBJ_RELEASE(buf);
 }
 
-int orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
-                                       orte_process_name_t *target,
-                                       orte_iof_tag_t tag,
-                                       unsigned char *data, int numbytes)
+void orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
+                                        orte_process_name_t *target,
+                                        orte_iof_tag_t tag,
+                                        unsigned char *data, int numbytes)
 {
     opal_buffer_t *buf;
     int rc;
     
-    /* if the host is a daemon and we are in the process of aborting,
-     * then ignore this request. We leave it alone if the host is not
-     * a daemon because it might be a tool that wants to watch the
-     * output from an abort procedure
-     */
-    if (ORTE_JOB_FAMILY(host->jobid) == ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid)
-        && orte_job_term_ordered) {
-        return ORTE_SUCCESS;
-    }
-
     buf = OBJ_NEW(opal_buffer_t);
     
     /* pack the tag - we do this first so that flow control messages can
@@ -77,7 +67,7 @@ int orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
     if (ORTE_SUCCESS != (rc = opal_dss.pack(buf, &tag, 1, ORTE_IOF_TAG))) {
         ORTE_ERROR_LOG(rc);
         OBJ_RELEASE(buf);
-        return rc;
+        return;
     }
     /* pack the name of the target - this is either the intended
      * recipient (if the tag is stdin and we are sending to a daemon),
@@ -86,7 +76,7 @@ int orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
     if (ORTE_SUCCESS != (rc = opal_dss.pack(buf, target, 1, ORTE_NAME))) {
         ORTE_ERROR_LOG(rc);
         OBJ_RELEASE(buf);
-        return rc;
+        return;
     }
     
     /* if data is NULL, then we are done */
@@ -95,7 +85,7 @@ int orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
         if (ORTE_SUCCESS != (rc = opal_dss.pack(buf, data, numbytes, OPAL_BYTE))) {
             ORTE_ERROR_LOG(rc);
             OBJ_RELEASE(buf);
-            return rc;
+            return;
         }
     }
     
@@ -105,17 +95,12 @@ int orte_iof_hnp_send_data_to_endpoint(orte_process_name_t *host,
         /* xcast this to everyone - the local daemons will know how to handle it */
         orte_grpcomm.xcast(ORTE_PROC_MY_NAME->jobid, buf, ORTE_RML_TAG_IOF_PROXY);
         OBJ_RELEASE(buf);
-        return ORTE_SUCCESS;
+        return;
     }
     
     /* send the buffer to the host - this is either a daemon or
      * a tool that requested IOF
      */
-    if (0 > (rc = orte_rml.send_buffer_nb(host, buf, ORTE_RML_TAG_IOF_PROXY,
-                                          0, send_cb, NULL))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-    }
-
-    return ORTE_SUCCESS;
+    orte_rml.send_buffer_nb(host, buf, ORTE_RML_TAG_IOF_PROXY,
+                            0, send_cb, NULL);
 }

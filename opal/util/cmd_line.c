@@ -9,9 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC. 
- *                         All rights reserved.
- * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -33,7 +30,6 @@
 #include "opal/util/argv.h"
 #include "opal/util/cmd_line.h"
 #include "opal/util/output.h"
-
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/constants.h"
 
@@ -135,7 +131,7 @@ static int split_shorts(opal_cmd_line_t *cmd,
                         int *num_args_used, bool ignore_unknown);
 static cmd_line_option_t *find_option(opal_cmd_line_t *cmd, 
                                       const char *option_name) __opal_attribute_nonnull__(1) __opal_attribute_nonnull__(2);
-static int set_dest(cmd_line_option_t *option, char *sval);
+static void set_dest(cmd_line_option_t *option, char *sval);
 static void fill(const cmd_line_option_t *a, char result[3][BUFSIZ]);
 static int qsort_callback(const void *a, const void *b);
 
@@ -267,15 +263,12 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
     int i, j, orig, ret;
     cmd_line_option_t *option;
     cmd_line_param_t *param;
-    bool is_unknown_option;
-    bool is_unknown_token;
+    bool is_unknown;
     bool is_option;
     bool has_unknowns;
     char **shortsv;
     int shortsc;
     int num_args_used;
-    bool have_help_option = false;
-    bool printed_error = false;
 
     /* Bozo check */
 
@@ -296,13 +289,6 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
     cmd->lcl_argc = argc;
     cmd->lcl_argv = opal_argv_copy(argv);
 
-    /* Check up front: do we have a --help option? */
-
-    option = find_option(cmd, "help");
-    if (NULL != option) {
-        have_help_option = true;
-    }
-
     /* Now traverse the easy-to-parse sequence of tokens.  Note that
        incrementing i must happen elsehwere; it can't be the third
        clause in the "if" statement. */
@@ -311,8 +297,7 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
     option = NULL;
     has_unknowns = false;
     for (i = 1; i < cmd->lcl_argc; ) {
-        is_unknown_option = false;
-        is_unknown_token = false;
+        is_unknown = false;
         is_option = false;
 
         /* Are we done?  i.e., did we find the special "--" token?  If
@@ -330,12 +315,11 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
             break;
         }
 
-        /* If it's not an option, then this is an error.  Note that
-           this is different than an unrecognized token; an
-           unrecognized option is *always* an error. */
+        /* If it's not an option, then we've found an unrecognized
+           token. */
 
         else if ('-' != cmd->lcl_argv[i][0]) {
-            is_unknown_token = true;
+            is_unknown = true;
         }
 
         /* Nope, this is supposedly an option.  Is it a long name? */
@@ -374,11 +358,11 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
                         opal_argv_insert(&cmd->lcl_argv, i, shortsv);
                         cmd->lcl_argc = opal_argv_count(cmd->lcl_argv);
                     } else {
-                        is_unknown_option = true;
+                        is_unknown = true;
                     }
                     opal_argv_free(shortsv);
                 } else {
-                    is_unknown_option = true;
+                    is_unknown = true;
                 }
             }
 
@@ -391,9 +375,9 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
 
         if (is_option) {
             if (NULL == option) {
-                is_unknown_option = true;
+                is_unknown = true;
             } else {
-                is_unknown_option = false;
+                is_unknown = false;
                 orig = i;
                 ++i;
 
@@ -420,36 +404,25 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
                     /* If we run out of parameters, error */
 
                     if (i >= cmd->lcl_argc) {
-                        fprintf(stderr, "%s: Error: option \"%s\" did not "
-                                "have enough parameters (%d)\n",
-                                cmd->lcl_argv[0],
-                                cmd->lcl_argv[orig],
-                                option->clo_num_params);
-                        if (have_help_option) {
-                            fprintf(stderr, "Type '%s --help' for usage.\n",
-                                    cmd->lcl_argv[0]);
-                        }
+                        opal_output(0, "Error: option \"%s\" did not have "
+                                    "enough parameters (%d)",
+                                    cmd->lcl_argv[orig],
+                                    option->clo_num_params);
                         OBJ_RELEASE(param);
-                        printed_error = true;
-                        goto error;
+                        i = cmd->lcl_argc;
+                        break;
                     } else {
                         if (0 == strcmp(cmd->lcl_argv[i], 
                                         special_empty_token)) {
-                            fprintf(stderr, "%s: Error: option \"%s\" did not "
-                                    "have enough parameters (%d)\n",
-                                    cmd->lcl_argv[0],
-                                    cmd->lcl_argv[orig],
-                                    option->clo_num_params);
-                            if (have_help_option) {
-                                fprintf(stderr, "Type '%s --help' for usage.\n",
-                                        cmd->lcl_argv[0]);
-                            }
-                            if (NULL != param->clp_argv) {
+                            opal_output(0, "Error: option \"%s\" did not have "
+                                        "enough parameters (%d)",
+                                        cmd->lcl_argv[orig],
+                                        option->clo_num_params);
+                            if (NULL != param->clp_argv)
                                 opal_argv_free(param->clp_argv);
-                            }
                             OBJ_RELEASE(param);
-                            printed_error = true;
-                            goto error;
+                            i = cmd->lcl_argc;
+                            break;
                         } 
 
                         /* Otherwise, save this parameter */
@@ -467,10 +440,7 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
                             if (0 == j &&
                                 (NULL != option->clo_mca_param_env_var ||
                                  NULL != option->clo_variable_dest)) {
-                                if (OPAL_SUCCESS != (ret = set_dest(option, cmd->lcl_argv[i]))) {
-                                    opal_mutex_unlock(&cmd->lcl_mutex);
-                                    return ret;
-                                }
+                                set_dest(option, cmd->lcl_argv[i]);
                             }
                         }
                     }
@@ -480,10 +450,7 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
                    need to set a boolean value to "true". */
 
                 if (0 == option->clo_num_params) {
-                    if (OPAL_SUCCESS != (ret = set_dest(option, "1"))) {
-                        opal_mutex_unlock(&cmd->lcl_mutex);
-                        return ret;
-                    }
+                    set_dest(option, "1");
                 }
 
                 /* If we succeeded in all that, save the param to the
@@ -498,26 +465,20 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
         /* If we figured out above that this was an unknown option,
            handle it.  Copy everything (including the current token)
            into the tail.  If we're not ignoring unknowns, then print
-           an error and return. */
-        if (is_unknown_option || is_unknown_token) {
+           an error and return. 
+        */
+
+        if (is_unknown) {
             has_unknowns = true;
-            if (!ignore_unknown || is_unknown_option) {
-                fprintf(stderr, "%s: Error: unknown option \"%s\"\n", 
-                        cmd->lcl_argv[0], cmd->lcl_argv[i]);
-                printed_error = true;
-                if (have_help_option) {
-                    fprintf(stderr, "Type '%s --help' for usage.\n",
-                            cmd->lcl_argv[0]);
-                }
+            if (!ignore_unknown) {
+                opal_output(0, "Error: unknown option \"%s\"", 
+                            cmd->lcl_argv[i]);
             }
-        error:
             while (i < cmd->lcl_argc) {
                 opal_argv_append(&cmd->lcl_tail_argc, &cmd->lcl_tail_argv, 
                                  cmd->lcl_argv[i]);
                 ++i;
             }
-
-            /* Because i has advanced, we'll fall out of the loop */
         }
     }
 
@@ -526,8 +487,8 @@ int opal_cmd_line_parse(opal_cmd_line_t *cmd, bool ignore_unknown,
     opal_mutex_unlock(&cmd->lcl_mutex);
 
     /* All done */
-    if (printed_error) {
-        return OPAL_ERR_SILENT;
+    if(has_unknowns && !ignore_unknown) {
+        return OPAL_ERR_BAD_PARAM;
     }
 
     return OPAL_SUCCESS;
@@ -1171,12 +1132,11 @@ static cmd_line_option_t *find_option(opal_cmd_line_t *cmd,
 }
 
 
-static int set_dest(cmd_line_option_t *option, char *sval)
+static void set_dest(cmd_line_option_t *option, char *sval)
 {
-    int ival = atol(sval);
-    long lval = strtoul(sval, NULL, 10);
+    int ival = atoi(sval);
+    long lval = strtol(sval, NULL, 10);
     char *str = NULL;
-    size_t i;
 
     /* Set MCA param.  We do this in the environment because the MCA
        parameter may not have been registered yet -- and if it isn't
@@ -1214,55 +1174,9 @@ static int set_dest(cmd_line_option_t *option, char *sval)
             *((char**) option->clo_variable_dest) = strdup(sval);
             break;
         case OPAL_CMD_LINE_TYPE_INT:
-            /* check to see that the value given to us truly is an int */
-            for (i=0; i < strlen(sval); i++) {
-                if (!isdigit(sval[i]) && '-' != sval[i]) {
-                    /* show help isn't going to be available yet, so just
-                     * print the msg
-                     */
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    fprintf(stderr, "Open MPI has detected that a parameter given to a command line\n");
-                    fprintf(stderr, "option does not match the expected format:\n\n");
-                    if (NULL != option->clo_long_name) {
-                        fprintf(stderr, "  Option: %s\n", option->clo_long_name);
-                    } else if ('\0' != option->clo_short_name) {
-                        fprintf(stderr, "  Option: %c\n", option->clo_short_name);
-                    } else {
-                        fprintf(stderr, "  Option: <unknown>\n");
-                    }
-                    fprintf(stderr, "  Param:  %s\n\n", sval);
-                    fprintf(stderr, "This is frequently caused by omitting to provide the parameter\n");
-                    fprintf(stderr, "to an option that requires one. Please check the command line and try again.\n");
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    return OPAL_ERR_SILENT;
-                }
-            }
             *((int*) option->clo_variable_dest) = ival;
             break;
         case OPAL_CMD_LINE_TYPE_SIZE_T:
-            /* check to see that the value given to us truly is a size_t */
-            for (i=0; i < strlen(sval); i++) {
-                if (!isdigit(sval[i]) && '-' != sval[i]) {
-                    /* show help isn't going to be available yet, so just
-                     * print the msg
-                     */
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    fprintf(stderr, "Open MPI has detected that a parameter given to a command line\n");
-                    fprintf(stderr, "option does not match the expected format:\n\n");
-                    if (NULL != option->clo_long_name) {
-                        fprintf(stderr, "  Option: %s\n", option->clo_long_name);
-                    } else if ('\0' != option->clo_short_name) {
-                        fprintf(stderr, "  Option: %c\n", option->clo_short_name);
-                    } else {
-                        fprintf(stderr, "  Option: <unknown>\n");
-                    }
-                    fprintf(stderr, "  Param:  %s\n\n", sval);
-                    fprintf(stderr, "This is frequently caused by omitting to provide the parameter\n");
-                    fprintf(stderr, "to an option that requires one. Please check the command line and try again.\n");
-                    fprintf(stderr, "----------------------------------------------------------------------------\n");
-                    return OPAL_ERR_SILENT;
-                }
-            }
             *((size_t*) option->clo_variable_dest) = lval;
             break;
         case OPAL_CMD_LINE_TYPE_BOOL:
@@ -1272,7 +1186,6 @@ static int set_dest(cmd_line_option_t *option, char *sval)
             break;
         }
     }
-    return OPAL_SUCCESS;
 }
 
 

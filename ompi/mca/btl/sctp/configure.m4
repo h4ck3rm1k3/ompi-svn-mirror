@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -128,9 +128,7 @@ AC_DEFUN([OMPI_CHECK_SCTP],[
 
 # MCA_btl_sctp_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_ompi_btl_sctp_CONFIG],[
-    AC_CONFIG_FILES([ompi/mca/btl/sctp/Makefile])
-
+AC_DEFUN([MCA_btl_sctp_CONFIG],[
     OMPI_CHECK_SCTP([btl_sctp],
                    [btl_sctp_happy="yes"],
                    [btl_sctp_happy="no"])

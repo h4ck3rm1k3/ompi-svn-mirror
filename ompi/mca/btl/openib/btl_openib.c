@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -12,7 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies. All rights reserved.
- * Copyright (c) 2006-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2008-2012 Oracle and/or its affiliates.  All rights reserved.
@@ -26,15 +26,12 @@
 
 #include "ompi_config.h"
 #include <string.h>
-#ifdef HAVE_INTTYPES_H
 #include <inttypes.h>
-#endif
 #include "orte/util/show_help.h"
 #include "orte/runtime/orte_globals.h"
 #include "opal/class/opal_bitmap.h"
 #include "opal/util/output.h"
 #include "opal/util/arch.h"
-#include "opal/include/opal_stdint.h"
 
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
@@ -53,7 +50,7 @@
 #include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/mca/mpool/mpool.h"
-#include "ompi/mca/mpool/grdma/mpool_grdma.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "orte/util/proc_info.h"
 #include <errno.h>
 #include <sys/types.h>
@@ -61,6 +58,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
@@ -70,9 +68,7 @@
 #ifdef HAVE_SYS_RESOURCE_H
 #include <sys/resource.h>
 #endif
-#ifdef HAVE_UNISTD_H
 #include <unistd.h>
-#endif
 #ifdef OPAL_HAVE_HWLOC
 #include "opal/mca/hwloc/hwloc.h"
 #endif
@@ -94,7 +90,6 @@ mca_btl_openib_module_t mca_btl_openib_module = {
         0, /* latency */
         0, /* bandwidth */
         0, /* TODO this should be PUT btl flags */
-        0, /* segment size */
         mca_btl_openib_add_procs,
         mca_btl_openib_del_procs,
         NULL,
@@ -129,9 +124,7 @@ void mca_btl_openib_show_init_error(const char *file, int line,
 {
     if (ENOMEM == errno) {
         int ret;
-#ifndef __WINDOWS__
         struct rlimit limit;
-#endif
         char *str_limit = NULL;
 
 #if HAVE_DECL_RLIMIT_MEMLOCK
@@ -139,7 +132,6 @@ void mca_btl_openib_show_init_error(const char *file, int line,
 #else
         ret = -1;
 #endif
-#ifndef __WINDOWS__
         if (0 != ret) {
             asprintf(&str_limit, "Unknown");
         } else if (limit.rlim_cur == RLIM_INFINITY) {
@@ -147,7 +139,6 @@ void mca_btl_openib_show_init_error(const char *file, int line,
         } else {
             asprintf(&str_limit, "%ld", (long)limit.rlim_cur);
         }
-#endif
 
         orte_show_help("help-mpi-btl-openib.txt", "init-fail-no-mem",
                        true, orte_process_info.nodename,
@@ -161,7 +152,7 @@ void mca_btl_openib_show_init_error(const char *file, int line,
     }
 }
 
-static inline struct ibv_cq *create_cq_compat(struct ibv_context *context,
+static inline struct ibv_cq *ibv_create_cq_compat(struct ibv_context *context,
         int cqe, void *cq_context, struct ibv_comp_channel *channel,
         int comp_vector)
 {
@@ -186,8 +177,8 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
         cq_size = device->ib_dev_attr.max_cqe;
 
     if(NULL == device->ib_cq[cq]) {
-        device->ib_cq[cq] = create_cq_compat(device->ib_dev_context, cq_size,
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+        device->ib_cq[cq] = ibv_create_cq_compat(device->ib_dev_context, cq_size,
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
                 device, device->ib_channel,
 #else
                 NULL, NULL,
@@ -200,7 +191,7 @@ static int adjust_cq(mca_btl_openib_device_t *device, const int cq)
             return OMPI_ERROR;
         }
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
         if(ibv_req_notify_cq(device->ib_cq[cq], 0)) {
             mca_btl_openib_show_init_error(__FILE__, __LINE__,
                                            "ibv_req_notify_cq",
@@ -420,8 +411,8 @@ static int mca_btl_openib_size_queues(struct mca_btl_openib_module_t* openib_btl
         goto out;
     }
 
-    if (0 == openib_btl->num_peers &&
-            (mca_btl_openib_component.num_srq_qps > 0 ||
+    if (0 == openib_btl->num_peers && 
+            (mca_btl_openib_component.num_srq_qps > 0 || 
              mca_btl_openib_component.num_xrc_qps > 0)) {
         rc = create_srq(openib_btl);
     }
@@ -433,7 +424,7 @@ out:
 
 mca_btl_openib_transport_type_t mca_btl_openib_get_transport_type(mca_btl_openib_module_t* openib_btl)
 {
-/* If we have a driver with RDMAoE supporting as the device struct contains the same type (IB) for
+/* If we have a driver with RDMAoE supporting as the device struct contains the same type (IB) for 
    IBV_LINK_LAYER_INFINIBAND and IBV_LINK_LAYER_ETHERNET link layers and the single way
    to detect this fact is to check their link_layer fields in a port_attr struct.
    If our driver doesn't support this feature => the checking of transport type in device struct will be enough.
@@ -462,7 +453,7 @@ mca_btl_openib_transport_type_t mca_btl_openib_get_transport_type(mca_btl_openib
         case IBV_TRANSPORT_IWARP:
             return MCA_BTL_OPENIB_TRANSPORT_IWARP;
 
-        case IBV_TRANSPORT_UNKNOWN:
+        case IBV_TRANSPORT_UNKNOWN:		 
         default:
             return MCA_BTL_OPENIB_TRANSPORT_UNKNOWN;
     }
@@ -471,7 +462,7 @@ mca_btl_openib_transport_type_t mca_btl_openib_get_transport_type(mca_btl_openib
 #endif
 }
 
-static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
+static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl, 
                                             mca_btl_base_endpoint_t* endpoint)
 {
     int ret = OMPI_SUCCESS;
@@ -492,7 +483,7 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
                         endpoint->rem_info.rem_vendor_id,
                         endpoint->rem_info.rem_vendor_part_id,
                         mca_btl_openib_transport_name_strings[endpoint->rem_info.rem_transport_type]);
-
+    
         return OMPI_ERROR;
     }
 
@@ -500,8 +491,7 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
     ret = ompi_btl_openib_ini_query(endpoint->rem_info.rem_vendor_id,
                           endpoint->rem_info.rem_vendor_part_id, &values);
 
-    if (OMPI_SUCCESS != ret &&
-        OMPI_ERR_NOT_FOUND != ret) {
+    if (OMPI_SUCCESS != ret && OMPI_ERR_NOT_FOUND != ret) {
         orte_show_help("help-mpi-btl-openib.txt",
                        "error in device init", true,
                        orte_process_info.nodename,
@@ -510,7 +500,7 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
     }
 
     if(openib_btl->device->mtu < endpoint->rem_info.rem_mtu) {
-        endpoint->rem_info.rem_mtu = openib_btl->device->mtu;
+        endpoint->rem_info.rem_mtu = openib_btl->device->mtu; 
     }
 
     endpoint->use_eager_rdma = openib_btl->device->use_eager_rdma &
@@ -527,11 +517,11 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
         case BTL_OPENIB_RQ_SOURCE_MAX:
             break;
 
-        /* If the queues configuration was set from command line
+        /* If the queues configuration was set from command line 
            (with --mca btl_openib_receive_queues parameter) => both sides have a same configuration */
 
         /* In this case the local queues configuration was gotten from INI file =>
-           not possible that remote side got its queues configuration from command line =>
+           not possible that remote side got its queues configuration from command line => 
            (by prio) the configuration was set from INI file or (if not configure)
            by default queues configuration */
         case BTL_OPENIB_RQ_SOURCE_DEVICE_INI:
@@ -559,7 +549,7 @@ static int mca_btl_openib_tune_endpoint(mca_btl_openib_module_t* openib_btl,
             }
             break;
 
-        /* If the local queues configuration was set
+        /* If the local queues configuration was set 
            by default queues => check all possible cases for remote side and compare */
         case  BTL_OPENIB_RQ_SOURCE_DEFAULT:
             if(NULL != values.receive_queues) {
@@ -720,7 +710,7 @@ int mca_btl_openib_add_procs(
         }
 
         /* OOB, XOOB, and RDMACM do not support SELF comunication, so
-         * mark the prco as unreachable by openib btl  */
+         * mark the proc as unreachable by openib btl  */
         if (OPAL_EQUAL == orte_util_compare_name_fields
                 (ORTE_NS_CMP_ALL, ORTE_PROC_MY_NAME, &ompi_proc->proc_name)) {
             continue;
@@ -796,7 +786,7 @@ int mca_btl_openib_add_procs(
            on the peer has a matching CPC. */
         assert(btl_rank <= ib_proc->proc_port_count);
         assert(remote_matching_port != -1);
-        if (OMPI_SUCCESS !=
+        if (OMPI_SUCCESS != 
             ompi_btl_openib_connect_base_find_match(openib_btl,
                                                     &(ib_proc->proc_ports[remote_matching_port]),
                                                     &local_cpc,
@@ -842,8 +832,8 @@ int mca_btl_openib_add_procs(
             }
         }
 #endif
-        mca_btl_openib_endpoint_init(openib_btl, endpoint,
-                                     local_cpc,
+        mca_btl_openib_endpoint_init(openib_btl, endpoint, 
+                                     local_cpc, 
                                      &(ib_proc->proc_ports[remote_matching_port]),
                                      remote_cpc_data);
 
@@ -908,7 +898,7 @@ int mca_btl_openib_del_procs(struct mca_btl_base_module_t* btl,
         for(ep_index=0;
             ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
             ep_index++) {
-            endpoint = (mca_btl_openib_endpoint_t *)
+            endpoint =
                 opal_pointer_array_get_item(openib_btl->device->endpoints,
                         ep_index);
             if(!endpoint || endpoint->endpoint_btl != openib_btl) {
@@ -960,7 +950,7 @@ ib_frag_alloc(mca_btl_openib_module_t *btl, size_t size, uint8_t order,
         return NULL;
 
     /* not all upper layer users set this */
-    to_base_frag(item)->segment.base.seg_len = size;
+    to_base_frag(item)->segment.seg_len = size;
     to_base_frag(item)->base.order = order;
     to_base_frag(item)->base.des_flags = flags;
 
@@ -990,7 +980,7 @@ static mca_btl_openib_send_frag_t *check_coalescing(opal_list_t *frag_list,
         }
 
         total_length = size + frag->coalesced_length +
-            to_base_frag(frag)->segment.base.seg_len +
+            to_base_frag(frag)->segment.seg_len +
             sizeof(mca_btl_openib_header_coalesced_t);
 
         qp = to_base_frag(frag)->base.order;
@@ -1068,8 +1058,8 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
         sfrag->hdr->tag = MCA_BTL_TAG_BTL;
         ctrl_hdr->type = MCA_BTL_OPENIB_CONTROL_COALESCED;
         clsc_hdr->tag = org_tag;
-        clsc_hdr->size = to_base_frag(sfrag)->segment.base.seg_len;
-        clsc_hdr->alloc_size = to_base_frag(sfrag)->segment.base.seg_len;
+        clsc_hdr->size = to_base_frag(sfrag)->segment.seg_len;
+        clsc_hdr->alloc_size = to_base_frag(sfrag)->segment.seg_len;
         if(ep->nbo)
             BTL_OPENIB_HEADER_COALESCED_HTON(*clsc_hdr);
         sfrag->coalesced_length = sizeof(mca_btl_openib_control_header_t) +
@@ -1079,13 +1069,13 @@ mca_btl_base_descriptor_t* mca_btl_openib_alloc(
 
     cfrag->hdr = (mca_btl_openib_header_coalesced_t*)((unsigned char*)(sfrag->hdr + 1) + 
                   sfrag->coalesced_length +
-                  to_base_frag(sfrag)->segment.base.seg_len);
-    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)BTL_OPENIB_ALIGN_COALESCE_HDR(cfrag->hdr);
+                  to_base_frag(sfrag)->segment.seg_len);
+    cfrag->hdr = (mca_btl_openib_header_coalesced_t*)(unsigned char*)(BTL_OPENIB_ALIGN_COALESCE_HDR((unsigned char*)(cfrag->hdr)));
     cfrag->hdr->alloc_size = size;
 
     /* point coalesced frag pointer into a data buffer */
-    to_base_frag(cfrag)->segment.base.seg_addr.pval = cfrag->hdr + 1;
-    to_base_frag(cfrag)->segment.base.seg_len = size;
+    to_base_frag(cfrag)->segment.seg_addr.pval = cfrag->hdr + 1;
+    to_base_frag(cfrag)->segment.seg_len = size;
 
     /* save coalesced fragment on a main fragment; we will need it after send
      * completion to free it and to call upper layer callback */
@@ -1135,8 +1125,6 @@ int mca_btl_openib_free(
             to_com_frag(des)->sg_entry.addr =
                 (uint64_t)(uintptr_t)to_send_frag(des)->hdr;
             to_send_frag(des)->coalesced_length = 0;
-            to_base_frag(des)->segment.base.seg_addr.pval =
-                to_send_frag(des)->hdr + 1;
             assert(!opal_list_get_size(&to_send_frag(des)->coalesced_frags));
             /* fall throug */
         case MCA_BTL_OPENIB_FRAG_SEND_USER:
@@ -1190,7 +1178,6 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
     struct iovec iov;
     uint32_t iov_count = 1;
     size_t max_data = *size;
-    void *ptr;
     int rc;
 
     openib_btl = (mca_btl_openib_module_t*)btl;
@@ -1229,14 +1216,18 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
 
             to_base_frag(frag)->base.order = order;
             to_base_frag(frag)->base.des_flags = flags;
-            to_base_frag(frag)->segment.base.seg_len = max_data;
-            to_base_frag(frag)->segment.base.seg_addr.lval = (uint64_t)(uintptr_t) iov.iov_base;
-            to_base_frag(frag)->segment.key = frag->sg_entry.lkey;
+            to_base_frag(frag)->segment.seg_len = max_data;
+            to_base_frag(frag)->segment.seg_addr.pval = iov.iov_base;
+            to_base_frag(frag)->segment.seg_key.key32[0] =
+                (uint32_t)frag->sg_entry.lkey;
 
             assert(MCA_BTL_NO_ORDER == order);
 
-            BTL_VERBOSE(("frag->sg_entry.lkey = %" PRIu32 " .addr = %" PRIx64,
-                         frag->sg_entry.lkey, frag->sg_entry.addr));
+            BTL_VERBOSE(("frag->sg_entry.lkey = %" PRIu32 " .addr = %" PRIx64
+                         " frag->segment.seg_key.key32[0] = %" PRIu32,
+                         frag->sg_entry.lkey, 
+                         frag->sg_entry.addr,
+                         frag->sg_entry.lkey));
 
             return &to_base_frag(frag)->base;
         }
@@ -1248,34 +1239,23 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
         max_data = btl->btl_max_send_size - reserve;
     }
 
-    if (OPAL_UNLIKELY(0 == reserve)) {
-        frag = (mca_btl_openib_com_frag_t *) ib_frag_alloc(openib_btl, max_data, order, flags);
-        if(NULL == frag)
-            return NULL;
+    frag = (mca_btl_openib_com_frag_t*)(reserve ?
+            mca_btl_openib_alloc(btl, endpoint, order, max_data + reserve,
+                flags) :
+            ib_frag_alloc(openib_btl, max_data, order, flags));
 
-        /* NTH: this frag will be ue used for either a get or put so we need to set the lval to be
-           consistent with the usage in get and put. the pval will be restored in mca_btl_openib_free */
-        ptr = to_base_frag(frag)->segment.base.seg_addr.pval;
-        to_base_frag(frag)->segment.base.seg_addr.lval =
-            (uint64_t)(uintptr_t) ptr;
-    } else {
-        frag =
-            (mca_btl_openib_com_frag_t *) mca_btl_openib_alloc(btl, endpoint, order,
-                                                               max_data + reserve, flags);
-        if(NULL == frag)
-            return NULL;
-
-        ptr = to_base_frag(frag)->segment.base.seg_addr.pval;
-    }
+    if(NULL == frag)
+        return NULL;
 
     iov.iov_len = max_data;
-    iov.iov_base = (IOVBASE_TYPE *) ( (unsigned char*) ptr + reserve );
+    iov.iov_base = (unsigned char*)to_base_frag(frag)->segment.seg_addr.pval +
+        reserve;
     rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data);
 
     *size = max_data;
 
     /* not all upper layer users set this */
-    to_base_frag(frag)->segment.base.seg_len = max_data + reserve;
+    to_base_frag(frag)->segment.seg_len = max_data + reserve;
 
     return &to_base_frag(frag)->base;
 }
@@ -1305,36 +1285,16 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
     uint32_t flags)
 {
     mca_btl_openib_module_t *openib_btl;
-    mca_btl_openib_component_t *openib_component;
     mca_btl_openib_com_frag_t *frag;
     mca_btl_openib_reg_t *openib_reg;
-    uint32_t max_msg_sz;
     int rc;
     void *buffer;
 
     openib_btl = (mca_btl_openib_module_t*)btl;
-    openib_component = (mca_btl_openib_component_t*)btl->btl_component;
 
     frag = alloc_recv_user_frag();
     if(NULL == frag) {
         return NULL;
-    }
-
-    /* max_msg_sz is the maximum message size of the HCA (hw limitation)
-       set the minimum between local max_msg_sz and the remote */
-    max_msg_sz = MIN(openib_btl->ib_port_attr.max_msg_sz,
-                     endpoint->endpoint_btl->ib_port_attr.max_msg_sz);
-
-    /* check if user has explicitly limited the max message size */
-    if (openib_component->max_hw_msg_size > 0 &&
-        max_msg_sz > (size_t)openib_component->max_hw_msg_size) {
-        max_msg_sz = openib_component->max_hw_msg_size;
-    }
-
-    /* limit the message so to max_msg_sz */
-    if (*size > (size_t)max_msg_sz) {
-        *size = (size_t)max_msg_sz;
-        BTL_VERBOSE(("message size limited to %" PRIsize_t "\n", *size));
     }
 
     opal_convertor_get_current_pointer(convertor, &buffer);
@@ -1358,14 +1318,16 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
     frag->sg_entry.lkey = openib_reg->mr->lkey;
     frag->sg_entry.addr = (uint64_t)(uintptr_t)buffer;
 
-    to_base_frag(frag)->segment.base.seg_addr.lval = (uint64_t)(uintptr_t) buffer;
-    to_base_frag(frag)->segment.base.seg_len = *size;
-    to_base_frag(frag)->segment.key = openib_reg->mr->rkey;
+    to_base_frag(frag)->segment.seg_addr.pval = buffer;
+    to_base_frag(frag)->segment.seg_len = *size;
+    to_base_frag(frag)->segment.seg_key.key32[0] = openib_reg->mr->rkey;
     to_base_frag(frag)->base.order = order;
     to_base_frag(frag)->base.des_flags = flags;
 
     BTL_VERBOSE(("frag->sg_entry.lkey = %" PRIu32 " .addr = %" PRIx64 " "
-                 "rkey = %" PRIu32, frag->sg_entry.lkey, frag->sg_entry.addr,
+                 "frag->segment.seg_key.key32[0] = %" PRIu32,
+                 frag->sg_entry.lkey, 
+                 frag->sg_entry.addr,
                  openib_reg->mr->rkey));
 
     return &to_base_frag(frag)->base;
@@ -1388,8 +1350,8 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
     for (ep_index=0;
          ep_index < opal_pointer_array_get_size(openib_btl->device->endpoints);
          ep_index++) {
-        endpoint=(mca_btl_openib_endpoint_t *)opal_pointer_array_get_item(openib_btl->device->endpoints,
-                                                  ep_index);
+        endpoint=opal_pointer_array_get_item(openib_btl->device->endpoints,
+                                             ep_index);
         if(!endpoint) {
             BTL_VERBOSE(("In finalize, got another null endpoint"));
             continue;
@@ -1421,7 +1383,7 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
                 opal_hash_table_t *srq_addr_table =
                             &mca_btl_openib_component.srq_manager.srq_addr_table;
 
-                opal_mutex_lock(lock);
+                opal_mutex_lock(lock);		
                 if (OPAL_SUCCESS !=
                         opal_hash_table_remove_value_ptr(srq_addr_table,
                                     &openib_btl->qps[qp].u.srq_qp.srq,
@@ -1457,7 +1419,7 @@ static int mca_btl_openib_finalize_resources(struct mca_btl_base_module_t* btl) 
     }
 
     if (NULL != openib_btl->qps) {
-        free(openib_btl->qps);
+        free(openib_btl->qps); 
     }
 
     return rc;
@@ -1503,7 +1465,7 @@ int mca_btl_openib_finalize(struct mca_btl_base_module_t* btl)
 
 /*
  *  Send immediate - Minimum function calls minimum checks, send the data ASAP.
- *  If BTL can't to send the messages imidiate, it creates messages descriptor
+ *  If BTL can't to send the messages imidiate, it creates messages descriptor 
  *  returns it to PML.
  */
 int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
@@ -1515,14 +1477,14 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         uint8_t order,
         uint32_t flags,
         mca_btl_base_tag_t tag,
-        mca_btl_base_descriptor_t** descriptor)
+        mca_btl_base_descriptor_t** descriptor) 
 {
     mca_btl_openib_module_t *obtl = (mca_btl_openib_module_t*)btl;
     size_t size = payload_size + header_size;
     size_t eager_limit;
-    int rc,
-        qp = frag_size_to_order(obtl, size),
-        prio = !(flags & MCA_BTL_DES_FLAGS_PRIORITY),
+    int rc,  
+        qp = frag_size_to_order(obtl, size), 
+        prio = !(flags & MCA_BTL_DES_FLAGS_PRIORITY), 
         ib_rc;
     int32_t cm_return;
     bool do_rdma = false;
@@ -1582,14 +1544,14 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     }
     frag = to_base_frag(item);
     hdr = to_send_frag(item)->hdr;
-    frag->segment.base.seg_len = size;
+    frag->segment.seg_len = size;
     frag->base.order = qp;
     frag->base.des_flags = flags;
     hdr->tag = tag;
     to_com_frag(item)->endpoint = ep;
 
     /* put match header */
-    memcpy(frag->segment.base.seg_addr.pval, header, header_size);
+    memcpy(frag->segment.seg_addr.pval, header, header_size);
 
     /* Pack data */
     if(payload_size) {
@@ -1597,7 +1559,7 @@ int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
         struct iovec iov;
         uint32_t iov_count;
         /* pack the data into the supplied buffer */
-        iov.iov_base = (IOVBASE_TYPE*)((unsigned char*)frag->segment.base.seg_addr.pval + header_size);
+        iov.iov_base = (IOVBASE_TYPE*)((unsigned char*)frag->segment.seg_addr.pval + header_size);
         iov.iov_len  = max_data = payload_size;
         iov_count    = 1;
 
@@ -1711,13 +1673,11 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
                     mca_btl_base_endpoint_t* ep,
                     mca_btl_base_descriptor_t* descriptor)
 {
-    mca_btl_openib_segment_t *src_seg = (mca_btl_openib_segment_t *) descriptor->des_src;
-    mca_btl_openib_segment_t *dst_seg = (mca_btl_openib_segment_t *) descriptor->des_dst;
     struct ibv_send_wr* bad_wr;
     mca_btl_openib_out_frag_t* frag = to_out_frag(descriptor);
     int qp = descriptor->order;
-    uint64_t rem_addr = dst_seg->base.seg_addr.lval;
-    uint32_t rkey = dst_seg->key;
+    uint64_t rem_addr = descriptor->des_dst->seg_addr.lval;
+    uint32_t rkey = descriptor->des_dst->seg_key.key32[0];
 
     assert(openib_frag_type(frag) == MCA_BTL_OPENIB_FRAG_SEND_USER ||
             openib_frag_type(frag) == MCA_BTL_OPENIB_FRAG_SEND);
@@ -1757,8 +1717,9 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
     frag->sr_desc.wr.rdma.remote_addr = rem_addr;
     frag->sr_desc.wr.rdma.rkey = rkey;
 
-    to_com_frag(frag)->sg_entry.addr = src_seg->base.seg_addr.lval;
-    to_com_frag(frag)->sg_entry.length = src_seg->base.seg_len;
+    to_com_frag(frag)->sg_entry.addr =
+        (uint64_t)(uintptr_t)descriptor->des_src->seg_addr.pval;
+    to_com_frag(frag)->sg_entry.length = descriptor->des_src->seg_len;
     to_com_frag(frag)->endpoint = ep;
 #if HAVE_XRC
     if (MCA_BTL_XRC_ENABLED && BTL_OPENIB_QP_TYPE_XRC(qp))
@@ -1769,7 +1730,7 @@ int mca_btl_openib_put( mca_btl_base_module_t* btl,
     /* Setting opcode on a frag constructor isn't enough since prepare_src
      * may return send_frag instead of put_frag */
     frag->sr_desc.opcode = IBV_WR_RDMA_WRITE;
-    frag->sr_desc.send_flags = ib_send_flags(src_seg->base.seg_len, &(ep->qps[qp]));
+    frag->sr_desc.send_flags = ib_send_flags(descriptor->des_src->seg_len, &(ep->qps[qp]));
     if(ibv_post_send(ep->qps[qp].qp->lcl_qp, &frag->sr_desc, &bad_wr))
         return OMPI_ERROR;
 
@@ -1784,13 +1745,11 @@ int mca_btl_openib_get(mca_btl_base_module_t* btl,
                     mca_btl_base_endpoint_t* ep,
                     mca_btl_base_descriptor_t* descriptor)
 {
-    mca_btl_openib_segment_t *src_seg = (mca_btl_openib_segment_t *) descriptor->des_src;
-    mca_btl_openib_segment_t *dst_seg = (mca_btl_openib_segment_t *) descriptor->des_dst;
     struct ibv_send_wr* bad_wr;
     mca_btl_openib_get_frag_t* frag = to_get_frag(descriptor);
     int qp = descriptor->order;
-    uint64_t rem_addr = src_seg->base.seg_addr.lval;
-    uint32_t rkey = src_seg->key;
+    uint64_t rem_addr = descriptor->des_src->seg_addr.lval;
+    uint32_t rkey = descriptor->des_src->seg_key.key32[0];
 
     assert(openib_frag_type(frag) == MCA_BTL_OPENIB_FRAG_RECV_USER);
 
@@ -1839,8 +1798,9 @@ int mca_btl_openib_get(mca_btl_base_module_t* btl,
     frag->sr_desc.wr.rdma.remote_addr = rem_addr;
     frag->sr_desc.wr.rdma.rkey = rkey;
 
-    to_com_frag(frag)->sg_entry.addr = dst_seg->base.seg_addr.lval;
-    to_com_frag(frag)->sg_entry.length = dst_seg->base.seg_len;
+    to_com_frag(frag)->sg_entry.addr =
+        (uint64_t)(uintptr_t)descriptor->des_dst->seg_addr.pval;
+    to_com_frag(frag)->sg_entry.length  = descriptor->des_dst->seg_len;
     to_com_frag(frag)->endpoint = ep;
 
 #if HAVE_XRC
@@ -1865,7 +1825,7 @@ int mca_btl_openib_ft_event(int state) {
     if(OPAL_CRS_CHECKPOINT == state) {
         /* Continue must reconstruct the routes (including modex), since we
          * have to tear down the devices completely. */
-        orte_cr_continue_like_restart = true;
+        ompi_cr_continue_like_restart = true;
 
         /*
          * To keep the node from crashing we need to call ibv_close_device

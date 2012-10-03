@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,7 +24,6 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/class/opal_list.h"
-#include "opal/class/opal_pointer_array.h"
 
 #include "orte/mca/odls/odls.h"
 #include "orte/mca/odls/base/base.h"
@@ -35,11 +32,11 @@
 
 int orte_odls_base_close(void)
 {
-    int i;
-    orte_proc_t *proc;
     opal_list_item_t *item;
-
+    
     /* cleanup ODLS globals */
+    OBJ_DESTRUCT(&orte_odls_globals.mutex);
+    OBJ_DESTRUCT(&orte_odls_globals.cond);
     while (NULL != (item = opal_list_remove_first(&orte_odls_globals.xterm_ranks))) {
         OBJ_RELEASE(item);
     }
@@ -49,14 +46,6 @@ int orte_odls_base_close(void)
         free(orte_odls_globals.dmap);
     }
     
-    /* cleanup the global list of local children and job data */
-    for (i=0; i < orte_local_children->size; i++) {
-        if (NULL != (proc = (orte_proc_t*)opal_pointer_array_get_item(orte_local_children, i))) {
-            OBJ_RELEASE(proc);
-        }
-    }
-    OBJ_RELEASE(orte_local_children);
-
     /* if no components are available, then punt */
     if (!orte_odls_base.components_available) {
         return ORTE_SUCCESS;

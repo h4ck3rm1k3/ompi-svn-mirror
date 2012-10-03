@@ -68,6 +68,114 @@ static void mca_oob_tcp_msg_destruct(mca_oob_tcp_msg_t* msg)
 
 
 /*
+ *  Wait for a msg to complete.
+ *  @param  msg (IN)   Message to wait on.
+ *  @param  rc (OUT)   Return code (number of bytes read on success or error code on failure).
+ *  @retval ORTE_SUCCESS or error code on failure.
+ */
+
+int mca_oob_tcp_msg_wait(mca_oob_tcp_msg_t* msg, int* rc)
+{
+#if OPAL_ENABLE_PROGRESS_THREADS
+    OPAL_THREAD_LOCK(&msg->msg_lock);
+    while(msg->msg_complete == false) {
+        if(opal_event_progress_thread()) {
+            int rc;
+            OPAL_THREAD_UNLOCK(&msg->msg_lock);
+            rc = opal_event_loop(OPAL_EVLOOP_ONCE);
+            assert(rc >= 0);
+            OPAL_THREAD_LOCK(&msg->msg_lock);
+        } else {
+           opal_condition_wait(&msg->msg_condition, &msg->msg_lock);
+        }
+    }
+    OPAL_THREAD_UNLOCK(&msg->msg_lock);
+
+#else
+    /* wait for message to complete */
+    while(msg->msg_complete == false) {
+        /* msg_wait() is used in the "barrier" at the completion of
+           MPI_FINALIZE, during which time BTLs may still need to
+           progress pending outgoing communication, so we need to
+           call opal_progress() here to make sure that communication
+           gets pushed out so others can enter finalize (and send us
+           the message we're here waiting for).  However, if we're
+           in a callback from the event library that was triggered
+           from a call to opal_progress(), opal_progress() will
+           think another thread is already progressing the event
+           engine (in the case of mpi threads enabled) and not
+           progress the engine, meaning we'll never receive our
+           message.  So we also need to progress the event library
+           expicitly.  We use EVLOOP_NONBLOCK so that we can
+           progress both the registered callbacks and the event
+           library, as EVLOOP_ONCE may block for a short period of
+           time. */
+        opal_progress();
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
+        OPAL_CR_TEST_CHECKPOINT_READY();
+    }
+#endif
+
+    /* return status */
+    if(NULL != rc) {
+        *rc = msg->msg_rc;
+    }
+    return ORTE_SUCCESS;
+}
+
+/*
+ *  Wait up to a timeout for the message to complete.
+ *  @param  msg (IN)   Message to wait on.
+ *  @param  rc (OUT)   Return code (number of bytes read on success or error code on failure).
+ *  @retval ORTE_SUCCESS or error code on failure.
+ */
+
+int mca_oob_tcp_msg_timedwait(mca_oob_tcp_msg_t* msg, int* rc, struct timespec* abstime)
+{
+    struct timeval tv;
+    uint32_t secs = abstime->tv_sec;
+    uint32_t usecs = abstime->tv_nsec * 1000;
+    gettimeofday(&tv,NULL);
+
+#if OPAL_ENABLE_PROGRESS_THREADS
+    OPAL_THREAD_LOCK(&msg->msg_lock);
+    while(msg->msg_complete == false && 
+          ((uint32_t)tv.tv_sec <= secs ||
+	   ((uint32_t)tv.tv_sec == secs && (uint32_t)tv.tv_usec < usecs))) {
+        if(opal_event_progress_thread()) {
+            int rc;
+            OPAL_THREAD_UNLOCK(&msg->msg_lock);
+            rc = opal_event_loop(OPAL_EVLOOP_ONCE);
+            assert(rc >= 0);
+            OPAL_THREAD_LOCK(&msg->msg_lock);
+        } else {
+           opal_condition_timedwait(&msg->msg_condition, &msg->msg_lock, abstime);
+        }
+        gettimeofday(&tv,NULL);
+    }
+    OPAL_THREAD_UNLOCK(&msg->msg_lock);
+#else
+    /* wait for message to complete */
+    while(msg->msg_complete == false &&
+          ((uint32_t)tv.tv_sec <= secs ||
+	   ((uint32_t)tv.tv_sec == secs && (uint32_t)tv.tv_usec < usecs))) {
+        /* see comment in tcp_msg_wait, above */
+        opal_progress();
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
+        gettimeofday(&tv,NULL);
+    }
+#endif
+
+    /* return status */
+    if(NULL != rc) {
+        *rc = msg->msg_rc;
+    }
+    if(msg->msg_rc < 0)
+        return msg->msg_rc;
+    return (msg->msg_complete ? ORTE_SUCCESS : ORTE_ERR_TIMEOUT);
+}
+
+/*
  *  Signal that a message has completed.
  *  @param  msg (IN)   Message to wait on.
  *  @param peer (IN) the peer of the message
@@ -137,20 +245,17 @@ int mca_oob_tcp_msg_complete(mca_oob_tcp_msg_t* msg, orte_process_name_t * peer)
 bool mca_oob_tcp_msg_send_handler(mca_oob_tcp_msg_t* msg, struct mca_oob_tcp_peer_t * peer)
 {
     int rc;
-
     while(1) {
         rc = writev(peer->peer_sd, msg->msg_rwptr, msg->msg_rwnum);
         if(rc < 0) {
-            if(opal_socket_errno == EINTR) {
+            if(opal_socket_errno == EINTR)
                 continue;
-            }
             /* In windows, many of the socket functions return an EWOULDBLOCK instead of \
                things like EAGAIN, EINPROGRESS, etc. It has been verified that this will \
                not conflict with other error codes that are returned by these functions \
                under UNIX/Linux environments */
-            else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK) {
+            else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK)
                 return false;
-            }
             else {
                 opal_output(0, "%s->%s mca_oob_tcp_msg_send_handler: writev failed: %s (%d) [sd = %d]", 
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), 
@@ -251,28 +356,24 @@ static bool mca_oob_tcp_msg_recv(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
     while(msg->msg_rwnum) {
         rc = readv(peer->peer_sd, msg->msg_rwptr, msg->msg_rwnum);
         if(rc < 0) {
-            if(opal_socket_errno == EINTR) {
+            if(opal_socket_errno == EINTR)
                 continue;
-            }
             /* In windows, many of the socket functions return an EWOULDBLOCK instead of \
                things like EAGAIN, EINPROGRESS, etc. It has been verified that this will \
                not conflict with other error codes that are returned by these functions \
                under UNIX/Linux environments */
-            else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK) {
+            else if (opal_socket_errno == EAGAIN || opal_socket_errno == EWOULDBLOCK)
                 return false;
-            }
-            if (mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_INFO) {
-                opal_output(0, "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
-                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                            ORTE_NAME_PRINT(&(peer->peer_name)),
-                            strerror(opal_socket_errno),
-                            opal_socket_errno);
-            }
-            mca_oob_tcp_peer_close(peer);
+	    opal_output(0, "%s-%s mca_oob_tcp_msg_recv: readv failed: %s (%d)", 
+			ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+			ORTE_NAME_PRINT(&(peer->peer_name)),
+			strerror(opal_socket_errno),
+			opal_socket_errno);
+	    mca_oob_tcp_peer_close(peer);
             if (NULL != mca_oob_tcp.oob_exception_callback) {
                 mca_oob_tcp.oob_exception_callback(&peer->peer_name, ORTE_RML_PEER_DISCONNECTED);
             }
-            return false;
+	    return false;
         } else if (rc == 0)  {
             if(mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_CONNECT_FAIL) {
                 opal_output(0, "%s-%s mca_oob_tcp_msg_recv: peer closed connection", 
@@ -296,7 +397,7 @@ static bool mca_oob_tcp_msg_recv(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pee
                 (msg->msg_rwnum)--;
                 (msg->msg_rwptr)++;
                 if(0 == msg->msg_rwnum) {
-                    assert( 0 == rc );
+		    assert( 0 == rc );
                     return true;
                 }
             }
@@ -341,7 +442,6 @@ static void mca_oob_tcp_msg_ident(mca_oob_tcp_msg_t* msg, mca_oob_tcp_peer_t* pe
     orte_process_name_t src = msg->msg_hdr.msg_src;
     
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
-
     if (orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &peer->peer_name, &src) != OPAL_EQUAL) {
         opal_hash_table_remove_value_uint64(&mca_oob_tcp_component.tcp_peers, 
                                             orte_util_hash_name(&peer->peer_name));

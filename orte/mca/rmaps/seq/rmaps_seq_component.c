@@ -33,7 +33,6 @@ static int orte_rmaps_seq_open(void);
 static int orte_rmaps_seq_close(void);
 static int orte_rmaps_seq_query(mca_base_module_t **module, int *priority);
 
-static int my_priority;
 
 orte_rmaps_base_component_t mca_rmaps_seq_component = {
       {
@@ -59,19 +58,17 @@ orte_rmaps_base_component_t mca_rmaps_seq_component = {
   */
 static int orte_rmaps_seq_open(void)
 {
-    mca_base_component_t *c = &mca_rmaps_seq_component.base_version;
-
-    mca_base_param_reg_int(c, "priority",
-                           "Priority of the seq rmaps component",
-                           false, false, 60,
-                           &my_priority);
     return ORTE_SUCCESS;
 }
 
 
 static int orte_rmaps_seq_query(mca_base_module_t **module, int *priority)
 {
-    *priority = my_priority;
+    /* the RMAPS framework is -only- opened on HNP's,
+     * so no need to check for that here
+     */
+    
+    *priority = 0; /* only select if specified */
     *module = (mca_base_module_t *)&orte_rmaps_seq_module;
     return ORTE_SUCCESS;
 }

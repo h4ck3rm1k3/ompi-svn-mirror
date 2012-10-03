@@ -1,4 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -10,10 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC. All rights
- *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -55,7 +50,7 @@ struct mca_pml_ob1_t {
     int free_list_inc;      /* number of elements to grow free list */
     size_t send_pipeline_depth;
     size_t recv_pipeline_depth;
-    size_t rdma_retries_limit;
+    size_t rdma_put_retries_limit;
     int max_rdma_per_request;
     int max_send_per_range;
     bool leave_pinned; 
@@ -86,7 +81,6 @@ struct mca_pml_ob1_t {
 typedef struct mca_pml_ob1_t mca_pml_ob1_t; 
 
 extern mca_pml_ob1_t mca_pml_ob1;
-extern int mca_pml_ob1_output;
 
 /*
  * PML interface functions.
@@ -123,19 +117,6 @@ extern int mca_pml_ob1_iprobe( int dst,
 extern int mca_pml_ob1_probe( int dst,
                               int tag,
                               struct ompi_communicator_t* comm,
-                              ompi_status_public_t* status );
-
-extern int mca_pml_ob1_improbe( int dst,
-                               int tag,
-                               struct ompi_communicator_t* comm,
-                               int *matched,
-                               struct ompi_message_t **message,
-                               ompi_status_public_t* status );
-
-extern int mca_pml_ob1_mprobe( int dst,
-                              int tag,
-                              struct ompi_communicator_t* comm,
-                              struct ompi_message_t **message,
                               ompi_status_public_t* status );
 
 extern int mca_pml_ob1_isend_init( void *buf,
@@ -187,18 +168,6 @@ extern int mca_pml_ob1_recv( void *buf,
                              int tag,
                              struct ompi_communicator_t* comm,
                              ompi_status_public_t* status );
-
-extern int mca_pml_ob1_imrecv( void *buf,
-                               size_t count,
-                               ompi_datatype_t *datatype,
-                               struct ompi_message_t **message,
-                               struct ompi_request_t **request );
-
-extern int mca_pml_ob1_mrecv( void *buf,
-                              size_t count,
-                              ompi_datatype_t *datatype,
-                              struct ompi_message_t **message,
-                              ompi_status_public_t* status );
 
 extern int mca_pml_ob1_dump( struct ompi_communicator_t* comm,
                              int verbose );
@@ -284,57 +253,15 @@ void mca_pml_ob1_process_pending_rdma(void);
 /*
  * Compute the total number of bytes on supplied descriptor
  */
-static inline size_t
-mca_pml_ob1_compute_segment_length(size_t seg_size, void *segments,
-                                   size_t count, size_t hdrlen)
-{
-    size_t i, length = 0;
-    mca_btl_base_segment_t *segment = (mca_btl_base_segment_t*)segments;
-
-    for (i = 0; i < count ; ++i) {
-        length += segment->seg_len;
-        segment = (mca_btl_base_segment_t *)((char *)segment + seg_size);
-    }
-    return (length - hdrlen);
-}
-
-static inline size_t
-mca_pml_ob1_compute_segment_length_base(mca_btl_base_segment_t *segments,
-                                        size_t count, size_t hdrlen)
-{
-    size_t i, length = 0;
-
-    for (i = 0; i < count ; ++i) {
-        length += segments[i].seg_len;
-    }
-    return (length - hdrlen);
-}
-
-static inline size_t
-mca_pml_ob1_compute_segment_length_remote (size_t seg_size, void *segments,
-                                           size_t count, ompi_proc_t *rem_proc)
-{
-    mca_btl_base_segment_t *segment = (mca_btl_base_segment_t *) segments;
-#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
-    ompi_proc_t *local_proc = ompi_proc_local();
-#endif
-    size_t i, length = 0;
-
-    for (i = 0 ; i < count ; ++i) {
-#if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
-        if ((rem_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN) !=
-            (local_proc->proc_arch & OPAL_ARCH_ISBIGENDIAN))
-            /* NTH: seg_len is always 64-bit so use swap_bytes8 */
-            length += opal_swap_bytes8(segment->seg_len);
-        else
-#endif
-            length += segment->seg_len;
-
-        segment = (mca_btl_base_segment_t *)((char *)segment + seg_size);
-    }
-
-    return length;
-}
+#define MCA_PML_OB1_COMPUTE_SEGMENT_LENGTH(segments, count, hdrlen, length) \
+do {                                                                        \
+   size_t i;                                                                \
+                                                                            \
+   for( i = 0; i < count; i++ ) {                                           \
+       length += segments[i].seg_len;                                       \
+   }                                                                        \
+   length -= hdrlen;                                                        \
+} while(0)
 
 /* represent BTL chosen for sending request */
 struct mca_pml_ob1_com_btl_t {

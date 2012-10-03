@@ -22,22 +22,20 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/proc_info.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
 
 /**
- * Call the query function on all available components to find out if
+ * Call the init function on all available components to find out if
  * they want to run.  Select the single component with the highest 
  * priority.
  */
 int orte_iof_base_select(void)
 {
+    int exit_status = ORTE_SUCCESS;
     orte_iof_base_component_t *best_component = NULL;
     orte_iof_base_module_t *best_module = NULL;
-    int rc;
     
     /*
      * Select the best component
@@ -46,24 +44,21 @@ int orte_iof_base_select(void)
                                         &orte_iof_base.iof_components_opened,
                                         (mca_base_module_t **) &best_module,
                                         (mca_base_component_t **) &best_component) ) {
-        /* it is okay to not find a module if we are a CM process */
-        if (ORTE_PROC_IS_CM) {
-            return ORTE_SUCCESS;
-        }
-        /* otherwise, this is a problem */
-        return ORTE_ERR_NOT_FOUND;
+        /* This will only happen if no component was selected, which
+         * is an error.
+         *
+         * NOTE: processes do not open/select the IOF - only daemons,
+         * the HNP, and tools do. 
+         */
+        exit_status = ORTE_ERR_NOT_FOUND;
+        goto cleanup;
     }
     
     /* Save the winner */
     orte_iof = *best_module;
-    /* init it */
-    if (NULL != orte_iof.init) {
-        if (ORTE_SUCCESS != (rc = orte_iof.init())) {
-            ORTE_ERROR_LOG(rc);
-            return rc;
-        }
-    }
 
-    return ORTE_SUCCESS;
+cleanup:
+    return exit_status;
+    
 }
 

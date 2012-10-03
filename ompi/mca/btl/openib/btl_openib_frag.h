@@ -80,9 +80,10 @@ typedef struct mca_btl_openib_header_coalesced_t {
 
 #if OMPI_OPENIB_PAD_HDR
 /* BTL_OPENIB_FTR_PADDING
- * This macro is used to keep the pointer to openib footers aligned for 
- * systems like SPARC64 that take a big performance hit when addresses 
- * are not aligned (and by default sigbus instead of coercing the type on 
+ * This macro is used to keep the pointer to openib
+ * footers aligned for systems like SPARC64 that
+ * take a big performance hit when addresses are not aligned
+ * (and by default sigbus instead of coercing the type on 
  * an unaligned address).
  *
  * We assure alignment of a packet's structures when OMPI_OPENIB_PAD_HDR 
@@ -284,15 +285,10 @@ typedef enum mca_btl_openib_frag_type_t mca_btl_openib_frag_type_t;
  * IB fragment derived type.
  */
 
-typedef struct mca_btl_openib_segment_t {
-    mca_btl_base_segment_t base;
-    uint32_t key;
-} mca_btl_openib_segment_t;
-
 /* base openib frag */
 typedef struct mca_btl_openib_frag_t {
     mca_btl_base_descriptor_t base;
-    mca_btl_openib_segment_t segment;
+    mca_btl_base_segment_t segment;
     mca_btl_openib_frag_type_t type;
     ompi_free_list_t* list;
 } mca_btl_openib_frag_t;

@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2011 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2008      The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
@@ -95,15 +95,15 @@ ELSE(OMPI_ENABLE_MPI_PROFILING)
 ENDIF(OMPI_ENABLE_MPI_PROFILING)
 
 
-IF(OMPI_WANT_FORTRAN_BINDINGS)
-  # A handful of files in mpi/fortran/base must be included in libmpi, in order to build the
+IF(OMPI_WANT_F77_BINDINGS)
+  # A handful of files in mpi/f77/base must be included in libmpi, in order to build the
   # Fortran 77 glue into libmpi
-  FILE(GLOB OMPI_FORTRAN_BASE_FILES "mpi/fortran/base/*.c")
-  SET_SOURCE_FILES_PROPERTIES(${OMPI_FORTRAN_BASE_FILES} 
-                              PROPERTIES COMPILE_FLAGS "${OMPI_C_DEF_PRE}OMPI_COMPILING_FORTRAN_WRAPPERS=1 ${OMPI_C_DEF_PRE}OMPI_PROFILE_LAYER=0")
-  SET(OMPI_SOURCE_FILES ${OMPI_SOURCE_FILES} ${OMPI_FORTRAN_BASE_FILES})
-  SOURCE_GROUP(mpi\\fortran\\base FILES ${OMPI_FORTRAN_BASE_FILES})
-ENDIF(OMPI_WANT_FORTRAN_BINDINGS)
+  FILE(GLOB OMPI_F77_BASE_FILES "mpi/f77/base/*.c")
+  SET_SOURCE_FILES_PROPERTIES(${OMPI_F77_BASE_FILES} 
+                              PROPERTIES COMPILE_FLAGS "${OMPI_C_DEF_PRE}OMPI_COMPILING_F77_WRAPPERS=1 ${OMPI_C_DEF_PRE}OMPI_PROFILE_LAYER=0")
+  SET(OMPI_SOURCE_FILES ${OMPI_SOURCE_FILES} ${OMPI_F77_BASE_FILES})
+  SOURCE_GROUP(mpi\\f77\\base FILES ${OMPI_F77_BASE_FILES})
+ENDIF(OMPI_WANT_F77_BINDINGS)
 
 #configure ompi extension components
 INCLUDE (ompi_ext_config)
@@ -115,31 +115,27 @@ SET (OMPI_SOURCE_FILES ${OMPI_SOURCE_FILES} ${MCA_FILES})
 ADD_LIBRARY (libmpi ${OMPI_SOURCE_FILES})
 ADD_DEPENDENCIES(libmpi libopen-rte libopen-pal)
 
-SET_TARGET_PROPERTIES(libmpi PROPERTIES 
-  COMPILE_DEFINITIONS "OMPI_MPIHANDLES_DLL_PREFIX=libompi_dbg_mpihandles;OMPI_MSGQ_DLL_PREFIX=libompi_dbg_msgq;OMPI_BUILDING;OMPI_BUILDING_CXX_BINDINGS_LIBRARY")
+SET_TARGET_PROPERTIES(libmpi PROPERTIES COMPILE_FLAGS 
+                      "${OMPI_C_DEF_PRE}OMPI_MPIHANDLES_DLL_PREFIX=libompi_dbg_mpihandles
+                       ${OMPI_C_DEF_PRE}OMPI_MSGQ_DLL_PREFIX=libompi_dbg_msgq
+                       ${OMPI_C_DEF_PRE}OMPI_BUILDING 
+                       ${OMPI_C_DEF_PRE}OMPI_BUILDING_CXX_BINDINGS_LIBRARY")
 
 # Set compile flags for this target
 IF (BUILD_SHARED_LIBS)
-  SET_TARGET_PROPERTIES(libmpi PROPERTIES 
+  SET_TARGET_PROPERTIES(libmpi PROPERTIES
     COMPILE_DEFINITIONS "_USRDLL;HAVE_CONFIG_H;OMPI_EXPORTS;OPAL_IMPORTS;ORTE_IMPORTS"
     COMPILE_FLAGS "${OMPI_CXX_LAN_FLAG}" PREFIX "" IMPORT_PREFIX "")
-
-  IF(WINDOWS_MINGW)
-    TARGET_LINK_LIBRARIES (libmpi ${OpenMPI_BINARY_DIR}/event${CMAKE_DEBUG_POSTFIX}.lib
-      ${OpenMPI_BINARY_DIR}/hwloc${CMAKE_DEBUG_POSTFIX}.lib
-      libopen-rte Ws2_32.lib shlwapi.lib ${EXTRA_LINK_LIBRARIES})
-  ELSEIF(WINDOWS_VS)
-    TARGET_LINK_LIBRARIES (libmpi ${OpenMPI_BINARY_DIR}/${CMAKE_CFG_INTDIR}/event${CMAKE_DEBUG_POSTFIX}.lib
-      ${OpenMPI_BINARY_DIR}/${CMAKE_CFG_INTDIR}/hwloc${CMAKE_DEBUG_POSTFIX}.lib
-      libopen-rte Ws2_32.lib shlwapi.lib ${EXTRA_LINK_LIBRARIES})
-  ENDIF(WINDOWS_MINGW)
-
+  TARGET_LINK_LIBRARIES (libmpi libopen-rte Ws2_32.lib shlwapi.lib ${EXTRA_LINK_LIBRARIES}) 
 ELSE (BUILD_SHARED_LIBS)
   SET_TARGET_PROPERTIES(libmpi PROPERTIES COMPILE_DEFINITIONS "${OMPI_C_DEF_PRE}_LIB")
 ENDIF(BUILD_SHARED_LIBS)
 
 # generate ompi_config.h
 CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/ompi/include/ompi_config.h.in  ${OpenMPI_BINARY_DIR}/ompi/include/ompi_config.h)
+
+# generate mpi_portable_platform.h
+CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/ompi/include/mpi_portable_platform.h.in  ${OpenMPI_BINARY_DIR}/ompi/include/mpi_portable_platform.h)
 
 # generate version.h
 CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/ompi/include/ompi/version.h.in  ${OpenMPI_BINARY_DIR}/ompi/include/ompi/version.h)
@@ -148,13 +144,16 @@ CONFIGURE_FILE(${OpenMPI_SOURCE_DIR}/ompi/include/ompi/version.h.in  ${OpenMPI_B
 ADD_SUBDIRECTORY(mpi)
 ADD_SUBDIRECTORY(tools)
 
-
+# generating empty config.h
+FILE(WRITE ${PROJECT_BINARY_DIR}/include/config.h
+  " /* config.h.  Generated automatically by CMake. */ ")
+  
 # Install libraries headers, and shared files
 INSTALL(TARGETS libmpi
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
-INSTALL(FILES ${PROJECT_BINARY_DIR}/include/user/mpi.h ${PROJECT_SOURCE_DIR}/include/mpi_portable_platform.h
+INSTALL(FILES ${PROJECT_BINARY_DIR}/include/mpi.h ${PROJECT_BINARY_DIR}/include/mpi_portable_platform.h
   DESTINATION include)
 
 INSTALL(FILES errhandler/help-mpi-errors.txt
@@ -165,14 +164,13 @@ IF (OMPI_DEBUG_BUILD AND WINDOWS_VS)
     DESTINATION bin)
 ENDIF (OMPI_DEBUG_BUILD AND WINDOWS_VS)
 
-IF(OMPI_WANT_FORTRAN_BINDINGS)
+IF(OMPI_WANT_F77_BINDINGS)
   INSTALL(FILES ${PROJECT_BINARY_DIR}/include/mpif.h
     ${PROJECT_BINARY_DIR}/include/mpif-config.h 
-    ${PROJECT_BINARY_DIR}/include/mpif-common.h
-    ${PROJECT_SOURCE_DIR}/include/mpif-all-common.h
+    ${PROJECT_SOURCE_DIR}/include/mpif-common.h
     ${PROJECT_SOURCE_DIR}/include/mpif-mpi-io.h
     DESTINATION include)
-ENDIF(OMPI_WANT_FORTRAN_BINDINGS)
+ENDIF(OMPI_WANT_F77_BINDINGS)
 
 INSTALL(FILES ${PROJECT_SOURCE_DIR}/runtime/help-mpi-runtime.txt ${PROJECT_SOURCE_DIR}/mpi/help-mpi-api.txt
   DESTINATION share/openmpi)

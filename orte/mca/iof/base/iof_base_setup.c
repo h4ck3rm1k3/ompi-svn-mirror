@@ -57,11 +57,8 @@
 
 #include "opal/util/opal_pty.h"
 #include "opal/util/opal_environ.h"
-#include "opal/util/output.h"
 
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/util/name_fns.h"
-#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/iof_base_setup.h"
@@ -189,14 +186,12 @@ orte_iof_base_setup_child(orte_iof_base_io_conf_t *opts, char ***env)
         close(opts->p_stderr[1]);
     }
 
-    if (!orte_map_stddiag_to_stderr) {
-        /* Set an environment variable that the new child process can use
-           to get the fd of the pipe connected to the INTERNAL IOF tag. */
-        asprintf(&str, "%d", opts->p_internal[1]);
-        if (NULL != str) {
-            opal_setenv("OPAL_OUTPUT_STDERR_FD", str, true, env);
-            free(str);
-        }
+    /* Set an environment variable that the new child process can use
+       to get the fd of the pipe connected to the INTERNAL IOF tag. */
+    asprintf(&str, "%d", opts->p_internal[1]);
+    if (NULL != str) {
+        opal_setenv("OPAL_OUTPUT_STDERR_FD", str, true, env);
+        free(str);
     }
 
     return ORTE_SUCCESS;

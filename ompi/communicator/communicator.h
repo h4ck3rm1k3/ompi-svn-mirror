@@ -3,14 +3,14 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2010 University of Houston.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
  * $COPYRIGHT$
@@ -31,6 +31,7 @@
 #include "mpi.h"
 #include "ompi/group/group.h"
 #include "ompi/mca/coll/coll.h"
+#include "orte/mca/rml/rml_types.h"
 #include "ompi/proc/proc.h"
 
 BEGIN_C_DECLS
@@ -239,14 +240,6 @@ OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_world;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_self;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_null;
 
-/*
- * These variables are for the MPI F03 bindings (F03 must bind Fortran
- * varaiables to symbols; it cannot bind Fortran variables to the
- * address of a C variable).
- */
-OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_world_addr;
-OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_self_addr;
-OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_null_addr;
 
 
 /**
@@ -387,21 +380,6 @@ OMPI_DECLSPEC int ompi_comm_split (ompi_communicator_t *comm, int color, int key
                                    ompi_communicator_t** newcomm, bool pass_on_topo);
 
 /**
- * split a communicator based on type and key. Parameters
- * are identical to the MPI-counterpart of the function.
- *
- * @param comm: input communicator
- * @param color
- * @param key
- *
- * @
- */
-OMPI_DECLSPEC int ompi_comm_split_type(ompi_communicator_t *comm, 
-                                       int split_type, int key,
-                                       struct ompi_info_t *info,
-                                       ompi_communicator_t** newcomm);
-
-/**
  * dup a communicator. Parameter are identical to the MPI-counterpart
  * of the function. It has been extracted, since we need to be able
  * to dup a communicator internally as well.
@@ -492,7 +470,7 @@ struct ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
                                             ompi_communicator_t *bridge_comm,
                                             int local_leader,
                                             int remote_leader,
-                                            int tag,
+                                            orte_rml_tag_t tag,
                                             int rsize);
 
 /**

@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -34,7 +34,7 @@
 #include "opal/class/opal_pointer_array.h"
 
 #include "ompi/class/ompi_free_list.h"
-#include "ompi/mca/mpool/grdma/mpool_grdma.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 #include "ompi/mca/dpm/dpm.h"
 
 #include "ompi/mca/btl/base/btl_base_error.h"
@@ -116,16 +116,16 @@ int mca_btl_udapl_endpoint_write_eager(mca_btl_base_endpoint_t* endpoint,
     MCA_BTL_UDAPL_RDMA_NEXT_INDEX(endpoint->endpoint_eager_rdma_remote.head);
     
     MCA_BTL_UDAPL_FRAG_CALC_ALIGNMENT_PAD(pad,
-        (frag->segment.base.seg_len + sizeof(mca_btl_udapl_footer_t)));
+        (frag->segment.seg_len + sizeof(mca_btl_udapl_footer_t)));
     
     /* set the rdma footer information */
     frag->rdma_ftr = (mca_btl_udapl_rdma_footer_t *)
-        ((char *)frag->segment.base.seg_addr.pval +
-        frag->segment.base.seg_len +
+        ((char *)frag->segment.seg_addr.pval +
+        frag->segment.seg_len +
         sizeof(mca_btl_udapl_footer_t) +
         pad);
     frag->rdma_ftr->active = 1;
-    frag->rdma_ftr->size = frag->segment.base.seg_len; /* this is size PML wants;
+    frag->rdma_ftr->size = frag->segment.seg_len; /* this is size PML wants;
                                                    * will have to calc
                                                    * alignment
                                                    * at the other end
@@ -133,7 +133,7 @@ int mca_btl_udapl_endpoint_write_eager(mca_btl_base_endpoint_t* endpoint,
 
     /* prep the fragment to be written out */
     frag->type = MCA_BTL_UDAPL_RDMA_WRITE;
-    frag->triplet.segment_length = frag->segment.base.seg_len +
+    frag->triplet.segment_length = frag->segment.seg_len +
         sizeof(mca_btl_udapl_footer_t) +
         pad +
         sizeof(mca_btl_udapl_rdma_footer_t);
@@ -187,7 +187,7 @@ int mca_btl_udapl_endpoint_send(mca_btl_base_endpoint_t* endpoint,
     
     /* Fix up the segment length before we do anything with the frag */
     frag->triplet.segment_length =
-            frag->segment.base.seg_len + sizeof(mca_btl_udapl_footer_t);
+            frag->segment.seg_len + sizeof(mca_btl_udapl_footer_t);
 
     OPAL_THREAD_LOCK(&endpoint->endpoint_lock);
     switch(endpoint->endpoint_state) {
@@ -524,26 +524,26 @@ static int mca_btl_udapl_start_connect(mca_btl_base_endpoint_t* endpoint)
 
     if(NULL == buf) {
         ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-        return OMPI_ERR_OUT_OF_RESOURCE;
+        return ORTE_ERR_OUT_OF_RESOURCE;
     }
 
     OPAL_THREAD_ADD32(&(endpoint->endpoint_btl->udapl_connect_inprogress), 1);
 
     /* Pack our address information */
     rc = opal_dss.pack(buf, &addr->port, 1, OPAL_UINT64);
-    if(OPAL_SUCCESS != rc) {
+    if(ORTE_SUCCESS != rc) {
         ORTE_ERROR_LOG(rc);
         return rc;
     }
 
     rc = opal_dss.pack(buf, &addr->addr, sizeof(DAT_SOCK_ADDR), OPAL_UINT8);
-    if(OPAL_SUCCESS != rc) {
+    if(ORTE_SUCCESS != rc) {
         ORTE_ERROR_LOG(rc);
         return rc;
     }
 
     /* Send the buffer */
-    rc = orte_rml.send_buffer_nb(&endpoint->endpoint_proc->proc_ompi->proc_name, buf,
+    rc = orte_rml.send_buffer_nb(&endpoint->endpoint_proc->proc_guid, buf,
             OMPI_RML_TAG_UDAPL, 0, mca_btl_udapl_endpoint_send_cb, NULL);
     if(0 > rc) {
         ORTE_ERROR_LOG(rc);
@@ -567,14 +567,14 @@ void mca_btl_udapl_endpoint_recv(int status, orte_process_name_t* endpoint,
 
     /* Unpack data */
     rc = opal_dss.unpack(buffer, &addr.port, &cnt, OPAL_UINT64);
-    if(OPAL_SUCCESS != rc) {
+    if(ORTE_SUCCESS != rc) {
         ORTE_ERROR_LOG(rc);
         return;
     }
 
     cnt = sizeof(mca_btl_udapl_addr_t);
     rc = opal_dss.unpack(buffer, &addr.addr, &cnt, OPAL_UINT8);
-    if(OPAL_SUCCESS != rc) {
+    if(ORTE_SUCCESS != rc) {
         ORTE_ERROR_LOG(rc);
         return;
     }
@@ -587,7 +587,7 @@ void mca_btl_udapl_endpoint_recv(int status, orte_process_name_t* endpoint,
                 opal_list_get_end(&mca_btl_udapl_component.udapl_procs);
             proc  = (mca_btl_udapl_proc_t*)opal_list_get_next(proc)) {
 
-        if(OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &proc->proc_ompi->proc_name, endpoint)) {
+        if(OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &proc->proc_guid, endpoint)) {
             for(i = 0; i < proc->proc_endpoint_count; i++) {
                 ep = proc->proc_endpoints[i];
 
@@ -632,7 +632,7 @@ void mca_btl_udapl_endpoint_connect(mca_btl_udapl_endpoint_t* endpoint)
     /* This right here is the whole point of using the ORTE/RML handshake */
     if((MCA_BTL_UDAPL_CONN_EAGER == endpoint->endpoint_state &&
             0 > orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
-                    &endpoint->endpoint_proc->proc_ompi->proc_name,
+                    &endpoint->endpoint_proc->proc_guid,
                     &ompi_proc_local()->proc_name)) ||
             (MCA_BTL_UDAPL_CLOSED != endpoint->endpoint_state &&
              MCA_BTL_UDAPL_CONN_EAGER != endpoint->endpoint_state)) {
@@ -783,7 +783,7 @@ static int mca_btl_udapl_endpoint_finish_eager(
 
     /* Only one side does dat_ep_connect() */
     if(0 < orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
-                &endpoint->endpoint_proc->proc_ompi->proc_name,
+                &endpoint->endpoint_proc->proc_guid,
                 &ompi_proc_local()->proc_name)) {
     
         rc = mca_btl_udapl_endpoint_create(btl, &endpoint->endpoint_max);
@@ -971,7 +971,7 @@ static int mca_btl_udapl_endpoint_pd_finish_eager(
      */
     if((BTL_UDAPL_NUM_CONNECTION != endpoint->endpoint_connections_completed)
         && (0 < orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
-                &endpoint->endpoint_proc->proc_ompi->proc_name,
+                &endpoint->endpoint_proc->proc_guid,
                 &ompi_proc_local()->proc_name))) {
     
         rc = mca_btl_udapl_endpoint_create(btl, &endpoint->endpoint_max);
@@ -1182,12 +1182,12 @@ static int mca_btl_udapl_endpoint_post_recv(mca_btl_udapl_endpoint_t* endpoint,
         /* Set up the LMR triplet from the frag segment */
         /* Note that this triplet defines a sub-region of a registered LMR */
         frag->triplet.virtual_address =
-            (DAT_VADDR)(uintptr_t)frag->segment.base.seg_addr.pval;
+            (DAT_VADDR)(uintptr_t)frag->segment.seg_addr.pval;
         frag->triplet.segment_length = frag->size;
     
         frag->btl = endpoint->endpoint_btl;
         frag->endpoint = endpoint;
-        frag->base.des_dst = &frag->segment.base;
+        frag->base.des_dst = &frag->segment;
         frag->base.des_dst_cnt = 1;
         frag->base.des_src = NULL;
         frag->base.des_src_cnt = 0;
@@ -1348,19 +1348,19 @@ static mca_btl_base_descriptor_t* mca_btl_udapl_endpoint_initialize_control_mess
     MCA_BTL_UDAPL_FRAG_ALLOC_CONTROL(udapl_btl, frag, rc); 
 
     /* Set up the LMR triplet from the frag segment */
-    frag->segment.base.seg_len = (uint32_t)size;
+    frag->segment.seg_len = (uint32_t)size;
     frag->triplet.virtual_address =
-        (DAT_VADDR)(uintptr_t)frag->segment.base.seg_addr.pval;
+        (DAT_VADDR)(uintptr_t)frag->segment.seg_addr.pval;
 
     /* assume send/recv as default when computing segment_length */
     frag->triplet.segment_length =
-        frag->segment.base.seg_len + sizeof(mca_btl_udapl_footer_t);
+        frag->segment.seg_len + sizeof(mca_btl_udapl_footer_t);
 
     assert(frag->triplet.lmr_context ==
         ((mca_btl_udapl_reg_t*)frag->registration)->lmr_triplet.lmr_context);
     
     frag->btl = udapl_btl;
-    frag->base.des_src = &frag->segment.base;
+    frag->base.des_src = &frag->segment;
     frag->base.des_src_cnt = 1;
     frag->base.des_dst = NULL;
     frag->base.des_dst_cnt = 0;
@@ -1385,7 +1385,7 @@ static int mca_btl_udapl_endpoint_send_eager_rdma(
 {
     mca_btl_udapl_eager_rdma_connect_t* rdma_connect;
     mca_btl_base_descriptor_t* des;    
-    mca_btl_udapl_segment_t* segment;
+    mca_btl_base_segment_t* segment;
     mca_btl_udapl_frag_t* data_frag;
     mca_btl_udapl_frag_t* local_frag = (mca_btl_udapl_frag_t*)endpoint->endpoint_eager_rdma_local.base.pval;
     mca_btl_udapl_module_t* udapl_btl = endpoint->endpoint_btl;
@@ -1402,7 +1402,7 @@ static int mca_btl_udapl_endpoint_send_eager_rdma(
     /* fill in data */
     segment = des->des_src;
     rdma_connect =
-        (mca_btl_udapl_eager_rdma_connect_t*)segment->base.seg_addr.pval;    
+        (mca_btl_udapl_eager_rdma_connect_t*)segment->seg_addr.pval;    
     rdma_connect->control.type =
         MCA_BTL_UDAPL_CONTROL_RDMA_CONNECT;
     rdma_connect->rkey =
@@ -1414,8 +1414,8 @@ static int mca_btl_udapl_endpoint_send_eager_rdma(
     data_frag = (mca_btl_udapl_frag_t*)des;
     data_frag->endpoint = endpoint;
     data_frag->ftr = (mca_btl_udapl_footer_t *)
-        ((char *)data_frag->segment.base.seg_addr.pval +
-            data_frag->segment.base.seg_len);
+        ((char *)data_frag->segment.seg_addr.pval +
+            data_frag->segment.seg_len);
     data_frag->ftr->tag = MCA_BTL_TAG_UDAPL;
     data_frag->type = MCA_BTL_UDAPL_SEND;
 
@@ -1439,7 +1439,7 @@ static int mca_btl_udapl_endpoint_send_eager_rdma(
  * pointer to the first fragment structure is held here:
  * endpoint->endpoint_eager_rdma_local.base.pval. Each of these
  * fragment structures will contain a pointer,
- * frag->segment.base.seg_addr.pval set during a call to OBJ_CONSTRUCT(),
+ * frag->segment.seg_addr.pval set during a call to OBJ_CONSTRUCT(),
  * to its associated data region. The data region for all fragments
  * will be contiguous and created by accessing the mpool.
  *
@@ -1508,7 +1508,7 @@ void mca_btl_udapl_endpoint_connect_eager_rdma(
 
          local_rdma_frag = ((mca_btl_udapl_frag_eager_rdma_t*)item);
 
-         local_rdma_frag->base.des_dst = &local_rdma_frag->segment.base;
+         local_rdma_frag->base.des_dst = &local_rdma_frag->segment;
          local_rdma_frag->base.des_dst_cnt = 1;
          local_rdma_frag->base.des_src = NULL;
          local_rdma_frag->base.des_src_cnt = 0;
@@ -1572,7 +1572,7 @@ int mca_btl_udapl_endpoint_send_eager_rdma_credits(
 {
     mca_btl_udapl_eager_rdma_credit_t *rdma_credit;
     mca_btl_base_descriptor_t* des;
-    mca_btl_udapl_segment_t* segment;
+    mca_btl_base_segment_t* segment;
     DAT_DTO_COOKIE cookie;
     mca_btl_udapl_frag_t* frag;
     mca_btl_udapl_module_t* udapl_btl = endpoint->endpoint_btl;
@@ -1584,7 +1584,7 @@ int mca_btl_udapl_endpoint_send_eager_rdma_credits(
 
     /* fill in data */
     segment = des->des_src;
-    rdma_credit = (mca_btl_udapl_eager_rdma_credit_t*)segment->base.seg_addr.pval;
+    rdma_credit = (mca_btl_udapl_eager_rdma_credit_t*)segment->seg_addr.pval;
     rdma_credit->control.type = MCA_BTL_UDAPL_CONTROL_RDMA_CREDIT;
     rdma_credit->credits = endpoint->endpoint_eager_rdma_local.credits;
 
@@ -1599,7 +1599,7 @@ int mca_btl_udapl_endpoint_send_eager_rdma_credits(
     frag = (mca_btl_udapl_frag_t*)des;
     frag->endpoint = endpoint;
     frag->ftr = (mca_btl_udapl_footer_t *)
-        ((char *)frag->segment.base.seg_addr.pval + frag->segment.base.seg_len);
+        ((char *)frag->segment.seg_addr.pval + frag->segment.seg_len);
     frag->ftr->tag = MCA_BTL_TAG_UDAPL;
     frag->type = MCA_BTL_UDAPL_SEND;
     cookie.as_ptr = frag;
@@ -1640,7 +1640,7 @@ int mca_btl_udapl_endpoint_send_sr_credits(
 {
     mca_btl_udapl_sr_credit_t *sr_credit;
     mca_btl_base_descriptor_t* des;
-    mca_btl_udapl_segment_t* segment;
+    mca_btl_base_segment_t* segment;
     DAT_DTO_COOKIE cookie;
     mca_btl_udapl_frag_t* frag;
     mca_btl_udapl_module_t* udapl_btl = endpoint->endpoint_btl;
@@ -1652,7 +1652,7 @@ int mca_btl_udapl_endpoint_send_sr_credits(
 
     /* fill in data */
     segment = des->des_src;
-    sr_credit = (mca_btl_udapl_sr_credit_t*)segment->base.seg_addr.pval;
+    sr_credit = (mca_btl_udapl_sr_credit_t*)segment->seg_addr.pval;
     sr_credit->control.type = MCA_BTL_UDAPL_CONTROL_SR_CREDIT;
     OPAL_THREAD_LOCK(&endpoint->endpoint_lock);
     sr_credit->credits = endpoint->endpoint_sr_credits[connection];
@@ -1668,7 +1668,7 @@ int mca_btl_udapl_endpoint_send_sr_credits(
     frag = (mca_btl_udapl_frag_t*)des;
     frag->endpoint = endpoint;
     frag->ftr = (mca_btl_udapl_footer_t *)
-        ((char *)frag->segment.base.seg_addr.pval + frag->segment.base.seg_len);
+        ((char *)frag->segment.seg_addr.pval + frag->segment.seg_len);
     frag->ftr->tag = MCA_BTL_TAG_UDAPL;
     frag->type = MCA_BTL_UDAPL_SEND;
     cookie.as_ptr = frag;

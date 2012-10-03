@@ -22,10 +22,10 @@
 #include "ompi_config.h"
 
 #include "orte/util/show_help.h"
-#include "orte/util/proc_info.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "orte/mca/ess/ess.h"
 #include "ompi/proc/proc.h"
 
 #include "mtl_psm.h"
@@ -176,53 +176,42 @@ ompi_mtl_psm_component_close(void)
     return OMPI_SUCCESS;
 }
 
-static int
-get_num_local_procs(int *out_nlp)
-{
-    /* num_local_peers does not include us in
-     * its calculation, so adjust for that */
-    *out_nlp = (int)(1 + orte_process_info.num_local_peers);
-    return OMPI_SUCCESS;
-}
 
-static int
-get_local_rank(int *out_rank)
-{
-    orte_node_rank_t my_node_rank;
-
-    *out_rank = 0;
-
-    if (ORTE_NODE_RANK_INVALID == (my_node_rank =
-        orte_process_info.my_node_rank)) {
-        return OMPI_ERROR;
-    }
-    *out_rank = (int)my_node_rank;
-    return OMPI_SUCCESS;
-}
-
-static mca_mtl_base_module_t *
+static mca_mtl_base_module_t*
 ompi_mtl_psm_component_init(bool enable_progress_threads,
-                            bool enable_mpi_threads)
+                           bool enable_mpi_threads)
 {
     psm_error_t	err;
     int	verno_major = PSM_VERNO_MAJOR;
     int verno_minor = PSM_VERNO_MINOR;
-    int local_rank = -1, num_local_procs = 0;
+    ompi_proc_t *my_proc, **procs;
+    size_t num_total_procs, proc;
+    orte_node_rank_t orte_node_rank;
+    int local_rank = 0, num_local_procs = 0;
+    
+    my_proc = ompi_proc_local();
 
-    /* Compute the total number of processes on this host and our local rank
-     * on that node. We need to provide PSM with these values so it can 
-     * allocate hardware contexts appropriately across processes.
-     */
-    if (OMPI_SUCCESS != get_num_local_procs(&num_local_procs)) {
-        opal_output(0, "Cannot determine number of local processes. "
-                    "Cannot continue.\n");
+    if (NULL == (procs = ompi_proc_world(&num_total_procs))) {
         return NULL;
     }
-    if (OMPI_SUCCESS != get_local_rank(&local_rank)) {
-        opal_output(0, "Cannot determine local rank. Cannot continue.\n");
+    if (ORTE_NODE_RANK_INVALID ==
+        (orte_node_rank = orte_ess.get_node_rank(&my_proc->proc_name))) {
+        /* the active ess component doesn't support this type of thing */
+        free(procs);
         return NULL;
     }
-     
+    local_rank = (int)orte_node_rank;
+
+    for (proc = 0; proc < num_total_procs; proc++) {
+        if (OPAL_PROC_ON_LOCAL_NODE(
+                orte_ess.proc_get_locality(&procs[proc]->proc_name))) {
+            num_local_procs++;
+        }
+    }
+
+    assert(local_rank >= 0 && num_local_procs > 0);
+    free(procs);
+    
     err = psm_error_register_handler(NULL /* no ep */,
 			             PSM_ERRHANDLER_NOP);
     if (err) {

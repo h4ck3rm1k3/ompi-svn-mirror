@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2011 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
@@ -10,11 +10,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire. All rights reserved.
- * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Los Alamos National Security, LLC.  
- *                         All rights reserved. 
- * Copyright (c) 2010-2012 IBM Corporation.  All rights reserved.
- * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,36 +22,36 @@
 
 #include "ompi_config.h"
 
+#include <string.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#ifdef HAVE_FCNTL_H
 #include <fcntl.h>
-#endif  /* HAVE_FCNTL_H */
 #include <errno.h>
-#ifdef HAVE_SYS_MMAN_H
-#include <sys/mman.h>
-#endif  /* HAVE_SYS_MMAN_H */
-
-#ifdef OMPI_BTL_SM_CMA_NEED_SYSCALL_DEFS
-#include "opal/sys/cma.h"
-#endif /* OMPI_BTL_SM_CMA_NEED_SYSCALL_DEFS */
 
 #include "opal/sys/atomic.h"
 #include "opal/class/opal_bitmap.h"
 #include "opal/util/output.h"
 #include "opal/util/printf.h"
-#include "opal/mca/hwloc/base/base.h"
+#include "opal/mca/carto/carto.h"
+#include "opal/mca/carto/base/base.h"
+#include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/maffinity/base/base.h"
 #include "orte/util/proc_info.h"
 #include "opal/datatype/opal_convertor.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/mpool/base/base.h"
+#include "ompi/mca/common/sm/common_sm.h"
 #include "ompi/mca/mpool/sm/mpool_sm.h"
+
+#if OMPI_BTL_SM_HAVE_KNEM
+#include <knem_io.h>
+#endif
 
 #if OPAL_ENABLE_FT_CR    == 1
 #include "opal/mca/crs/base/base.h"
 #include "opal/util/basename.h"
-#include "orte/mca/sstore/sstore.h"
 #include "ompi/runtime/ompi_cr.h"
 #endif
 
@@ -76,7 +74,6 @@ mca_btl_sm_t mca_btl_sm = {
         0, /* btl_latency */
         0, /* btl_bandwidth */
         0, /* btl flags */
-        0, /* btl segment size */
         mca_btl_sm_add_procs,
         mca_btl_sm_del_procs,
         NULL,
@@ -84,16 +81,16 @@ mca_btl_sm_t mca_btl_sm = {
         mca_btl_sm_alloc,
         mca_btl_sm_free,
         mca_btl_sm_prepare_src,
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
+#if OMPI_BTL_SM_HAVE_KNEM
         mca_btl_sm_prepare_dst,
 #else
         NULL,
-#endif  /* OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA */
+#endif  /* OMPI_BTL_SM_HAVE_KNEM */
         mca_btl_sm_send,
         mca_btl_sm_sendi,
         NULL,  /* put */
         NULL,  /* get -- optionally filled during initialization */
-        mca_btl_sm_dump,
+        mca_btl_base_dump,
         NULL, /* mpool */
         mca_btl_sm_register_error_cb, /* register error */
         mca_btl_sm_ft_event
@@ -127,116 +124,133 @@ static void *mpool_calloc(size_t nmemb, size_t size)
     return buf;
 }
 
+static void init_maffinity(int *my_mem_node, int *max_mem_node)
+{
+    opal_carto_graph_t *topo;
+    opal_value_array_t dists;
+    int i, num_core, socket;
+    opal_paffinity_base_cpu_set_t cpus;
+    char *myslot = NULL;
+    opal_carto_node_distance_t *dist;
+    opal_carto_base_node_t *slot_node;
+
+    *my_mem_node = 0;
+    *max_mem_node = 1;
+
+    if (OMPI_SUCCESS != opal_carto_base_get_host_graph(&topo, "Memory")) {
+        return;
+    }
+
+     OBJ_CONSTRUCT(&dists, opal_value_array_t);
+     opal_value_array_init(&dists, sizeof(opal_carto_node_distance_t));
+
+    if (OMPI_SUCCESS != opal_paffinity_base_get_processor_info(&num_core))  {
+        num_core = 100;  /* set something large */
+    }
+
+     OPAL_PAFFINITY_CPU_ZERO(cpus);
+     opal_paffinity_base_get(&cpus);
+
+     /* find core we are running on */
+     for (i = 0; i < num_core; i++) {
+         if (OPAL_PAFFINITY_CPU_ISSET(i, cpus)) {
+             break;
+         }
+     }
+
+    if (OMPI_SUCCESS != opal_paffinity_base_get_map_to_socket_core(i, &socket, &i)) {
+        /* no topology info available */
+        goto out;
+    }
+    
+     asprintf(&myslot, "slot%d", socket);
+
+     slot_node = opal_carto_base_find_node(topo, myslot);
+
+     if(NULL == slot_node) {
+         goto out;
+     }
+
+     opal_carto_base_get_nodes_distance(topo, slot_node, "Memory", &dists);
+     if((*max_mem_node = opal_value_array_get_size(&dists)) < 2) {
+         goto out;
+     }
+
+     dist = (opal_carto_node_distance_t *) opal_value_array_get_item(&dists, 0);
+     opal_maffinity_base_node_name_to_id(dist->node->node_name, my_mem_node);
+out:
+     if (myslot) {
+         free(myslot);
+     }
+     OBJ_DESTRUCT(&dists);
+     opal_carto_base_free_graph(topo);
+}
 
 static int sm_btl_first_time_init(mca_btl_sm_t *sm_btl, int n)
 {
     size_t size, length, length_payload;
     char *sm_ctl_file;
     sm_fifo_t *my_fifos;
-    int my_mem_node, num_mem_nodes, i;
+    int my_mem_node=-1, num_mem_nodes=-1, i;
     ompi_proc_t **procs;
     size_t num_procs;
-    mca_mpool_base_resources_t res;
-    mca_btl_sm_component_t* m = &mca_btl_sm_component;
 
-    /* Assume we don't have hwloc support and fill in dummy info */
-    mca_btl_sm_component.mem_node = my_mem_node = 0;
-    mca_btl_sm_component.num_mem_nodes = num_mem_nodes = 1;
-
-#if OPAL_HAVE_HWLOC
-    /* If we have hwloc support, then get accurate information */
-    if (NULL != opal_hwloc_topology) {
-        i = opal_hwloc_base_get_nbobjs_by_type(opal_hwloc_topology,
-                                               HWLOC_OBJ_NODE, 0,
-                                               OPAL_HWLOC_AVAILABLE);
-
-        /* If we find >0 NUMA nodes, then investigate further */
-        if (i > 0) {
-            opal_hwloc_level_t bind_level;
-            unsigned int bind_index;
-
-            /* JMS This tells me how many numa nodes are *available*,
-               but it's not how many are being used *by this job*.
-               Note that this is the value we've previously used (from
-               the previous carto-based implementation), but it really
-               should be improved to be how many NUMA nodes are being
-               used *in this job*. */
-            mca_btl_sm_component.num_mem_nodes = num_mem_nodes = i;
-
-            /* Fill opal_hwloc_my_cpuset and find out to what level
-               this process is bound (if at all) */
-            opal_hwloc_base_get_local_cpuset();
-            opal_hwloc_base_get_level_and_index(opal_hwloc_my_cpuset,
-                                                &bind_level, &bind_index);
-            if (OPAL_HWLOC_NODE_LEVEL != bind_level) {
-                /* We are bound to *something* (i.e., our binding
-                   level is less than "node", meaning the entire
-                   machine), so discover which NUMA node this process
-                   is bound */
-                if (OPAL_HWLOC_NUMA_LEVEL == bind_level) {
-                    mca_btl_sm_component.mem_node = my_mem_node = (int) bind_index;
-                } else {
-                    if (OPAL_SUCCESS == 
-                        opal_hwloc_base_get_local_index(HWLOC_OBJ_NODE, 0, &bind_index)) {
-                        mca_btl_sm_component.mem_node = my_mem_node = (int) bind_index;
-                    } else {
-                        /* Weird.  We can't figure out what NUMA node
-                           we're on. :-( */
-                        mca_btl_sm_component.mem_node = my_mem_node = -1;
-                    }
-                }
-            }
-        }
-    }
-#endif
+    init_maffinity(&my_mem_node, &num_mem_nodes);
+    mca_btl_sm_component.mem_node = my_mem_node;
+    mca_btl_sm_component.num_mem_nodes = num_mem_nodes;
 
     /* lookup shared memory pool */
     mca_btl_sm_component.sm_mpools = (mca_mpool_base_module_t **) calloc(num_mem_nodes,
                                             sizeof(mca_mpool_base_module_t*));
 
-    /* Disable memory binding, because each MPI process will claim
-       pages in the mpool for their local NUMA node */
-    res.mem_node = -1;
+    /* create mpool for each memory node */
+    for(i = 0; i < num_mem_nodes; i++) {
+        mca_mpool_base_resources_t res;
+        mca_btl_sm_component_t* m = &mca_btl_sm_component;
 
-    /* determine how much memory to create */
-    /*
-     * This heuristic formula mostly says that we request memory for:
-     * - nfifos FIFOs, each comprising:
-     *   . a sm_fifo_t structure
-     *   . many pointers (fifo_size of them per FIFO)
-     * - eager fragments (2*n of them, allocated in sm_free_list_inc chunks)
-     * - max fragments (sm_free_list_num of them)
-     *
-     * On top of all that, we sprinkle in some number of
-     * "opal_cache_line_size" additions to account for some
-     * padding and edge effects that may lie in the allocator.
-     */
-    res.size =
-        FIFO_MAP_NUM(n) * ( sizeof(sm_fifo_t) + sizeof(void *) * m->fifo_size + 4 * opal_cache_line_size )
-        + ( 2 * n + m->sm_free_list_inc ) * ( m->eager_limit   + 2 * opal_cache_line_size )
-        +           m->sm_free_list_num   * ( m->max_frag_size + 2 * opal_cache_line_size );
+        /* disable memory binding if there is only one memory node */
+        res.mem_node = (num_mem_nodes == 1) ? -1 : i;
 
-    /* before we multiply by n, make sure the result won't overflow */
-    /* Stick that little pad in, particularly since we'll eventually
-     * need a little extra space.  E.g., in mca_mpool_sm_init() in
-     * mpool_sm_component.c when sizeof(mca_common_sm_module_t) is
-     * added.
-     */
-    if ( ((double) res.size) * n > LONG_MAX - 4096 ) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
-    res.size *= n;
-    
-    /* now, create it */
-    mca_btl_sm_component.sm_mpools[0] =
-        mca_mpool_base_module_create(mca_btl_sm_component.sm_mpool_name,
-                                     sm_btl, &res);
-    /* Sanity check to ensure that we found it */
-    if (NULL == mca_btl_sm_component.sm_mpools[0]) {
+        /* determine how much memory to create */
+        /*
+         * This heuristic formula mostly says that we request memory for:
+         * - nfifos FIFOs, each comprising:
+         *   . a sm_fifo_t structure
+         *   . many pointers (fifo_size of them per FIFO)
+         * - eager fragments (2*n of them, allocated in sm_free_list_inc chunks)
+         * - max fragments (sm_free_list_num of them)
+         *
+         * On top of all that, we sprinkle in some number of "opal_cache_line_size"
+         * additions to account for some padding and edge effects that may lie
+         * in the allocator.
+         */
+        res.size =
+            FIFO_MAP_NUM(n) * ( sizeof(sm_fifo_t) + sizeof(void *) * m->fifo_size + 4 * opal_cache_line_size )
+            + ( 2 * n + m->sm_free_list_inc ) * ( m->eager_limit   + 2 * opal_cache_line_size )
+            +           m->sm_free_list_num   * ( m->max_frag_size + 2 * opal_cache_line_size );
+
+        /* before we multiply by n, make sure the result won't overflow */
+        /* Stick that little pad in, particularly since we'll eventually
+         * need a little extra space.  E.g., in mca_mpool_sm_init() in
+         * mpool_sm_component.c when sizeof(mca_common_sm_mmap_t) is
+         * added.
+         */
+        if ( ((double) res.size) * n > LONG_MAX - 4096 )
             return OMPI_ERR_OUT_OF_RESOURCE;
+        res.size *= n;
+
+        /* now, create it */
+        mca_btl_sm_component.sm_mpools[i] =
+            mca_mpool_base_module_create(mca_btl_sm_component.sm_mpool_name,
+                                         sm_btl, &res);
+        /* Sanity check to ensure that we found it */
+        if(NULL == mca_btl_sm_component.sm_mpools[i])
+            return OMPI_ERR_OUT_OF_RESOURCE;
+
+        if(i == my_mem_node)
+            mca_btl_sm_component.sm_mpool = mca_btl_sm_component.sm_mpools[i];
     }
 
-    mca_btl_sm_component.sm_mpool = mca_btl_sm_component.sm_mpools[0];
 
     mca_btl_sm_component.sm_mpool_base =
         mca_btl_sm_component.sm_mpools[0]->mpool_base(mca_btl_sm_component.sm_mpools[0]);
@@ -244,19 +258,17 @@ static int sm_btl_first_time_init(mca_btl_sm_t *sm_btl, int n)
     /* create a list of peers */
     mca_btl_sm_component.sm_peers = (struct mca_btl_base_endpoint_t**)
         calloc(n, sizeof(struct mca_btl_base_endpoint_t*));
-    if (NULL == mca_btl_sm_component.sm_peers) {
+    if(NULL == mca_btl_sm_component.sm_peers)
         return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     /* Allocate Shared Memory BTL process coordination
      * data structure.  This will reside in shared memory */
 
     /* set file name */
-    if (asprintf(&sm_ctl_file, "%s"OPAL_PATH_SEP"shared_mem_btl_module.%s",
-                 orte_process_info.job_session_dir,
-                 orte_process_info.nodename) < 0) {
+    if(asprintf(&sm_ctl_file, "%s"OPAL_PATH_SEP"shared_mem_btl_module.%s",
+                orte_process_info.job_session_dir,
+                orte_process_info.nodename) < 0)
         return OMPI_ERR_OUT_OF_RESOURCE;
-    }
 
     /* Pass in a data segment alignment of 0 to get no data
        segment (only the shared control structure) */
@@ -374,7 +386,7 @@ static struct mca_btl_base_endpoint_t *
 create_sm_endpoint(int local_proc, struct ompi_proc_t *proc)
 {
     struct mca_btl_base_endpoint_t *ep;
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     char path[PATH_MAX];
 #endif
 
@@ -386,7 +398,7 @@ create_sm_endpoint(int local_proc, struct ompi_proc_t *proc)
 
     OBJ_CONSTRUCT(&ep->pending_sends, opal_list_t);
     OBJ_CONSTRUCT(&ep->endpoint_lock, opal_mutex_t);
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     sprintf(path, "%s"OPAL_PATH_SEP"sm_fifo.%lu",
             orte_process_info.job_session_dir,
             (unsigned long)proc->proc_name.vpid);
@@ -631,7 +643,7 @@ extern mca_btl_base_descriptor_t* mca_btl_sm_alloc(
     }
 
     if (OPAL_LIKELY(frag != NULL)) {
-        frag->segment.base.seg_len = size;
+        frag->segment.seg_len = size;
         frag->base.des_flags = flags;
     }
     return (mca_btl_base_descriptor_t*)frag;
@@ -674,12 +686,12 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
     uint32_t iov_count = 1;
     size_t max_data = *size;
     int rc;
-
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
+#if OMPI_BTL_SM_HAVE_KNEM
     mca_btl_sm_t* sm_btl = (mca_btl_sm_t*)btl;
+    struct knem_cmd_create_region knem_cr;
+    struct knem_cmd_param_iovec knem_iov;
 
-    if( (0 != reserve) || ( OPAL_UNLIKELY(!mca_btl_sm_component.use_knem)
-                            && OPAL_UNLIKELY(!mca_btl_sm_component.use_cma)) ) {
+    if( (0 != reserve) || (OPAL_UNLIKELY(!mca_btl_sm_component.use_knem)) ) {
 #endif
         if ( reserve + max_data <= mca_btl_sm_component.eager_limit ) {
             MCA_BTL_SM_FRAG_ALLOC_EAGER(frag,rc);
@@ -695,20 +707,17 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
         }
         iov.iov_len = max_data;
         iov.iov_base =
-            (IOVBASE_TYPE*)(((unsigned char*)(frag->segment.base.seg_addr.pval)) + reserve);
+            (IOVBASE_TYPE*)(((unsigned char*)(frag->segment.seg_addr.pval)) +
+                            reserve);
 
         rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
         if( OPAL_UNLIKELY(rc < 0) ) {
             MCA_BTL_SM_FRAG_RETURN(frag);
             return NULL;
         }
-        frag->segment.base.seg_len = reserve + max_data;
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
-    } else {
+        frag->segment.seg_len = reserve + max_data;
 #if OMPI_BTL_SM_HAVE_KNEM
-        struct knem_cmd_create_region knem_cr;
-        struct knem_cmd_param_iovec knem_iov;
-#endif /* OMPI_BTL_SM_HAVE_KNEM */
+    } else {
         MCA_BTL_SM_FRAG_ALLOC_USER(frag, rc);
         if( OPAL_UNLIKELY(NULL == frag) ) {
             return NULL;
@@ -720,34 +729,22 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
             MCA_BTL_SM_FRAG_RETURN(frag);
             return NULL;
         }
-        frag->segment.base.seg_addr.lval = (uint64_t)(uintptr_t) iov.iov_base;
-        frag->segment.base.seg_len = max_data;
+        frag->segment.seg_addr.pval = iov.iov_base;
+        frag->segment.seg_len = max_data;
 
-#if OMPI_BTL_SM_HAVE_KNEM
-        if (OPAL_LIKELY(mca_btl_sm_component.use_knem)) {
-            knem_iov.base = (uintptr_t)iov.iov_base;
-            knem_iov.len = max_data;
-            knem_cr.iovec_array = (uintptr_t)&knem_iov;
-            knem_cr.iovec_nr = iov_count;
-            knem_cr.protection = PROT_READ;
-            knem_cr.flags = KNEM_FLAG_SINGLEUSE;
-            if (OPAL_UNLIKELY(ioctl(sm_btl->knem_fd, KNEM_CMD_CREATE_REGION, &knem_cr) < 0)) {
-                return NULL;
-            }
-            frag->segment.key = knem_cr.cookie;
+        knem_iov.base = (uintptr_t)iov.iov_base;
+        knem_iov.len = max_data;
+        knem_cr.iovec_array = (uintptr_t)&knem_iov;
+        knem_cr.iovec_nr = iov_count;
+        knem_cr.protection = PROT_READ;
+        knem_cr.flags = KNEM_FLAG_SINGLEUSE;
+        if (OPAL_UNLIKELY(ioctl(sm_btl->knem_fd, KNEM_CMD_CREATE_REGION, &knem_cr) < 0)) {
+            return NULL;
         }
-#endif /* OMPI_BTL_SM_HAVE_KNEM */
-
-#if OMPI_BTL_SM_HAVE_CMA
-        if (OPAL_LIKELY(mca_btl_sm_component.use_cma)) {
-            /* Encode the pid as the key */
-            frag->segment.key = getpid();
-        }
-#endif /* OMPI_BTL_SM_HAVE_CMA */
+        frag->segment.seg_key.key64 = knem_cr.cookie;
     }
-#endif /* OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA */
-
-    frag->base.des_src = &(frag->segment.base);
+#endif
+    frag->base.des_src = &(frag->segment);
     frag->base.des_src_cnt = 1;
     frag->base.order = MCA_BTL_NO_ORDER;
     frag->base.des_dst = NULL;
@@ -760,8 +757,8 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
 #if 0
 #define MCA_BTL_SM_TOUCH_DATA_TILL_CACHELINE_BOUNDARY(sm_frag)          \
     do {                                                                \
-        char* _memory = (char*)(sm_frag)->segment.base.seg_addr.pval +  \
-            (sm_frag)->segment.base.seg_len;                            \
+        char* _memory = (char*)(sm_frag)->segment.seg_addr.pval +       \
+            (sm_frag)->segment.seg_len;                                 \
         int* _intmem;                                                   \
         size_t align = (intptr_t)_memory & 0xFUL;                       \
         switch( align & 0x3 ) {                                         \
@@ -826,7 +823,7 @@ int mca_btl_sm_sendi( struct mca_btl_base_module_t* btl,
         }
 
         /* fill in fragment fields */
-        frag->segment.base.seg_len = length;
+        frag->segment.seg_len = length;
         frag->hdr->len        = length;
         assert( 0 == (flags & MCA_BTL_DES_SEND_ALWAYS_CALLBACK) );
         frag->base.des_flags = flags | MCA_BTL_DES_FLAGS_BTL_OWNERSHIP;   /* why do any flags matter here other than OWNERSHIP? */
@@ -834,7 +831,7 @@ int mca_btl_sm_sendi( struct mca_btl_base_module_t* btl,
         frag->endpoint = endpoint;
 
         /* write the match header (with MPI comm/tag/etc. info) */
-        memcpy( frag->segment.base.seg_addr.pval, header, header_size );
+        memcpy( frag->segment.seg_addr.pval, header, header_size );
 
         /* write the message data if there is any */
         /*
@@ -845,7 +842,7 @@ int mca_btl_sm_sendi( struct mca_btl_base_module_t* btl,
             struct iovec iov;
             uint32_t iov_count;
             /* pack the data into the supplied buffer */
-            iov.iov_base = (IOVBASE_TYPE*)((unsigned char*)frag->segment.base.seg_addr.pval + header_size);
+            iov.iov_base = (IOVBASE_TYPE*)((unsigned char*)frag->segment.seg_addr.pval + header_size);
             iov.iov_len  = max_data = payload_size;
             iov_count    = 1;
 
@@ -893,7 +890,7 @@ int mca_btl_sm_send( struct mca_btl_base_module_t* btl,
     }
 
     /* available header space */
-    frag->hdr->len = frag->segment.base.seg_len;
+    frag->hdr->len = frag->segment.seg_len;
     /* type of message, pt-2-pt, one-sided, etc */
     frag->hdr->tag = tag;
 
@@ -918,7 +915,7 @@ int mca_btl_sm_send( struct mca_btl_base_module_t* btl,
     return 0;
 }
 
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
+#if OMPI_BTL_SM_HAVE_KNEM
 struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_dst( 
 		struct mca_btl_base_module_t* btl,
 		struct mca_btl_base_endpoint_t* endpoint,
@@ -930,21 +927,19 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_dst(
 		uint32_t flags)
 {
     int rc;
-    void *ptr;
     mca_btl_sm_frag_t* frag;
 
     MCA_BTL_SM_FRAG_ALLOC_USER(frag, rc);
     if(OPAL_UNLIKELY(NULL == frag)) {
         return NULL;
     }
-
-    frag->segment.base.seg_len = *size;
-    opal_convertor_get_current_pointer( convertor, &ptr );
-    frag->segment.base.seg_addr.lval = (uint64_t)(uintptr_t) ptr;
+    
+    frag->segment.seg_len = *size;
+    opal_convertor_get_current_pointer( convertor, (void**)&(frag->segment.seg_addr.pval) );
     
     frag->base.des_src = NULL;
     frag->base.des_src_cnt = 0;
-    frag->base.des_dst = (mca_btl_base_segment_t*)&frag->segment;
+    frag->base.des_dst = &frag->segment;
     frag->base.des_dst_cnt = 1;
     frag->base.des_flags = flags;
     return &frag->base;
@@ -964,79 +959,39 @@ int mca_btl_sm_get_sync(struct mca_btl_base_module_t* btl,
     int btl_ownership;
     mca_btl_sm_t* sm_btl = (mca_btl_sm_t*) btl;
     mca_btl_sm_frag_t* frag = (mca_btl_sm_frag_t*)des;
-    mca_btl_sm_segment_t *src = (mca_btl_sm_segment_t*)des->des_src;
-    mca_btl_sm_segment_t *dst = (mca_btl_sm_segment_t*)des->des_dst;
-#if OMPI_BTL_SM_HAVE_KNEM
-    if (OPAL_LIKELY(mca_btl_sm_component.use_knem)) {
-        struct knem_cmd_inline_copy icopy;
-        struct knem_cmd_param_iovec recv_iovec;
+    mca_btl_base_segment_t *src = des->des_src;
+    mca_btl_base_segment_t *dst = des->des_dst;
+    struct knem_cmd_inline_copy icopy;
+    struct knem_cmd_param_iovec recv_iovec;
     
-        /* Fill in the ioctl data fields.  There's no async completion, so
-           we don't need to worry about getting a slot, etc. */
-        recv_iovec.base = (uintptr_t) dst->base.seg_addr.lval;
-        recv_iovec.len =  dst->base.seg_len;
-        icopy.local_iovec_array = (uintptr_t)&recv_iovec;
-        icopy.local_iovec_nr = 1;
-        icopy.remote_cookie = src->key;
-        icopy.remote_offset = 0;
-        icopy.write = 0;
+    /* Fill in the ioctl data fields.  There's no async completion, so
+       we don't need to worry about getting a slot, etc. */
+    recv_iovec.base = (uintptr_t) dst->seg_addr.pval;
+    recv_iovec.len =  dst->seg_len;
+    icopy.local_iovec_array = (uintptr_t)&recv_iovec;
+    icopy.local_iovec_nr = 1;
+    icopy.remote_cookie = src->seg_key.key64;
+    icopy.remote_offset = 0;
+    icopy.write = 0;
 
-        /* Use the DMA flag if knem supports it *and* the segment length
-           is greater than the cutoff.  Note that if the knem_dma_min
-           value is 0 (i.e., the MCA param was set to 0), the segment size
-           will never be larger than it, so DMA will never be used. */
-        icopy.flags = 0;
-        if (mca_btl_sm_component.knem_dma_min <= dst->base.seg_len) {
-            icopy.flags = mca_btl_sm_component.knem_dma_flag;
-        }
-        /* synchronous flags only, no need to specify icopy.async_status_index */
-
-        /* When the ioctl returns, the transfer is done and we can invoke
-           the btl callback and return the frag */
-        if (OPAL_UNLIKELY(0 != ioctl(sm_btl->knem_fd,
-                                     KNEM_CMD_INLINE_COPY, &icopy))) {
-            return OMPI_ERROR;
-        }
-
-        /* FIXME: what if icopy.current_status == KNEM_STATUS_FAILED? */
+    /* Use the DMA flag if knem supports it *and* the segment length
+       is greater than the cutoff.  Note that if the knem_dma_min
+       value is 0 (i.e., the MCA param was set to 0), the segment size
+       will never be larger than it, so DMA will never be used. */
+    icopy.flags = 0;
+    if (mca_btl_sm_component.knem_dma_min <= dst->seg_len) {
+        icopy.flags = mca_btl_sm_component.knem_dma_flag;
     }
-#endif
+    /* synchronous flags only, no need to specify icopy.async_status_index */
 
-#if OMPI_BTL_SM_HAVE_CMA
-    if (OPAL_LIKELY(mca_btl_sm_component.use_cma)) {
-        char *remote_address, *local_address;
-        int remote_length, local_length;
-        struct iovec local, remote;
-        pid_t remote_pid;
-        int val;
-
-        remote_address = (char *)(uintptr_t) src->base.seg_addr.lval;
-        remote_length = src->base.seg_len;
-
-        local_address = (char *)(uintptr_t) dst->base.seg_addr.lval;
-        local_length = dst->base.seg_len;
-
-        remote_pid = src->key;
-        remote.iov_base = remote_address;
-        remote.iov_len = remote_length;
-        local.iov_base = local_address;
-        local.iov_len = local_length;
-
-        val = process_vm_readv(remote_pid, &local, 1, &remote, 1, 0);
-
-        if (val != local_length) {
-            if (val<0) {
-              opal_output(0, "mca_btl_sm_get_sync: process_vm_readv failed: %i",
-                          errno);
-            } else {
-              /* Should never get a short read from process_vm_readv */
-              opal_output(0, "mca_btl_sm_get_sync: process_vm_readv short read: %i",
-                          val);
-            }
-            return OMPI_ERROR;
-        }
+    /* When the ioctl returns, the transfer is done and we can invoke
+       the btl callback and return the frag */
+    if (OPAL_UNLIKELY(0 != ioctl(sm_btl->knem_fd, 
+                                 KNEM_CMD_INLINE_COPY, &icopy))) {
+        return OMPI_ERROR;
     }
-#endif /* OMPI_BTL_SM_HAVE_CMA */
+
+    /* FIXME: what if icopy.current_status == KNEM_STATUS_FAILED? */
 
     btl_ownership = (frag->base.des_flags & MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
     if (0 != (MCA_BTL_DES_SEND_ALWAYS_CALLBACK & frag->base.des_flags)) {
@@ -1051,11 +1006,6 @@ int mca_btl_sm_get_sync(struct mca_btl_base_module_t* btl,
     return OMPI_SUCCESS;
 }
 
-#endif /* OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA */
-
-
-/* No support async_get for CMA yet */
-#if OMPI_BTL_SM_HAVE_KNEM
 
 /**
  * Initiate an asynchronous get.
@@ -1071,8 +1021,8 @@ int mca_btl_sm_get_async(struct mca_btl_base_module_t* btl,
     int btl_ownership;
     mca_btl_sm_t* sm_btl = (mca_btl_sm_t*) btl;
     mca_btl_sm_frag_t* frag = (mca_btl_sm_frag_t*)des;
-    mca_btl_sm_segment_t *src = (mca_btl_sm_segment_t*)des->des_src;
-    mca_btl_sm_segment_t *dst = (mca_btl_sm_segment_t*)des->des_dst;
+    mca_btl_base_segment_t *src = des->des_src;
+    mca_btl_base_segment_t *dst = des->des_dst;
     struct knem_cmd_inline_copy icopy;
     struct knem_cmd_param_iovec recv_iovec;
     
@@ -1085,8 +1035,8 @@ int mca_btl_sm_get_async(struct mca_btl_base_module_t* btl,
 
     /* We have a slot, so fill in the data fields.  Bump the
        first_avail and num_used counters. */
-    recv_iovec.base = (uintptr_t) dst->base.seg_addr.lval;
-    recv_iovec.len =  dst->base.seg_len;
+    recv_iovec.base = (uintptr_t) dst->seg_addr.pval;
+    recv_iovec.len =  dst->seg_len;
     icopy.local_iovec_array = (uintptr_t)&recv_iovec;
     icopy.local_iovec_nr = 1;
     icopy.write = 0;
@@ -1096,13 +1046,13 @@ int mca_btl_sm_get_async(struct mca_btl_base_module_t* btl,
         sm_btl->knem_status_first_avail = 0;
     }
     ++sm_btl->knem_status_num_used;
-    icopy.remote_cookie = src->key;
+    icopy.remote_cookie = src->seg_key.key64;
     icopy.remote_offset = 0;
 
     /* Use the DMA flag if knem supports it *and* the segment length
        is greater than the cutoff */
     icopy.flags = KNEM_FLAG_ASYNCDMACOMPLETE;
-    if (mca_btl_sm_component.knem_dma_min <= dst->base.seg_len) {
+    if (mca_btl_sm_component.knem_dma_min <= dst->seg_len) {
         icopy.flags = mca_btl_sm_component.knem_dma_flag;
     }
 
@@ -1136,33 +1086,8 @@ int mca_btl_sm_get_async(struct mca_btl_base_module_t* btl,
         return OMPI_ERROR;
     }
 }
-#endif /* OMPI_BTL_SM_HAVE_KNEM */
+#endif
 
-/**
- *
- */
-void mca_btl_sm_dump(struct mca_btl_base_module_t* btl,
-                     struct mca_btl_base_endpoint_t* endpoint,
-                     int verbose)
-{
-    opal_list_item_t *item;
-    mca_btl_sm_frag_t* frag;
-
-    mca_btl_base_err("BTL SM %p endpoint %p [smp_rank %d] [peer_rank %d]\n",
-                     (void*) btl, (void*) endpoint, 
-                     endpoint->my_smp_rank, endpoint->peer_smp_rank);
-    if( NULL != endpoint ) {
-        for(item =  opal_list_get_first(&endpoint->pending_sends);
-            item != opal_list_get_end(&endpoint->pending_sends); 
-            item = opal_list_get_next(item)) {
-            frag = (mca_btl_sm_frag_t*)item;
-            mca_btl_base_err(" |  frag %p size %lu (hdr frag %p len %lu rank %d tag %d)\n",
-                             (void*) frag, frag->size, (void*) frag->hdr->frag,
-                             frag->hdr->len, frag->hdr->my_smp_rank, 
-                             frag->hdr->tag);
-        }
-    }
-}
 
 #if OPAL_ENABLE_FT_CR    == 0
 int mca_btl_sm_ft_event(int state) {
@@ -1170,6 +1095,8 @@ int mca_btl_sm_ft_event(int state) {
 }
 #else
 int mca_btl_sm_ft_event(int state) {
+    char * tmp_dir = NULL;
+
     /* Notify mpool */
     if( NULL != mca_btl_sm_component.sm_mpool &&
         NULL != mca_btl_sm_component.sm_mpool->mpool_ft_event) {
@@ -1183,14 +1110,17 @@ int mca_btl_sm_ft_event(int state) {
              * for these old file handles. The restart procedure will make sure
              * these files get cleaned up appropriately.
              */
-            orte_sstore.set_attr(orte_sstore_handle_current,
-                                 SSTORE_METADATA_LOCAL_TOUCH,
-                                 mca_btl_sm_component.sm_seg->shmem_ds.seg_name);
+            opal_crs_base_metadata_write_token(NULL, CRS_METADATA_TOUCH, mca_btl_sm_component.sm_seg->shmem_ds.seg_name);
+
+            /* Record the job session directory */
+            opal_crs_base_metadata_write_token(NULL, CRS_METADATA_MKDIR, orte_process_info.job_session_dir);
         }
     }
     else if(OPAL_CRS_CONTINUE == state) {
-        if( orte_cr_continue_like_restart ) {
+        if( ompi_cr_continue_like_restart ) {
             if( NULL != mca_btl_sm_component.sm_seg ) {
+                /* Do not Add session directory on continue */
+
                 /* Add shared memory file */
                 opal_crs_base_cleanup_append(mca_btl_sm_component.sm_seg->shmem_ds.seg_name, false);
             }
@@ -1202,6 +1132,14 @@ int mca_btl_sm_ft_event(int state) {
     else if(OPAL_CRS_RESTART == state ||
             OPAL_CRS_RESTART_PRE == state) {
         if( NULL != mca_btl_sm_component.sm_seg ) {
+            /* Add session directory */
+            opal_crs_base_cleanup_append(orte_process_info.job_session_dir, true);
+            tmp_dir = opal_dirname(orte_process_info.job_session_dir);
+            if( NULL != tmp_dir ) {
+                opal_crs_base_cleanup_append(tmp_dir, true);
+                free(tmp_dir);
+                tmp_dir = NULL;
+            }
             /* Add shared memory file */
             opal_crs_base_cleanup_append(mca_btl_sm_component.sm_seg->shmem_ds.seg_name, false);
         }

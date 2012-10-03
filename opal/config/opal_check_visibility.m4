@@ -19,9 +19,10 @@
 # $HEADER$
 #
 
-# OPAL_CHECK_VISIBILITY
+
+# OMPI_CHECK_VISIBILITY
 # --------------------------------------------------------
-AC_DEFUN([OPAL_CHECK_VISIBILITY],[
+AC_DEFUN([OMPI_CHECK_VISIBILITY],[
     AC_REQUIRE([AC_PROG_GREP])
 
     # Check if the compiler has support for visibility, like some
@@ -84,7 +85,7 @@ AC_DEFUN([OPAL_CHECK_VISIBILITY],[
         fi
         unset opal_add
     fi
-
     AC_DEFINE_UNQUOTED([OPAL_C_HAVE_VISIBILITY], [$opal_visibility_define],
             [Whether C compiler supports symbol visibility or not])
+
 ])

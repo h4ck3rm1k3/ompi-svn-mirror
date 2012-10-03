@@ -37,7 +37,7 @@
 # token is the name of the variable to define, and all remaining tokens
 # are the value.  For example:
 #
-# shell$ rpmbuild ... --define 'install_in_opt 1' ...
+# shell$ rpmbuild ... --define 'ofed 1' ...
 #
 # Or (a multi-token example):
 #
@@ -46,8 +46,12 @@
 #
 #############################################################################
 
-# Define this if you want to make this SRPM build in
-# /opt/NAME/VERSION-RELEASE instead of the default /usr/.
+# Help for OFED RPMs
+
+%{!?ofed: %define ofed 0}
+
+# Define this if you want to make this SRPM build in /opt/NAME/VERSION-RELEASE
+# instead of the default /usr/
 # type: bool (0/1)
 %{!?install_in_opt: %define install_in_opt 0}
 
@@ -71,7 +75,6 @@
 %{!?modulefile_name: %define modulefile_name %{version}}
 
 # The name of the modules RPM.  Can vary from system to system.
-# RHEL6 calls it "environment-modules".
 # type: string (name of modules RPM)
 %{!?modules_rpm_name: %define modules_rpm_name environment-modules}
 
@@ -96,10 +99,18 @@
 
 # Should we use the default "check_files" RPM step (i.e., check for
 # unpackaged files)?  It is discouraged to disable this, but some
-# installers need it (e.g., older versions of OFED, because they
-# installed lots of other stuff in the BUILD_ROOT before Open MPI).
+# installers need it (e.g., OFED, because it installs lots of other
+# stuff in the BUILD_ROOT before Open MPI).
 # type: bool (0/1)
 %{!?use_check_files: %define use_check_files 1}
+
+# Should we use the traditional % build and % install sections?  Or
+# should we combine them both into % install?  This is entirely
+# motivated by the OFED installer where, on SLES, the % build macro
+# will completely remove the BUILD_ROOT before building (which breaks
+# some assumptions in the OFED installer).  Ick!
+# type: bool (0/1)
+%{!?munge_build_into_install: %define munge_build_into_install 0}
 
 # By default, RPM supplies a bunch of optimization flags, some of
 # which may not work with non-gcc compilers.  We attempt to weed some
@@ -131,6 +142,24 @@
 # it out, even if you're using GCC.
 # type: bool (0/1)
 %{!?allow_fortify_source: %define allow_fortify_source 1}
+
+#############################################################################
+#
+# OFED-specific defaults
+#
+# Tailored for the peculiar requirements of the OFED installer; not
+# necessary for when building this SRPM outside of the OFED installer.
+#
+#############################################################################
+
+%if %{ofed}
+%define use_check_files 0
+%define install_shell_scripts 1
+%define shell_scripts_basename mpivars
+%define munge_build_into_install 1
+%define use_mpi_selector 1
+%endif
+
 
 #############################################################################
 #
@@ -318,7 +347,12 @@ rm -rf $RPM_BUILD_ROOT
 #
 #############################################################################
 
+# See note above about %{munge_build_into_install}
+%if %{munge_build_into_install}
+%install
+%else
 %build
+%endif
 
 # rpmbuild processes seem to be geared towards the GNU compilers --
 # they pass in some flags that will only work with gcc.  So if we're
@@ -408,7 +442,10 @@ export CFLAGS CXXFLAGS F77FLAGS FCFLAGS
 #
 #############################################################################
 
+# See note above about %{munge_build_into_install}
+%if !%{munge_build_into_install}
 %install
+%endif
 %{__make} install DESTDIR=$RPM_BUILD_ROOT %{?mflags_install}
 
 # First, the [optional] modulefile
@@ -687,16 +724,6 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 #
 #############################################################################
 %changelog
-* Wed Jun 27 2012 Jeff Squyres <jsquyres@cisco.com>
-- Remove the "ofed" and "munge_build_into_install" options, because
-  OFED no longer distributes MPI implementations.  Yay!
-
-* Mon Jun 04 2012 Jeff Squyres <jsquyres@cisco.com>
-- Didn't change the specfile, but changed the script that generates
-  the SRPM to force the use of MD5 checksums (vs. SHA1 checksums) so
-  that the SRPM is friendly to older versions of RPM, such as that on
-  RHEL 5.x.
-
 * Fri Feb 17 2012 Jeff Squyres <jsquyres@cisco.com>
 - Removed OSCAR define; that project is long gone.
 - If use_mpi_selector==1, then also set install_shell_scripts to 1.

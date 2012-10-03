@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -63,6 +63,8 @@ int orte_plm_base_set_hnp_name(void)
     ORTE_PROC_MY_NAME->jobid = 0xffff0000 & ((uint32_t)jobfam << 16);
     ORTE_PROC_MY_NAME->vpid = 0;
     
+    orte_plm_globals.next_jobid = 1;
+    
     /* copy it to the HNP field */
     ORTE_PROC_MY_HNP->jobid = ORTE_PROC_MY_NAME->jobid;
     ORTE_PROC_MY_HNP->vpid = ORTE_PROC_MY_NAME->vpid;
@@ -97,7 +99,7 @@ int orte_plm_base_create_jobid(orte_job_t *jdata)
     }
 #endif
 
-    if (ORTE_JOB_CONTROL_RESTART & jdata->controls) {
+    if (ORTE_JOB_STATE_RESTART == jdata->state) {
         /* this job is being restarted - do not assign it
          * a new jobid
          */

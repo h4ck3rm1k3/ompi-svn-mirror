@@ -41,14 +41,6 @@ ompi_mtl_mx_del_procs(struct mca_mtl_base_module_t *mtl,
                       struct ompi_proc_t** procs, 
                       struct mca_mtl_base_endpoint_t **mtl_peer_data);
 
-static int
-ompi_mtl_mx_add_comm(struct mca_mtl_base_module_t *mtl,
-                     struct ompi_communicator_t *comm);
-
-static int
-ompi_mtl_mx_del_comm(struct mca_mtl_base_module_t *mtl,
-                     struct ompi_communicator_t *comm);
-
 mca_mtl_mx_module_t ompi_mtl_mx = {
     {
         8191,        /* max cid - 2^13 - 1 */
@@ -66,12 +58,10 @@ mca_mtl_mx_module_t ompi_mtl_mx = {
         
         ompi_mtl_mx_irecv,
         ompi_mtl_mx_iprobe,
-        ompi_mtl_mx_imrecv,
-        ompi_mtl_mx_improbe,
         
         ompi_mtl_mx_cancel,
-        ompi_mtl_mx_add_comm,
-        ompi_mtl_mx_del_comm
+        NULL,
+        NULL
     }    
 };
 
@@ -125,7 +115,7 @@ int ompi_mtl_mx_module_init(){
     }
     opal_output_verbose(10, ompi_mtl_base_output, 
 			"mtl:mx: local nic %d, endpoint %d, got nic %d, ep %d\n", nic, ep, 
-            (int)ompi_mtl_mx.mx_addr.nic_id,
+			ompi_mtl_mx.mx_addr.nic_id,
 			ompi_mtl_mx.mx_addr.endpoint_id);
 
     ompi_modex_send( &mca_mtl_mx_component.super.mtl_version, 
@@ -178,7 +168,7 @@ ompi_mtl_mx_add_procs(struct mca_mtl_base_module_t *mtl,
        progress MX as often as possible during the stage gate 2.  This
        would have happened after the stage gate anyway, so we're just
        speeding things up a bit. */
-#if OMPI_ENABLE_PROGRESS_THREADS == 0
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
     /* switch from letting us sit in the event library for a bit each
        time through opal_progress() to completely non-blocking */
     opal_progress_set_event_flag(OPAL_EVLOOP_NONBLOCK);
@@ -197,20 +187,6 @@ ompi_mtl_mx_del_procs(struct mca_mtl_base_module_t *mtl,
     return OMPI_SUCCESS;
 }
 
-
-int
-ompi_mtl_mx_add_comm(struct mca_mtl_base_module_t *mtl,
-                     struct ompi_communicator_t *comm)
-{
-    return OMPI_SUCCESS;
-}
-
-int
-ompi_mtl_mx_del_comm(struct mca_mtl_base_module_t *mtl,
-                     struct ompi_communicator_t *comm)
-{
-    return OMPI_SUCCESS;
-}
 
 
 int ompi_mtl_mx_progress( void ) { 

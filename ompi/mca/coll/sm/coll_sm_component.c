@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -43,7 +41,6 @@ const char *mca_coll_sm_component_version_string =
 /*
  * Local functions
  */
-static int sm_close(void);
 static int sm_register(void);
 
 
@@ -71,7 +68,7 @@ mca_coll_sm_component_t mca_coll_sm_component = {
 
             /* Component functions */
             NULL, /* open */
-            sm_close,
+            NULL, /* close */
             NULL, /* query */
             sm_register
         },
@@ -118,14 +115,6 @@ mca_coll_sm_component_t mca_coll_sm_component = {
     /* Not specifying values here gives us all 0's */
 };
 
-
-/*
- * Shut down the component
- */
-static int sm_close(void)
-{
-    return OMPI_SUCCESS;
-}
 
 /*
  * Register MCA params

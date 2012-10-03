@@ -9,9 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
-# Copyright (c) 2012      Oak Rigde National Laboratory. All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -41,7 +39,7 @@ AM_CPPFLAGS     = -DOMPI_PROFILING_DEFINES=0
 #
 
 noinst_LTLIBRARIES = libmpi_c.la
-if BUILD_MPI_BINDINGS_LAYER
+if WANT_MPI_BINDINGS_LAYER
 noinst_LTLIBRARIES += libmpi_c_mpi.la
 endif
 
@@ -66,25 +64,17 @@ libmpi_c_mpi_la_SOURCES = \
         add_error_string.c \
         address.c \
         allgather.c \
-        iallgather.c \
         allgatherv.c \
-        iallgatherv.c \
         alloc_mem.c \
         allreduce.c \
-        iallreduce.c \
         alltoall.c \
-        ialltoall.c \
         alltoallv.c \
-        ialltoallv.c \
         alltoallw.c \
-        ialltoallw.c \
         attr_delete.c \
         attr_get.c \
         attr_put.c \
         barrier.c \
-        ibarrier.c \
         bcast.c \
-        ibcast.c \
         bsend.c \
         bsend_init.c \
         buffer_attach.c \
@@ -129,7 +119,6 @@ libmpi_c_mpi_la_SOURCES = \
         comm_spawn.c \
         comm_spawn_multiple.c \
         comm_split.c \
-        comm_split_type.c \
         comm_test_inter.c \
         dims_create.c \
         errhandler_c2f.c \
@@ -141,18 +130,14 @@ libmpi_c_mpi_la_SOURCES = \
         error_class.c \
         error_string.c \
         exscan.c \
-        iexscan.c \
         finalize.c \
         finalized.c \
         free_mem.c \
         gather.c \
-        igather.c \
         gatherv.c \
-        igatherv.c \
         get_address.c \
         get_count.c \
         get_elements.c \
-        get_library_version.c \
         get_processor_name.c \
         get_version.c \
         graph_create.c \
@@ -178,8 +163,6 @@ libmpi_c_mpi_la_SOURCES = \
         group_translate_ranks.c \
         group_union.c \
         ibsend.c \
-        improbe.c \
-        imrecv.c \
         info_c2f.c \
         info_create.c \
         info_delete.c \
@@ -205,10 +188,6 @@ libmpi_c_mpi_la_SOURCES = \
         keyval_create.c \
         keyval_free.c \
         lookup_name.c \
-        message_f2c.c \
-        message_c2f.c \
-        mprobe.c \
-        mrecv.c \
         op_c2f.c \
         op_commutative.c \
         op_create.c \
@@ -226,12 +205,8 @@ libmpi_c_mpi_la_SOURCES = \
         recv_init.c \
         recv.c \
         reduce.c \
-        ireduce.c \
         reduce_local.c \
         reduce_scatter.c \
-        ireduce_scatter.c \
-        reduce_scatter_block.c \
-        ireduce_scatter_block.c \
         request_c2f.c \
         request_f2c.c \
         request_free.c \
@@ -239,11 +214,8 @@ libmpi_c_mpi_la_SOURCES = \
         rsend_init.c \
         rsend.c \
         scan.c \
-        iscan.c \
         scatter.c \
-        iscatter.c \
         scatterv.c \
-        iscatterv.c \
         send.c \
         send_init.c \
         sendrecv.c \
@@ -272,7 +244,6 @@ libmpi_c_mpi_la_SOURCES = \
         type_create_hindexed.c \
         type_create_hvector.c \
         type_create_indexed_block.c \
-        type_create_hindexed_block.c \
         type_create_keyval.c \
         type_create_resized.c \
         type_create_struct.c \
@@ -307,8 +278,8 @@ libmpi_c_mpi_la_SOURCES = \
         waitall.c \
         waitany.c \
         waitsome.c \
-        wtime.c \
-        wtick.c \
+	wtime.c \
+	wtick.c \
         accumulate.c \
         get.c \
         put.c \
@@ -402,6 +373,8 @@ endif
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-ompidir = $(includedir)/openmpi/$(subdir)
+ompidir = $(includedir)/openmpi/ompi/mpi/c
 ompi_HEADERS = $(headers)
+else
+ompidir = $(includedir)
 endif

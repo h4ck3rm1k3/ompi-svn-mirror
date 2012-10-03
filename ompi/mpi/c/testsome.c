@@ -9,10 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -40,9 +38,9 @@
 static const char FUNC_NAME[] = "MPI_Testsome";
 
 
-int MPI_Testsome(int incount, MPI_Request requests[],
-                 int *outcount, int indices[],
-                 MPI_Status statuses[])
+int MPI_Testsome(int incount, MPI_Request *requests,
+                 int *outcount, int *indices,
+                 MPI_Status *statuses)
 {
     MEMCHECKER(
         int j;
@@ -52,13 +50,13 @@ int MPI_Testsome(int incount, MPI_Request requests[],
     );
 
     if ( MPI_PARAM_CHECK ) {
-        int indx, rc = MPI_SUCCESS;
+        int index, rc = MPI_SUCCESS;
         OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
         if ((NULL == requests) && (0 != incount)) {
             rc = MPI_ERR_REQUEST;
         } else {
-            for (indx = 0; indx < incount; ++indx) {
-                if (NULL == requests[indx]) {
+            for (index = 0; index < incount; ++index) {
+                if (NULL == requests[index]) {
                     rc = MPI_ERR_REQUEST;
                     break;
                 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008-2012 Los Alamos National Security, LLC.
+ * Copyright (c) 2008      Los Alamos National Security, LLC.
  *                         All rights reserved. 
  * Copyright (c) 2004-2008 The Trustees of Indiana University.
  *                         All rights reserved.
@@ -37,15 +37,6 @@ typedef struct {
     opal_bitmap_t relatives;
 } orte_routed_tree_t;
 ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_routed_tree_t);
-
-/* struct for tracking external routes */
-typedef struct {
-    opal_object_t super;
-    uint16_t job_family;
-    orte_process_name_t route;
-    char *hnp_uri;
-} orte_routed_jobfam_t;
-ORTE_DECLSPEC OBJ_CLASS_DECLARATION(orte_routed_jobfam_t);
 
 #endif
 

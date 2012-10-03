@@ -21,7 +21,7 @@
 #define MCA_BTL_TCP_ENDPOINT_H
 
 #include "opal/class/opal_list.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "btl_tcp2_frag.h"
 #include "btl_tcp2.h"
 BEGIN_C_DECLS

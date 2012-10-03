@@ -29,12 +29,12 @@ AC_DEFUN([OPAL_SETUP_CXX_BANNER],[
 # This macro is necessary because PROG_CXX* is REQUIREd by multiple
 # places in SETUP_CXX.
 AC_DEFUN([OPAL_PROG_CXX],[
-    OPAL_VAR_SCOPE_PUSH([opal_cxxflags_save])
+    OMPI_VAR_SCOPE_PUSH([opal_cxxflags_save])
     opal_cxxflags_save="$CXXFLAGS"
     AC_PROG_CXX
     AC_PROG_CXXCPP
     CXXFLAGS="$opal_cxxflags_save"
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # OPAL_SETUP_CXX()
@@ -55,7 +55,7 @@ AC_DEFUN([OPAL_SETUP_CXX],[
 # --------------------------
 # Setup the CXX compiler
 AC_DEFUN([_OPAL_SETUP_CXX_COMPILER],[
-    OPAL_VAR_SCOPE_PUSH(opal_cxx_compiler_works)
+    OMPI_VAR_SCOPE_PUSH(opal_cxx_compiler_works)
 
     # Must REQUIRE the PROG_CXX macro and not call it directly here for
     # reasons well-described in the AC2.64 (and beyond) docs.
@@ -65,13 +65,13 @@ AC_DEFUN([_OPAL_SETUP_CXX_COMPILER],[
     AS_IF([test "x$CXX" = "x"], [CXX=none])
     set dummy $CXX
     opal_cxx_argv0=[$]2
-    OPAL_WHICH([$opal_cxx_argv0], [OPAL_CXX_ABSOLUTE])
+    OMPI_WHICH([$opal_cxx_argv0], [OPAL_CXX_ABSOLUTE])
     AS_IF([test "x$OPAL_CXX_ABSOLUTE" = "x"], [OPAL_CXX_ABSOLUTE=none])
 
     AC_DEFINE_UNQUOTED(OPAL_CXX, "$CXX", [OPAL underlying C++ compiler])
     AC_SUBST(OPAL_CXX_ABSOLUTE)
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # _OPAL_SETUP_CXX_COMPILER_BACKEND()
@@ -94,7 +94,7 @@ AC_DEFUN([_OPAL_SETUP_CXX_COMPILER_BACKEND],[
     # Do we want debugging?
     if test "$WANT_DEBUG" = "1" -a "$enable_debug_symbols" != "no" ; then
         CXXFLAGS="$CXXFLAGS -g"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         AC_MSG_WARN([-g has been added to CXXFLAGS (--enable-debug)])
     fi
 
@@ -111,23 +111,7 @@ AC_DEFUN([_OPAL_SETUP_CXX_COMPILER_BACKEND],[
         AC_CACHE_CHECK([if $CXX supports -Wno-long-double],
                    [opal_cv_cxx_wno_long_double],
                    [AC_TRY_COMPILE([], [], 
-                                   [dnl Alright, the -Wno-long-double did not produce any errors...
-                                    dnl Well well, try to extract a warning regarding unrecognized or ignored options
-                                    AC_TRY_COMPILE([], [long double test;], 
-                                                   [
-                                                       opal_cv_cxx_wno_long_double="yes"
-                                                       if test -s conftest.err ; then
-                                                           dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                                                           for i in invalid ignor unrecognized ; do
-                                                               $GREP -iq $i conftest.err
-                                                               if test "$?" = "0" ; then
-                                                                   opal_cv_cxx_wno_long_double="no",
-                                                                   break;
-                                                               fi
-                                                           done
-                                                       fi
-                                                   ],
-                                                   [opal_cv_cxx_wno_long_double="no"])],
+                                   [opal_cv_cxx_wno_long_double="yes"],
                                    [opal_cv_cxx_wno_long_double="no"])])
         CXXFLAGS="$CXXFLAGS_orig"
         AC_LANG_POP(C++)
@@ -136,7 +120,7 @@ AC_DEFUN([_OPAL_SETUP_CXX_COMPILER_BACKEND],[
         fi
 
         CXXFLAGS="$CXXFLAGS $add"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CXXFLAGS (--enable-picky)])
         fi
@@ -157,7 +141,7 @@ AC_DEFUN([_OPAL_SETUP_CXX_COMPILER_BACKEND],[
             add=" -finline-functions"
         fi
         CXXFLAGS="$CXXFLAGS_orig$add"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CXXFLAGS])
         fi

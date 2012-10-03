@@ -11,7 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Sandia National Laboratories. All rights
  *                         reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Oracle and/or all affliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,7 +40,7 @@
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "ompi/mca/btl/base/base.h"
-#include "ompi/mca/mpool/grdma/mpool_grdma.h"
+#include "ompi/mca/mpool/mpool.h"
 
 /* TODO - If I want this to go away, addr_t has to come over here */
 #include "btl_ofud_endpoint.h"

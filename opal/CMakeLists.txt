@@ -32,6 +32,14 @@ IF(OPAL_WANT_LIBLTDL)
   INCLUDE(find_libltdl)
 ENDIF(OPAL_WANT_LIBLTDL)
 
+# Add source files
+
+# Windows event files
+INCLUDE (event/CMakeLists.txt)
+FOREACH (FILE ${EVENT_FILES})
+  SET (OPAL_EVENT_FILES ${OPAL_EVENT_FILES} ${PROJECT_SOURCE_DIR}/event/${FILE})
+ENDFOREACH (FILE)
+SOURCE_GROUP(event FILES ${OPAL_EVENT_FILES})
 
 # Include headers.
 FILE(GLOB OPAL_INCLUDE_FILES "include/*.h" "include/opal/*.h" "include/opal/sys/win32/*.h")
@@ -70,10 +78,6 @@ FOREACH(OPAL_SUBDIR ${OPAL_SUBDIRS})
 
 ENDFOREACH(OPAL_SUBDIR ${OPAL_SUBDIRS})
 
-# remove non-mca files that shouldn't be compiled under windows
-LIST(REMOVE_ITEM OPAL_SOURCE_FILES "${PROJECT_SOURCE_DIR}/datatype/opal_datatype_cuda.c"
-  "${PROJECT_SOURCE_DIR}/datatype/opal_datatype_cuda.h")
-
 #only generate if it's not a tarball
 IF(NOT EXISTS ${PROJECT_SOURCE_DIR}/util/keyval/keyval_lex.c)
   ADD_FLEX_FILE(OPAL_SOURCE_FILES ./util/keyval/keyval_lex.l
@@ -93,7 +97,6 @@ SET (OPAL_SOURCE_FILES ${OPAL_SOURCE_FILES} ${MCA_FILES})
 
 ADD_LIBRARY (libopen-pal ${OPAL_SOURCE_FILES})
 
-
 IF(WINDOWS_MINGW)
   SET(CMAKE_CXX_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIRARIES} -lpthread")
   SET(CMAKE_C_STANDARD_LIBRARIES "${CMAKE_CXX_STANDARD_LIRARIES} -lpthread")
@@ -101,30 +104,6 @@ ENDIF(WINDOWS_MINGW)
 
 # Set compile flags for this target
 IF (BUILD_SHARED_LIBS)
-  IF(WINDOWS_MINGW)
-    ADD_CUSTOM_COMMAND(TARGET libopen-pal POST_BUILD
-      COMMAND ar -rcs ${OpenMPI_BINARY_DIR}/event${CMAKE_DEBUG_POSTFIX}.lib ${EVENT_OBJ_FILES}
-      WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-      COMMENT "Generating static event library."
-    )
-    ADD_CUSTOM_COMMAND(TARGET libopen-pal POST_BUILD
-      COMMAND ar -rcs ${OpenMPI_BINARY_DIR}/hwloc${CMAKE_DEBUG_POSTFIX}.lib ${HWLOC_OBJ_FILES}
-      WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-      COMMENT "Generating static hwloc library."
-    )
-  ELSEIF(WINDOWS_VS)
-    ADD_CUSTOM_COMMAND(TARGET libopen-pal POST_BUILD
-      COMMAND ${OMPI_LIB_CMD} ${OMPI_LIB_CMD_OUTPUT}${OpenMPI_BINARY_DIR}/${CMAKE_CFG_INTDIR}/event${CMAKE_DEBUG_POSTFIX}.lib ${EVENT_OBJ_FILES}
-      WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-      COMMENT "Generating static event library."
-    )
-    ADD_CUSTOM_COMMAND(TARGET libopen-pal POST_BUILD
-      COMMAND ${OMPI_LIB_CMD} ${OMPI_LIB_CMD_OUTPUT}${OpenMPI_BINARY_DIR}/${CMAKE_CFG_INTDIR}/hwloc${CMAKE_DEBUG_POSTFIX}.lib ${HWLOC_OBJ_FILES}
-      WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
-      COMMENT "Generating static hwloc library."
-    )
-  ENDIF(WINDOWS_MINGW)
-
   SET_TARGET_PROPERTIES(libopen-pal PROPERTIES COMPILE_DEFINITIONS "_USRDLL;OPAL_EXPORTS"
                                     PREFIX "" IMPORT_PREFIX "")
   IF(OPAL_WANT_LIBLTDL AND LIBLTDL_FOUND)

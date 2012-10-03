@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c)      2012 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -45,7 +47,7 @@ extern void ompi_debugger_notify_abort(char *string);
  * This function is also defined in orterun for the starter.
  * It should never conflict with this one
  */
-OMPI_DECLSPEC void* MPIR_Breakpoint(void);
+OMPI_DECLSPEC void *MPIR_Breakpoint(void);
 
 END_C_DECLS
 

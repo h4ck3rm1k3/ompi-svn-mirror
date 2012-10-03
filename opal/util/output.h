@@ -9,8 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -69,31 +68,17 @@
 #include <stdarg.h>
 #endif
 
+/*
+ * For C++, we should not need the file, anyhow.
+ * Circumentvent problems in C++ compilers.
+ */
+#if defined(HAVE_STDBOOL_H) && !(defined(c_plusplus) || defined(__cplusplus))
+#include <stdbool.h>
+#endif
+
 #include "opal/class/opal_object.h"
 
 BEGIN_C_DECLS
-
-/* There are systems where all output needs to be redirected to syslog
- * and away from stdout/stderr or files - e.g., embedded systems whose
- * sole file system is in flash. To support such systems, we provide
- * the following environmental variables that support redirecting -all-
- * output (both from opal_output and stdout/stderr of processes) to
- * syslog:
- *
- * OPAL_OUTPUT_REDIRECT - set to "syslog" to redirect to syslog. Other
- *                        options may someday be supported
- * OPAL_OUTPUT_SYSLOG_PRI - set to "info", "error", or "warn" to have
- *                        output sent to syslog at that priority
- * OPAL_OUTPUT_SYSLOG_IDENT - a string identifier for the log
- *
- * We also define two global variables that notify all other
- * layers that output is being redirected to syslog at the given
- * priority. These are used, for example, by the IO forwarding
- * subsystem to tell it to dump any collected output directly to
- * syslog instead of forwarding it to another location.
- */
-OPAL_DECLSPEC extern bool opal_output_redirected_to_syslog;
-OPAL_DECLSPEC extern int opal_output_redirected_syslog_pri;
 
 /**
  * \class opal_output_stream_t 
@@ -306,7 +291,7 @@ struct opal_output_stream_t {
      * characteristics of the reopened output stream should be.
      *
      * This function redirects an existing stream into a new [set of]
-     * location[s], as specified by the lds parameter.  If the output_id
+     * location[s], as specified by the lds parameter.  If the output_is
      * passed is invalid, this call is effectively the same as opening a
      * new stream with a specific stream handle.
      */

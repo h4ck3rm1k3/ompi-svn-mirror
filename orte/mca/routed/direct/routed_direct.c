@@ -1,9 +1,6 @@
 /*
- * Copyright (c) 2007-2011 Los Alamos National Security, LLC.
+ * Copyright (c) 2007      Los Alamos National Security, LLC.
  *                         All rights reserved. 
- * Copyright (c) 2004-2011 The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,7 +20,6 @@
 #include "orte/util/name_fns.h"
 #include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/runtime/data_type_support/orte_dt_support.h"
 
 #include "orte/mca/rml/base/rml_contact.h"
 
@@ -39,12 +35,10 @@ static orte_process_name_t get_route(orte_process_name_t *target);
 static int init_routes(orte_jobid_t job, opal_buffer_t *ndat);
 static int route_lost(const orte_process_name_t *route);
 static bool route_is_defined(const orte_process_name_t *target);
-static void update_routing_plan(void);
-static void get_routing_list(orte_grpcomm_coll_t type,
-                             orte_grpcomm_collective_t *coll);
+static int update_routing_tree(void);
+static orte_vpid_t get_routing_tree(opal_list_t *children);
 static int get_wireup_info(opal_buffer_t *buf);
 static int set_lifeline(orte_process_name_t *proc);
-static size_t num_routes(void);
 
 #if OPAL_ENABLE_FT_CR == 1
 static int direct_ft_event(int state);
@@ -60,10 +54,9 @@ orte_routed_module_t orte_routed_direct_module = {
     route_lost,
     route_is_defined,
     set_lifeline,
-    update_routing_plan,
-    get_routing_list,
+    update_routing_tree,
+    get_routing_tree,
     get_wireup_info,
-    num_routes,
 #if OPAL_ENABLE_FT_CR == 1
     direct_ft_event
 #else
@@ -88,6 +81,11 @@ static int init(void)
 static int finalize(void)
 {
     int rc;
+    
+    /* if I am the HNP, I need to stop the comm recv */
+    if (ORTE_PROC_IS_HNP) {
+        orte_routed_base_comm_stop();
+    }
     
     if (ORTE_PROC_IS_MPI && NULL != orte_process_info.my_daemon_uri) {
         /* if a daemon launched me, register that I am leaving */
@@ -137,13 +135,11 @@ static orte_process_name_t get_route(orte_process_name_t *target)
     if (target->jobid == ORTE_JOBID_INVALID ||
         target->vpid == ORTE_VPID_INVALID) {
         ret = ORTE_NAME_INVALID;
-        goto found;
+    } else {
+        /* all routes are direct */
+        ret = target;
     }
 
-    /* all routes go direct */
-    ret = target;
-
- found:
     OPAL_OUTPUT_VERBOSE((2, orte_routed_base_output,
                          "%s routed_direct_get(%s) --> %s",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -226,7 +222,15 @@ static int init_routes(orte_jobid_t job, opal_buffer_t *ndat)
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                              ORTE_JOBID_PRINT(job)));
         
-        if (NULL != ndat) {
+        if (NULL == ndat) {
+            /* if ndat is NULL, then this is being called during init, so just
+             * make myself available to catch any reported contact info
+             */
+            if (ORTE_SUCCESS != (rc = orte_routed_base_comm_start())) {
+                ORTE_ERROR_LOG(rc);
+                return rc;
+            }
+        } else {
             /* if this is for my own jobid, then I am getting an update of RML info
              * for the daemons - so update our contact info and routes
              */
@@ -311,108 +315,39 @@ static int set_lifeline(orte_process_name_t *proc)
     return ORTE_SUCCESS;
 }
 
-static void update_routing_plan(void)
+static int update_routing_tree(void)
 {
     /* nothing to do here */
-    return;
+    return ORTE_SUCCESS;
 }
 
-static void get_routing_list(orte_grpcomm_coll_t type,
-                             orte_grpcomm_collective_t *coll)
+static orte_vpid_t get_routing_tree(opal_list_t *children)
 {
-    orte_namelist_t *nm;
-    int32_t i;
-    orte_job_t *jdata;
-    orte_proc_t *proc;
+    orte_vpid_t i;
+    orte_routed_tree_t *nm;
     
-    /* if I am anything other than daemons and the HNP, this
-     * is a meaningless command as I am not allowed to route
+    if (!ORTE_PROC_IS_HNP) {
+        /* if I am not the HNP, there is nothing to do */
+        return ORTE_VPID_INVALID;
+    }
+    
+    /* if I am the HNP, then I need to construct a list containing all
+     * daemons so I can relay messages to them
      */
-    if (!ORTE_PROC_IS_DAEMON || !ORTE_PROC_IS_HNP) {
-        return;
+    for (i=0; i < orte_process_info.num_procs; i++) {
+        nm = OBJ_NEW(orte_routed_tree_t);
+        nm->vpid = i;
+        opal_list_append(children, &nm->super);
     }
-    
-    if (ORTE_GRPCOMM_XCAST == type) {
-        /* daemons don't route */
-        if (ORTE_PROC_IS_DAEMON) {
-            return;
-        }
-        /* HNP sends direct to each daemon */
-        if (NULL == (jdata = orte_get_job_data_object(ORTE_PROC_MY_NAME->jobid))) {
-            ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-            return;
-        }
-        for (i=1; i < jdata->procs->size; i++) {
-            if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, i))) {
-                continue;
-            }
-            if( proc->state <= ORTE_PROC_STATE_UNTERMINATED &&
-                NULL != proc->rml_uri ) {
-                OPAL_OUTPUT_VERBOSE((5, orte_routed_base_output,
-                                     "%s get_routing_tree: Adding process %s state %s",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ORTE_NAME_PRINT(&(proc->name)),
-                                     orte_proc_state_to_str(proc->state)));
-
-                nm = OBJ_NEW(orte_namelist_t);
-                nm->name.jobid = proc->name.jobid;
-                nm->name.vpid = proc->name.vpid;
-                opal_list_append(&coll->targets, &nm->super);
-            } else {
-                OPAL_OUTPUT_VERBOSE((5, orte_routed_base_output,
-                                     "%s get_routing_tree: Skipped process %15s state %s (non functional daemon)",
-                                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                                     ORTE_NAME_PRINT(&(proc->name)),
-                                     orte_proc_state_to_str(proc->state)));
-            }
-        }
-    } else if (ORTE_GRPCOMM_COLL_RELAY == type) {
-        orte_routed_base_coll_relay_routing(coll);
-    } else if (ORTE_GRPCOMM_COLL_COMPLETE == type) {
-        orte_routed_base_coll_complete_routing(coll);
-    } else if (ORTE_GRPCOMM_COLL_PEERS == type) {
-        if (ORTE_PROC_IS_DAEMON) {
-            return;
-        }
-        /* HNP receives from all */
-        nm = OBJ_NEW(orte_namelist_t);
-        nm->name.jobid = ORTE_PROC_MY_NAME->jobid;
-        nm->name.vpid = ORTE_VPID_WILDCARD;
-        opal_list_append(&coll->targets, &nm->super);
-    }
+    return ORTE_VPID_INVALID;
 }
 
 static int get_wireup_info(opal_buffer_t *buf)
 {
-    opal_byte_object_t bo, *boptr;
-
     /* this is a meaningless command for a direct as I am not allowed to route */
-    bo.bytes = NULL;
-    bo.size = 0;
-    boptr = &bo;
-
-    opal_dss.pack(buf, &boptr, 1, OPAL_BYTE_OBJECT);
     return ORTE_SUCCESS;
 }
 
-static size_t num_routes(void)
-{
-    orte_job_t *jdata;
-
-    if (!ORTE_PROC_IS_HNP) {
-        return 0;
-    }
-
-    /* if I am the HNP, then the number of routes is
-     * the number of daemons still alive (other than me)
-     */
-    if (NULL == (jdata = orte_get_job_data_object(ORTE_PROC_MY_NAME->jobid))) {
-        ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        return 0;
-    }
-
-    return (jdata->num_procs - jdata->num_terminated - 1);
-}
 
 #if OPAL_ENABLE_FT_CR == 1
 static int direct_ft_event(int state)

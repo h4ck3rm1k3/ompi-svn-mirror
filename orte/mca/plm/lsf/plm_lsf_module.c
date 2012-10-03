@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008      Institut National de Recherche en Informatique
  *                         et Automatique. All rights reserved.
@@ -66,7 +66,6 @@
 #include "orte/runtime/orte_wait.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rmaps/rmaps.h"
-#include "orte/mca/state/state.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"
@@ -99,7 +98,10 @@ orte_plm_base_module_t orte_plm_lsf_module = {
     plm_lsf_finalize
 };
 
-static void launch_daemons(int fd, short args, void *cbdata);
+/*
+ * Local variables
+ */
+static orte_jobid_t active_job = ORTE_JOBID_INVALID;
 
 /**
  * Init the module
@@ -111,27 +113,6 @@ int plm_lsf_init(void)
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
         ORTE_ERROR_LOG(rc);
     }
-
-    if (orte_do_not_launch) {
-        /* must assign daemons as won't be launching them */
-        orte_plm_globals.daemon_nodes_assigned_at_launch = true;
-    } else {
-        /* we do NOT assign daemons to nodes at launch - we will
-         * determine that mapping when the daemon
-         * calls back. This is required because lsf does
-         * its own mapping of proc-to-node, and we cannot know
-         * in advance which daemon will wind up on which node
-         */
-        orte_plm_globals.daemon_nodes_assigned_at_launch = false;
-    }
-
-    /* point to our launch command */
-    if (ORTE_SUCCESS != (rc = orte_state.add_job_state(ORTE_JOB_STATE_LAUNCH_DAEMONS,
-                                                       launch_daemons, ORTE_SYS_PRI))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-    }
-
     return rc;
 }
 
@@ -140,18 +121,6 @@ int plm_lsf_init(void)
  * the job can cleanly terminate
  */
 static int plm_lsf_launch_job(orte_job_t *jdata)
-{
-    if (ORTE_JOB_CONTROL_RESTART & jdata->controls) {
-        /* this is a restart situation - skip to the mapping stage */
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP);
-    } else {
-        /* new job - set it up */
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_INIT);
-    }
-    return ORTE_SUCCESS;
-}
-
-static void launch_daemons(int fd, short args, void *cbdata)
 {
     orte_job_map_t *map;
     size_t num_nodes;
@@ -166,85 +135,72 @@ static void launch_daemons(int fd, short args, void *cbdata)
     char *vpid_string;
     int i;
     char *cur_prefix;
+    struct timeval joblaunchstart, launchstart, launchstop;
     int proc_vpid_index = 0;
     bool failed_launch = true;
-    orte_app_context_t *app;
-    orte_node_t *node;
+    orte_app_context_t **apps;
+    orte_node_t **nodes;
     orte_std_cntr_t nnode;
-    orte_job_t *daemons;
-    orte_state_caddy_t *state = (orte_state_caddy_t*)cbdata;
-    orte_job_t *jdata = state->jdata;
+    orte_jobid_t failed_job;
+    orte_job_state_t job_state = ORTE_JOB_NEVER_LAUNCHED;
 
-    /* start by setting up the virtual machine */
-    daemons = orte_get_job_data_object(ORTE_PROC_MY_NAME->jobid);
-    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_virtual_machine(jdata))) {
+    /* default to declaring the daemons failed*/
+    failed_job = ORTE_PROC_MY_NAME->jobid;
+
+    if (orte_timing) {
+        if (0 != gettimeofday(&joblaunchstart, NULL)) {
+            opal_output(0, "plm_lsf: could not obtain job start time");
+        }        
+    }
+    
+    /* setup the job */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto cleanup;
     }
-
-    /* if we don't want to launch, then don't attempt to
-     * launch the daemons - the user really wants to just
-     * look at the proposed process map
-     */
-    if (orte_do_not_launch) {
-        /* set the state to indicate the daemons reported - this
-         * will trigger the daemons_reported event and cause the
-         * job to move to the following step
-         */
-        state->jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
-        ORTE_ACTIVATE_JOB_STATE(state->jdata, ORTE_JOB_STATE_DAEMONS_REPORTED);
-        OBJ_RELEASE(state);
-        return;
-    }
-
-    OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                         "%s plm:lsf: launching vm",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     
+    OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                         "%s plm:lsf: launching job %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ORTE_JOBID_PRINT(jdata->jobid)));
+    
+    /* save the active jobid */
+    active_job = jdata->jobid;
     
     /* Get the map for this job */
-    if (NULL == (map = daemons->map)) {
+    if (NULL == (map = orte_rmaps.get_job_map(active_job))) {
         ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
         rc = ORTE_ERR_NOT_FOUND;
         goto cleanup;
     }
+    apps = (orte_app_context_t**)jdata->apps->addr;
+    nodes = (orte_node_t**)map->nodes->addr;
     
     num_nodes = map->num_new_daemons;
-    if (0 == num_nodes) {
-        /* set the state to indicate the daemons reported - this
-         * will trigger the daemons_reported event and cause the
-         * job to move to the following step
-         */
+    if (num_nodes == 0) {
+        /* have all the daemons we need - launch app */
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                              "%s plm:lsf: no new daemons to launch",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-        state->jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
-        if (ORTE_JOB_STATE_DAEMONS_REPORTED == daemons->state) {
-            ORTE_ACTIVATE_JOB_STATE(state->jdata, ORTE_JOB_STATE_DAEMONS_REPORTED);
-        }
-        OBJ_RELEASE(state);
-        return;
+        goto launch_apps;
     }
 
     /* create nodelist */
     nodelist_argv = NULL;
     nodelist_argc = 0;
 
-    for (nnode=0; nnode < map->nodes->size; nnode++) {
-        if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(map->nodes, nnode))) {
-            continue;
-        }
+    for (nnode=0; nnode < map->num_nodes; nnode++) {
         /* if the daemon already exists on this node, then
          * don't include it
          */
-        if (node->daemon_launched) {
+        if (nodes[nnode]->daemon_launched) {
             continue;
         }
         
         /* otherwise, add it to the list of nodes upon which
          * we need to launch a daemon
          */
-        opal_argv_append(&nodelist_argc, &nodelist_argv, node->name);
+        opal_argv_append(&nodelist_argc, &nodelist_argv, nodes[nnode]->name);
     }
     nodelist = opal_argv_join(nodelist_argv, ',');
 
@@ -265,7 +221,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
     orte_plm_base_orted_append_basic_args(&argc, &argv,
                                           "lsf",
                                           &proc_vpid_index,
-                                          nodelist);
+                                          false, nodelist);
     free(nodelist);
 
     /* tell the new daemons the base of the name list so they can compute
@@ -292,17 +248,13 @@ static void launch_daemons(int fd, short args, void *cbdata)
     /* Copy the prefix-directory specified in the
        corresponding app_context.  If there are multiple,
        different prefix's in the app context, complain (i.e., only
-       allow one --prefix option for the entire lsf run -- we
+       allow one --prefix option for the entire slurm run -- we
        don't support different --prefix'es for different nodes in
-       the LSF plm) */
+       the SLURM plm) */
     cur_prefix = NULL;
-    for (i=0; i < jdata->apps->size; i++) {
-        char *app_prefix_dir;
-        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, i))) {
-            continue;
-        }
-        app_prefix_dir = app->prefix_dir;
-        /* Check for already set cur_prefix_dir -- if different,
+    for (i=0; i < jdata->num_apps; i++) {
+        char * app_prefix_dir = apps[i]->prefix_dir;
+         /* Check for already set cur_prefix_dir -- if different,
            complain */
         if (NULL != app_prefix_dir) {
             if (NULL != cur_prefix &&
@@ -327,6 +279,15 @@ static void launch_daemons(int fd, short args, void *cbdata)
     /* setup environment */
     env = opal_argv_copy(orte_launch_environ);
 
+    if (orte_timing) {
+        if (0 != gettimeofday(&launchstart, NULL)) {
+            opal_output(0, "plm_lsf: could not obtain start time");
+        }        
+    }
+    
+    /* set the job state to indicate we attempted to launch */
+    job_state = ORTE_JOB_STATE_FAILED_TO_START;
+    
     /* lsb_launch tampers with SIGCHLD.
      * After the call to lsb_launch, the signal handler for SIGCHLD is NULL.
      * So, we disable the SIGCHLD handler of libevent for the duration of 
@@ -349,14 +310,49 @@ static void launch_daemons(int fd, short args, void *cbdata)
     }
     orte_wait_enable();  /* re-enable our SIGCHLD handler */
     
-    /* indicate that the daemons for this job were launched */
-    state->jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
-    daemons->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
+    /* wait for daemons to callback */
+    if (ORTE_SUCCESS != 
+        (rc = orte_plm_base_daemon_callback(map->num_new_daemons))) {
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                             "%s plm:lsf: daemon launch failed for job %s on error %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_JOBID_PRINT(active_job), ORTE_ERROR_NAME(rc)));
+        goto cleanup;
+    }
 
-    /* flag that launch was successful, so far as we currently know */
+launch_apps:
+    /* daemons succeeded - any failure now would be from apps */
+    failed_job = active_job;
+    if (ORTE_SUCCESS != (rc = orte_plm_base_launch_apps(active_job))) {
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                             "%s plm:lsf: launch of apps failed for job %s on error %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_JOBID_PRINT(active_job), ORTE_ERROR_NAME(rc)));
+        goto cleanup;
+    }
+    
+    /* declare the launch a success */
     failed_launch = false;
+    
+    if (orte_timing) {
+        if (0 != gettimeofday(&launchstop, NULL)) {
+             opal_output(0, "plm_lsf: could not obtain stop time");
+         } else {
+             opal_output(0, "plm_lsf: daemon block launch time is %ld usec",
+                         (launchstop.tv_sec - launchstart.tv_sec)*1000000 + 
+                         (launchstop.tv_usec - launchstart.tv_usec));
+             opal_output(0, "plm_lsf: total job launch time is %ld usec",
+                         (launchstop.tv_sec - joblaunchstart.tv_sec)*1000000 + 
+                         (launchstop.tv_usec - joblaunchstart.tv_usec));
+         }
+    }
 
- cleanup:
+    if (ORTE_SUCCESS != rc) {
+        opal_output(0, "plm:lsf: start_procs returned error %d", rc);
+        goto cleanup;
+    }
+
+cleanup:
     if (NULL != argv) {
         opal_argv_free(argv);
     }
@@ -364,13 +360,12 @@ static void launch_daemons(int fd, short args, void *cbdata)
         opal_argv_free(env);
     }
     
-    /* cleanup the caddy */
-    OBJ_RELEASE(state);
-
     /* check for failed launch - if so, force terminate */
     if (failed_launch) {
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        orte_plm_base_launch_failed(failed_job, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, job_state);
     }
+
+    return rc;
 }
 
 
@@ -381,24 +376,11 @@ static int plm_lsf_terminate_orteds(void)
 {
     int rc;
     
-    /* now tell them to die */
-    if (orte_abnormal_term_ordered) {
-        /* cannot know if a daemon is able to
-         * tell us it died, so just ensure they
-         * all terminate
-         */
-        if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_HALT_VM_CMD))) {
-            ORTE_ERROR_LOG(rc);
-        }
-    } else {
-        /* we need them to "phone home", though,
-         * so we can know that they have exited
-         */
-        if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
-            ORTE_ERROR_LOG(rc);
-        }
+    /* tell them to die! */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
+        ORTE_ERROR_LOG(rc);
     }
-
+    
     return rc;
 }
 

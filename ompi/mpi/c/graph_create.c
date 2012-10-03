@@ -9,9 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,8 +37,8 @@
 static const char FUNC_NAME[] = "MPI_Graph_create";
 
 
-int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int indx[],
-                     int edges[], int reorder, MPI_Comm *comm_graph) 
+int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int *index,
+                     int *edges, int reorder, MPI_Comm *comm_graph) 
 {
 
     int err;
@@ -64,7 +62,7 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int indx[],
         if (nnodes < 0) {
             return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
                                            FUNC_NAME);
-        } else if (nnodes >= 1 && ((NULL == indx) || (NULL == edges))) {
+        } else if (nnodes >= 1 && ((NULL == index) || (NULL == edges))) {
             return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
                                            FUNC_NAME);
         }
@@ -93,7 +91,7 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int indx[],
             return OMPI_ERRHANDLER_INVOKE(old_comm, err, FUNC_NAME);
         }
         if (OMPI_SUCCESS != 
-            (err = mca_topo_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+            (err = mca_topo_base_find_available(OPAL_ENABLE_PROGRESS_THREADS,
                                                 OMPI_ENABLE_THREAD_MULTIPLE))) {
             return OMPI_ERRHANDLER_INVOKE(old_comm, err, FUNC_NAME);
         }
@@ -111,7 +109,7 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int indx[],
 
     err = ompi_topo_create ((struct ompi_communicator_t *)old_comm,
                             nnodes,
-                            indx,
+                            index,
                             edges,
                             re_order,
                             (struct ompi_communicator_t **)comm_graph,

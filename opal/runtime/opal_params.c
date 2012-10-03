@@ -11,9 +11,9 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2010      Los Alamos National Security, LLC.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -34,15 +34,12 @@
 #include "opal/datatype/opal_datatype.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/threads/mutex.h"
-#include "opal/threads/threads.h"
-#include "opal/mca/shmem/base/base.h" 
+#include "opal/mca/paffinity/base/base.h"
+#include "opal/mca/shmem/base/base.h"
 
 int opal_register_params(void)
 {
     int ret;
-#if OPAL_ENABLE_DEBUG
-    int value;
-#endif /* OPAL_ENABLE_DEBUG */
 
     /*
      * This string is going to be used in opal/util/stacktrace.c
@@ -82,6 +79,19 @@ int opal_register_params(void)
         free(string);
     }
 
+    {
+        int j;
+
+        mca_base_param_reg_int_name("opal", "profile", 
+                                    "Set to non-zero to profile component selections",
+                                    false, false, (int)false, &j);
+        opal_profile = OPAL_INT_TO_BOOL(j);
+
+        mca_base_param_reg_string_name("opal", "profile_file", 
+                                       "Name of the file containing the cluster configuration information",
+                                       false, false, NULL, &opal_profile_file);
+    }
+    
 #if OPAL_ENABLE_DEBUG
 
 
@@ -90,18 +100,13 @@ int opal_register_params(void)
                                 false, false, 0, NULL);
 
     {
+        int value;
         mca_base_param_reg_int_name("opal", "debug_locks",
                                     "Debug mutex usage within Open MPI.  On a "
                                     "non-threaded build, this enables integer counters and "
                                     "warning messages when double-locks are detected.",
                                     false, false, 0, &value);
         if (value) opal_mutex_check_locks = true;
-
-        mca_base_param_reg_int_name("opal", "debug_threads",
-                                    "Debug thread usage within OPAL. Reports out "
-                                    "when threads are acquired and released.",
-                                    false, false, 0, &value);
-        if (value) opal_debug_threads = true;
     }
 #endif
     /* The ddt engine has a few parameters */
@@ -110,11 +115,12 @@ int opal_register_params(void)
         return ret;
     }
 
-    /* shmem base also has a few parameters */ 
-    ret = opal_shmem_base_register_params(); 
-    if (OPAL_SUCCESS != ret) { 
-        return ret; 
+    /* shmem base also has a few parameters */
+    ret = opal_shmem_base_register_params();
+    if (OPAL_SUCCESS != ret) {
+        return ret;
     }
 
-    return OPAL_SUCCESS;
+    /* Paffinity base also has some parameters */
+    return opal_paffinity_base_register_params();
 }

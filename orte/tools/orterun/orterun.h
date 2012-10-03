@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -37,15 +37,25 @@ struct orterun_globals_t {
     bool help;
     bool version;
     bool verbose;
+    bool quiet;
     char *report_pid;
     char *report_uri;
     bool exit;
+    bool by_node;
+    bool by_slot;
+    bool by_board;
+    bool by_socket;
+    bool bind_to_none;
+    bool bind_to_core;
+    bool bind_to_board;
+    bool bind_to_socket;
     bool debugger;
     int num_procs;
     char *env_val;
     char *appfile;
     char *wdir;
     char *path;
+    bool preload_binary;
     char *preload_files;
     char *preload_files_dest_dir;
     opal_mutex_t lock;

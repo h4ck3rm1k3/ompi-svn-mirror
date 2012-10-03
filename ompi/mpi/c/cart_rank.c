@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,7 +37,7 @@
 static const char FUNC_NAME[] = "MPI_Cart_rank";
 
 
-int MPI_Cart_rank(MPI_Comm comm, int coords[], int *rank) 
+int MPI_Cart_rank(MPI_Comm comm, int *coords, int *rank) 
 {
     int i, err;
     mca_topo_base_module_cart_rank_fn_t func;

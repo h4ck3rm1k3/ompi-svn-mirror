@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2008 The University of Tennessee and The University
@@ -9,8 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved. 
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2011 Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c)      2011 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,6 +30,7 @@
 #include <stdio.h>
 
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/mca/paffinity/base/base.h"
 #include "opal/mca/installdirs/installdirs.h"
 #include "opal/util/output.h"
 #include "opal/util/argv.h"
@@ -42,9 +45,10 @@ static bool passed_thru = false;
 
 int orte_register_params(void)
 {
-    int value;
-    char *strval, *strval1, *strval2;
-
+    int value, tmp;
+    char *strval, **params;
+    uint16_t binding;
+    
     /* only go thru this once - mpirun calls it twice, which causes
      * any error messages to show up twice
      */
@@ -53,109 +57,28 @@ int orte_register_params(void)
     }
     passed_thru = true;
     
-#if !ORTE_DISABLE_FULL_SUPPORT
-    /* get a clean output channel too - need to do this here because
-     * we use it below, and orterun and some other tools call this
-     * function prior to calling orte_init
-     */
-    {
-        opal_output_stream_t lds;
-        OBJ_CONSTRUCT(&lds, opal_output_stream_t);
-        lds.lds_want_stdout = true;
-        orte_clean_output = opal_output_open(&lds);
-        OBJ_DESTRUCT(&lds);
-    }
-#endif /* !ORTE_DISABLE_FULL_SUPPORT */
-
     mca_base_param_reg_int_name("orte", "base_help_aggregate",
                                 "If orte_base_help_aggregate is true, duplicate help messages will be aggregated rather than displayed individually.  This can be helpful for parallel jobs that experience multiple identical failures; rather than print out the same help/failure message N times, display it once with a count of how many processes sent the same message.",
                                 false, false,
                                 (int) true, &value);
     orte_help_want_aggregate = OPAL_INT_TO_BOOL(value);
     
-    /* LOOK FOR A TMP DIRECTORY BASE */
-    /* Several options are provided to cover a range of possibilities:
-     *
-     * (a) all processes need to use a specified location as the base
-     *     for tmp directories
-     * (b) daemons on remote nodes need to use a specified location, but
-     *     one different from that used by mpirun
-     * (c) mpirun needs to use a specified location, but one different
-     *     from that used on remote nodes
-     */
     mca_base_param_reg_string_name("orte", "tmpdir_base",
-                                   "Base of the session directory tree to be used by all processes",
-                                   false, false, NULL,  &strval);
+                                   "Base of the session directory tree",
+                                   false, false, NULL,  &(orte_process_info.tmpdir_base));
    
-    mca_base_param_reg_string_name("orte", "local_tmpdir_base",
-                                   "Base of the session directory tree to be used by orterun/mpirun",
-                                   false, false, NULL,  &strval1);
-
-    mca_base_param_reg_string_name("orte", "remote_tmpdir_base",
-                                   "Base of the session directory tree on remote nodes, if required to be different from head node",
-                                   false, false, NULL,  &strval2);
-
-    /* if a global tmpdir was specified, then we do not allow specification
-     * of the local or remote values to avoid confusion
-     */
-    if (NULL != strval &&
-        (NULL != strval1 || NULL != strval2)) {
-            opal_output(orte_clean_output,
-                        "------------------------------------------------------------------\n"
-                        "The MCA param orte_tmpdir_base was specified, which sets the base\n"
-                        "of the temporary directory tree for all procs. However, values for\n"
-                        "the local and/or remote tmpdir base were also given. This can lead\n"
-                        "to confusion and is therefore not allowed. Please specify either a\n"
-                        "global tmpdir base OR a local/remote tmpdir base value\n"
-                        "------------------------------------------------------------------");
-            exit(1);
-    }
-     
-    if (NULL != strval) {
-        if (NULL != orte_process_info.tmpdir_base) {
-            free(orte_process_info.tmpdir_base);
-        }
-        orte_process_info.tmpdir_base = strval;
-    } else if (ORTE_PROC_IS_HNP && NULL != strval1) {
-        /* orterun will pickup the value for its own use */
-        if (NULL != orte_process_info.tmpdir_base) {
-            free(orte_process_info.tmpdir_base);
-        }
-        orte_process_info.tmpdir_base = strval1;
-    } else if (ORTE_PROC_IS_DAEMON && NULL != strval2) {
-        /* orterun will pickup the value and forward it along, but must not
-         * use it in its own work. So only a daemon needs to get it, and the
-         * daemon will pass it down to its application procs. Note that orterun
-         * will pass -its- value to any procs local to it
-         */
-        if (NULL != orte_process_info.tmpdir_base) {
-            free(orte_process_info.tmpdir_base);
-        }
-        orte_process_info.tmpdir_base = strval2;
-    }
-
     mca_base_param_reg_string_name("orte", "no_session_dirs",
                                    "Prohibited locations for session directories (multiple locations separated by ',', default=NULL)",
                                    false, false, NULL,  &orte_prohibited_session_dirs);
 
-    mca_base_param_reg_int_name("orte", "create_session_dirs",
-                                "Create session directories",
-                                false, false, orte_create_session_dirs, &value);
-    orte_create_session_dirs = OPAL_INT_TO_BOOL(value);
-    
-    
-    mca_base_param_reg_int_name("orte", "execute_quiet",
-                                "Do not output error and help messages",
-                                false, false, (int) false, &value);
-    orte_execute_quiet = OPAL_INT_TO_BOOL(value);
-    
-    mca_base_param_reg_int_name("orte", "report_silent_errors",
-                                "Report all errors, including silent ones",
-                                false, false, (int) false, &value);
-    orte_report_silent_errors = OPAL_INT_TO_BOOL(value);
-
 #if !ORTE_DISABLE_FULL_SUPPORT
     
+    mca_base_param_reg_int_name("orte", "send_profile",
+                                "Send profile info in launch message",
+                                false, false,
+                                (int) false, &value);
+    orte_send_profile = OPAL_INT_TO_BOOL(value);
+
     mca_base_param_reg_int_name("orte", "debug",
                                 "Top-level ORTE debug switch (default verbosity: 1)",
                                 false, false, (int)false, &value);
@@ -165,7 +88,7 @@ int orte_register_params(void)
                                 "Verbosity level for ORTE debug messages (default: 1)",
                                 false, false, -1, &orte_debug_verbosity);
     
-    mca_base_param_reg_int_name("orte", "debug_daemons",
+   mca_base_param_reg_int_name("orte", "debug_daemons",
                                 "Whether to debug the ORTE daemons or not",
                                 false, false, (int)false, &value);
     orte_debug_daemons_flag = OPAL_INT_TO_BOOL(value);
@@ -175,10 +98,15 @@ int orte_register_params(void)
                                 false, false, (int)false, &value);
     orte_debug_daemons_file_flag = OPAL_INT_TO_BOOL(value);
     /* If --debug-daemons-file was specified, that also implies
-       --debug-daemons */
+        --debug-daemons */
     if (orte_debug_daemons_file_flag) {
         orte_debug_daemons_flag = true;
     }
+
+    mca_base_param_reg_int_name("orte", "daemon_bootstrap",
+                                "Bootstrap the connection to the HNP",
+                                false, false, (int)false, &value);
+    orte_daemon_bootstrap = OPAL_INT_TO_BOOL(value);
 
     /* do we want session output left open? */
     mca_base_param_reg_int_name("orte", "leave_session_attached",
@@ -188,11 +116,6 @@ int orte_register_params(void)
                                 false, false, (int)false, &value);
     orte_leave_session_attached = OPAL_INT_TO_BOOL(value);
     
-    /* if any debug level is set, ensure we output debug level dumps */
-    if (orte_debug_flag || orte_debug_daemons_flag || orte_leave_session_attached) {
-        orte_devel_level_output = true;
-    }
-
     /* See comment in orte/tools/orterun/orterun.c about this MCA
        param (this param is internal) */
     mca_base_param_reg_int_name("orte",
@@ -201,7 +124,7 @@ int orte_register_params(void)
                                 "in a parallel debugger (default: false)",
                                 true, false, 0, &value);
     orte_in_parallel_debugger = OPAL_INT_TO_BOOL(value);
-
+    
     mca_base_param_reg_int_name("orte",
                                 "output_debugger_proctable",
                                 "Whether or not to output the debugger proctable after launch (default: false)",
@@ -241,6 +164,10 @@ int orte_register_params(void)
                                 "Have the specified orted fail after specified number of seconds (default: 0 => no delay)",
                                 false, false, 0, &orted_debug_failure_delay);
 
+    mca_base_param_reg_int_name("orte", "heartbeat_rate",
+                                "Seconds between checks for daemon state-of-health (default: 0 => do not check)",
+                                false, false, 0, &orte_heartbeat_rate);
+    
     mca_base_param_reg_int_name("orte", "startup_timeout",
                                 "Milliseconds/daemon to wait for startup before declaring failed_to_start (default: 0 => do not check)",
                                 false, false, 0, &orte_startup_timeout);
@@ -298,43 +225,41 @@ int orte_register_params(void)
                                 false, false, 1000, &orte_timeout_usec_per_proc);
     
     /* default hostfile */
+    asprintf(&orte_default_hostfile, "%s/openmpi-default-hostfile", opal_install_dirs.sysconfdir);
     mca_base_param_reg_string_name("orte", "default_hostfile",
                                    "Name of the default hostfile (relative or absolute path, \"none\" to ignore environmental or default MCA param setting)",
-                                   false, false, NULL, &strval);
-    if (NULL == strval) {
-        /* nothing was given, so define the default */
-        asprintf(&orte_default_hostfile, "%s/openmpi-default-hostfile", opal_install_dirs.sysconfdir);
-        /* flag that nothing was given */
-        orte_default_hostfile_given = false;
-    } else if (0 == strcmp(strval, "none")) {
+                                   false, false, orte_default_hostfile, &orte_default_hostfile);
+    if (0 == strcmp(orte_default_hostfile, "none")) {
+        free(orte_default_hostfile);
         orte_default_hostfile = NULL;
-        /* flag that it was given */
-        orte_default_hostfile_given = true;
-    } else {
-        orte_default_hostfile = strval;
-        /* flag that it was given */
-        orte_default_hostfile_given = true;
     }
+
+    /* rankfile */
+    tmp = mca_base_param_reg_string_name("orte", "rankfile",
+                                         "Name of the rankfile to be used for mapping processes (relative or absolute path)",
+                                         false, false, NULL, NULL);
+    mca_base_param_reg_syn_name(tmp, "rmaps", "rank_file_path", false);
+    mca_base_param_lookup_string(tmp, &orte_rankfile);
     
 #ifdef __WINDOWS__
     mca_base_param_reg_string_name("orte", "ccp_headnode",
-                                   "Name of the cluster head node. (For Windows CCP only.)",
-                                   false, false,
-                                   NULL, &orte_ccp_headnode);
+                          "Name of the cluster head node. (For Windows CCP only.)",
+                          false, false,
+                          NULL, &orte_ccp_headnode);
 #endif
     
-
-    /* regex of nodes in system */
-    mca_base_param_reg_string_name("orte", "node_regex",
-                                   "Regular expression defining nodes in the system",
-                                   false, false, NULL, &orte_node_regex);
-
     /* whether or not to keep FQDN hostnames */
     mca_base_param_reg_int_name("orte", "keep_fqdn_hostnames",
                                 "Whether or not to keep FQDN hostnames [default: no]",
                                 false, false, (int)false, &value);
     orte_keep_fqdn_hostnames = OPAL_INT_TO_BOOL(value);
     
+    /* whether or not to use regular expressions for launch */
+    mca_base_param_reg_int_name("orte", "use_regexp",
+                                "Whether or not to use regular expressions for launch [default: no]",
+                                false, false, (int)false, &value);
+    orte_use_regexp = OPAL_INT_TO_BOOL(value);
+
     /* whether to tag output */
     mca_base_param_reg_int_name("orte", "tag_output",
                                 "Tag all output with [job,rank] (default: false)",
@@ -390,25 +315,11 @@ int orte_register_params(void)
                                 "Indicates that multiple app_contexts are being provided that are a mix of 32/64 bit binaries (default: false)",
                                 false, false, (int) false, &value);
     orte_hetero_apps = OPAL_INT_TO_BOOL(value);
-
-#if OPAL_HAVE_HWLOC
-    mca_base_param_reg_int_name("orte", "hetero_nodes",
-                                "Nodes in cluster may differ in topology, so send the topology back from each node [Default = false]",
-                                false, false, (int) false, &value);
-    orte_hetero_nodes = OPAL_INT_TO_BOOL(value);
-#endif
-
+    
     /* allow specification of the launch agent */
     mca_base_param_reg_string_name("orte", "launch_agent",
                                    "Command used to start processes on remote nodes (default: orted)",
                                    false, false, "orted", &orte_launch_agent);
-
-    mca_base_param_reg_string_name("orte", "fork_agent",
-                                   "Command used to fork processes on remote nodes (default: NULL)",
-                                   false, false, NULL, &strval);
-    if (NULL != strval) {
-        orte_fork_agent = opal_argv_split(strval, ' ');
-    }
 
     /* whether or not to require RM allocation */
     mca_base_param_reg_int_name("orte", "allocation_required",
@@ -426,19 +337,8 @@ int orte_register_params(void)
          * back to the controlling terminal
          */
         orte_leave_session_attached = true;
-        /* also want to redirect stddiag output from opal_output
-         * to stderr from the process so those messages show
-         * up in the xterm window instead of being forwarded to mpirun
-         */
-        orte_map_stddiag_to_stderr = true;
     }
 
-    /* whether or not to map stddiag to stderr */
-    mca_base_param_reg_int_name("orte", "map_stddiag_to_stderr",
-                                "Map output from opal_output to stderr of the local process [default: no]",
-                                false, false,
-                                (int) false, &value);
-    orte_map_stddiag_to_stderr = OPAL_INT_TO_BOOL(value);
 
     /* whether or not to forward SIGTSTP and SIGCONT signals */
     mca_base_param_reg_int_name("orte", "forward_job_control",
@@ -446,6 +346,21 @@ int orte_register_params(void)
                                 false, false,
                                 (int) false, &value);
     orte_forward_job_control = OPAL_INT_TO_BOOL(value);
+    
+    /* local rsh/ssh launch agent */
+    tmp = mca_base_param_reg_string_name("orte", "rsh_agent",
+                                         "The command used to launch executables on remote nodes (typically either \"ssh\" or \"rsh\")",
+                                         false, false, "ssh : rsh", NULL);
+    mca_base_param_reg_syn_name(tmp, "pls", "rsh_agent", true);
+    mca_base_param_reg_syn_name(tmp, "plm", "rsh_agent", true);
+    mca_base_param_lookup_string(tmp, &orte_rsh_agent);
+
+    tmp = mca_base_param_reg_int_name("orte", "assume_same_shell",
+                                      "If set to 1, assume that the shell on the remote node is the same as the shell on the local node.  Otherwise, probe for what the remote shell [default: 1]",
+                                      false, false, 1, NULL);
+    mca_base_param_reg_syn_name(tmp, "plm", "rsh_assume_same_shell", true);
+    mca_base_param_lookup_int(tmp, &value);
+    orte_assume_same_shell = OPAL_INT_TO_BOOL(value);
     
     /* whether or not to report launch progress */
     mca_base_param_reg_int_name("orte", "report_launch_progress",
@@ -462,16 +377,75 @@ int orte_register_params(void)
     
     /* cluster hardware info detected by orte only */
     mca_base_param_reg_string_name("orte", "cpu_type",
-                                   "cpu type detected in node",
-                                   true, false, NULL, &orte_local_cpu_type);
-
+				   "cpu type detected in node",
+				   true, false, NULL, &orte_local_cpu_type);
     mca_base_param_reg_string_name("orte", "cpu_model",
                                    "cpu model detected in node",
                                    true, false, NULL, &orte_local_cpu_model);
 
+    /* cluster hardware info */
+    mca_base_param_reg_int_name("orte", "num_boards",
+                                "Number of processor boards/node (1-256) [default: 1]",
+                                false, false, 1, &value);
+    orte_default_num_boards = (uint8_t)value;
+
+    mca_base_param_reg_int_name("orte", "num_sockets",
+                                "Number of sockets/board (1-256)",
+                                false, false, 0, &value);
+    orte_default_num_sockets_per_board = (uint8_t)value;
+
+    mca_base_param_reg_int_name("orte", "num_cores",
+                                "Number of cores/socket (1-256)",
+                                false, false, 0, &value);
+    orte_default_num_cores_per_socket = (uint8_t)value;
+    
+    /* binding specification - this will be overridden by any cmd line directive, and
+     * ignored unless opal_paffinity_alone is set
+     */
+	mca_base_param_reg_string_name("orte", "process_binding",
+						     "Policy for binding processes [none | core | socket | board] (supported qualifier: if-avail)",
+						     false, false, NULL, &strval);
+	if (NULL != strval) {
+        if (0 == strcasecmp(strval, "none")) {
+            /* no binding */
+            ORTE_SET_BINDING_POLICY(ORTE_BIND_TO_NONE);
+        } else {
+            binding = 0;
+            params = opal_argv_split(strval, ':');
+            if (1 < opal_argv_count(params)) {
+                if (0 != strcasecmp(params[1], "if-avail")) {
+                    /* unknown option */
+                    opal_output(0, "Unknown qualifier to orte_process_binding: %s", strval);
+                    return ORTE_ERR_BAD_PARAM;
+                }
+                binding = ORTE_BIND_IF_SUPPORTED;
+            }
+            if (0 == strcasecmp(params[0], "socket")) {
+                ORTE_SET_BINDING_POLICY(ORTE_BIND_TO_SOCKET | binding);
+            } else if (0 == strcasecmp(params[0], "board")) {
+                ORTE_SET_BINDING_POLICY(ORTE_BIND_TO_BOARD | binding);
+            } else if (0 == strcasecmp(params[0], "core")) {
+                ORTE_SET_BINDING_POLICY(ORTE_BIND_TO_CORE | binding);
+            }
+        }
+    }
+    /* if nothing was set, but opal_paffinity_alone is set, then default
+     * to bind-to-core
+     */
+    if (opal_paffinity_alone) {
+        ORTE_XSET_BINDING_POLICY(ORTE_BIND_TO_CORE);
+    }
+    
+    /* whether or not to report bindings */
+    mca_base_param_reg_int_name("orte", "report_bindings",
+                                "Report bindings",
+                                false, false,
+                                (int) false, &value);
+    orte_report_bindings = OPAL_INT_TO_BOOL(value);
+    
     /* tool communication controls */
     mca_base_param_reg_string_name("orte", "report_events",
-                                   "URI to which events are to be reported (default: NULL)",
+                                   "URI to which events are to be reported (default: NULL)]",
                                    false, false, NULL, &orte_report_events_uri);
     if (NULL != orte_report_events_uri) {
         orte_report_events = true;
@@ -483,78 +457,6 @@ int orte_register_params(void)
                                 true, false,
                                 (int) false, &value);
     orte_do_not_barrier = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int_name("orte", "enable_recovery",
-                                "Enable recovery from process failure [Default = disabled]",
-                                false, false,
-                                (int)false, &value);
-    orte_enable_recovery = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int_name("orte", "max_restarts",
-                                "Max number of times to restart a failed process",
-                                false, false,
-                                0, &orte_max_restarts);
-    
-    if (!orte_enable_recovery && orte_max_restarts != 0) {
-        if (ORTE_PROC_IS_HNP) {
-            opal_output(orte_clean_output,
-                        "------------------------------------------------------------------\n"
-                        "The MCA param orte_enable_recovery was not set to true, but\n"
-                        "a value was provided for the number of restarts:\n\n"
-                        "Max restarts: %d\n"
-                        "We are enabling process recovery and continuing execution. To avoid\n"
-                        "this warning in the future, please set the orte_enable_recovery\n"
-                        "param to non-zero.\n"
-                        "------------------------------------------------------------------",
-                        orte_max_restarts);            
-        }
-        orte_enable_recovery = true;
-    }
-    
-    mca_base_param_reg_int_name("orte", "abort_on_non_zero_status",
-                                "Abort the job if any process returns a non-zero exit status - no restart in such cases",
-                                false, false, (int)true, &value);
-    orte_abort_non_zero_exit = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int_name("orte", "report_child_jobs_separately",
-                                "Return the exit status of the primary job only",
-                                false, false,
-                                (int)false, &value);
-    orte_report_child_jobs_separately = OPAL_INT_TO_BOOL(value);
-    
-    mca_base_param_reg_int_name("orte", "child_time_to_exit",
-                                "Max time a spawned child job is allowed to run after the primary job has terminated (seconds)",
-                                false, false,
-                                INT_MAX, &value);
-    orte_child_time_to_exit.tv_sec = value;
-    orte_child_time_to_exit.tv_usec = 0;
- 
-    mca_base_param_reg_int_name("orte", "stat_history_size",
-                                "Number of stat samples to keep",
-                                false, false, 1, &orte_stat_history_size);
-
-    mca_base_param_reg_string_name("orte", "forward_envars",
-                                   "Comma-delimited environmental variables to forward, can include value to set",
-                                   false, false, NULL, &orte_forward_envars);
-
-
-    mca_base_param_reg_int_name("orte", "preload_binaries",
-                                "Preload the binaries on remote machines before starting remote proceses",
-                                false, false, (int)false, &value);
-    orte_preload_binaries = OPAL_INT_TO_BOOL(value);
-
-    mca_base_param_reg_int_name("orte", "max_vm_size",
-                                "Maximum size of virtual machine - used to subdivide allocation",
-                                false, false, -1, &orte_max_vm_size);
-
-#if ORTE_ENABLE_STATIC_PORTS
-    mca_base_param_reg_int_name("orte", "use_common_port",
-                                "Daemons use same port as HNP",
-                                false, false, (int)false, &value);
-    orte_use_common_port = OPAL_INT_TO_BOOL(value);
-#else
-    orte_use_common_port = false;
-#endif
 
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
     

@@ -11,7 +11,6 @@
 #                         All rights reserved.
 # Copyright (c) 2006      Sandia National Laboratories. All rights
 #                         reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -31,12 +30,12 @@ sources = \
     btl_ofud_frag.h \
     btl_ofud_proc.c \
     btl_ofud_proc.h
-
+     
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_ompi_btl_ofud_DSO
+if OMPI_BUILD_btl_ofud_DSO
 lib =
 lib_sources =
 component = mca_btl_ofud.la

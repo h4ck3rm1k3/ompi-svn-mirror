@@ -171,6 +171,15 @@ OPAL_DECLSPEC int opal_ifindextoflags(int if_index, uint32_t*);
 OPAL_DECLSPEC bool opal_ifislocal(const char *hostname);
 
 /**
+ * Finalize the functions to release malloc'd data
+ * 
+ * @param none
+ * @return OPAL_SUCCESS if no problems encountered
+ * @return OPAL_ERROR if data could not be released
+ */
+OPAL_DECLSPEC int opal_iffinalize(void);
+
+/**
  * Convert a dot-delimited network tuple to an IP address
  *
  * @param addr (IN) character string tuple
@@ -179,7 +188,7 @@ OPAL_DECLSPEC bool opal_ifislocal(const char *hostname);
  * @return OPAL_SUCCESS if no problems encountered
  * @return OPAL_ERROR if data could not be released
  */
-OPAL_DECLSPEC int opal_iftupletoaddr(const char *addr, uint32_t *net, uint32_t *mask);
+OPAL_DECLSPEC int opal_iftupletoaddr(char *addr, uint32_t *net, uint32_t *mask);
 
 /**
  * Determine if given interface is loopback
@@ -188,10 +197,6 @@ OPAL_DECLSPEC int opal_iftupletoaddr(const char *addr, uint32_t *net, uint32_t *
  */
 OPAL_DECLSPEC bool opal_ifisloopback(int if_index);
 
-/*
- * Determine if a specified interface is included in a NULL-terminated argv array
- */
-OPAL_DECLSPEC int opal_ifmatches(int idx, char **nets);
 
 END_C_DECLS
 

@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,8 +37,8 @@
 static const char FUNC_NAME[] = "MPI_Cart_create";
 
 
-int MPI_Cart_create(MPI_Comm old_comm, int ndims, int dims[],
-                    int periods[], int reorder, MPI_Comm *comm_cart) {
+int MPI_Cart_create(MPI_Comm old_comm, int ndims, int *dims,
+                    int *periods, int reorder, MPI_Comm *comm_cart) {
 
     int err;
     bool re_order = false;
@@ -99,7 +97,7 @@ int MPI_Cart_create(MPI_Comm old_comm, int ndims, int dims[],
             return OMPI_ERRHANDLER_INVOKE(old_comm, err, FUNC_NAME);
         }
         if (OMPI_SUCCESS != 
-            (err = mca_topo_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+            (err = mca_topo_base_find_available(OPAL_ENABLE_PROGRESS_THREADS,
                                                 OMPI_ENABLE_THREAD_MULTIPLE))) {
             return OMPI_ERRHANDLER_INVOKE(old_comm, err, FUNC_NAME);
         }

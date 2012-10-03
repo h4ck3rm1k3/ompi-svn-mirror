@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2004-2011 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2010-2011 The University of Tennessee and The University
+ * Copyright (c) 2010      The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
@@ -23,7 +23,7 @@
 #endif  /* HAVE_UNIST_H */
 
 #include "opal/runtime/opal_cr.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/output.h"
 
 #include "opal/util/opal_environ.h"
@@ -32,11 +32,9 @@
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/runtime/orte_globals.h"
-#include "orte/runtime/orte_wait.h"
 #include "orte/util/name_fns.h"
 #include "orte/mca/grpcomm/grpcomm.h"
 #include "orte/mca/rml/rml.h"
-#include "orte/mca/ess/ess.h"
 
 #include "ompi/request/request.h"
 #include "ompi/mca/dpm/dpm.h"
@@ -1071,7 +1069,7 @@ do {                                             \
 #define UNPACK_BUFFER(buffer, var, count, type, error_msg)                     \
  {                                                                             \
     orte_std_cntr_t n = count;                                                 \
-    if (OPAL_SUCCESS != (ret = opal_dss.unpack(buffer, &(var), &n, type)) ) {  \
+    if (ORTE_SUCCESS != (ret = opal_dss.unpack(buffer, &(var), &n, type)) ) {  \
         opal_output(mca_crcp_bkmrk_component.super.output_handle,               \
                     "%s (Return %d)", error_msg, ret);                         \
         exit_status = ret;                                                     \
@@ -2362,7 +2360,7 @@ static int ompi_crcp_bkmrk_request_complete_irecv_init(struct ompi_request_t *re
                                          false, /* Mark as inactive */
                                          &content_ref);
     if( NULL == content_ref ) {
-        exit_status = OMPI_ERROR;
+        exit_status = ORTE_ERROR;
         goto DONE;
     }
 
@@ -2988,26 +2986,6 @@ int ompi_crcp_bkmrk_request_complete(struct ompi_request_t *request)
 }
 
 /**************** FT Event *****************/
-int ompi_crcp_bkmrk_pml_quiesce_start(ompi_crcp_bkmrk_pml_quiesce_tag_type_t tag ) {
-    int ret, exit_status = OMPI_SUCCESS;
-
-    if( OMPI_SUCCESS != (ret = ft_event_coordinate_peers()) ) {
-        exit_status = ret;
-    }
-
-    return exit_status;
-}
-
-int ompi_crcp_bkmrk_pml_quiesce_end(ompi_crcp_bkmrk_pml_quiesce_tag_type_t tag ) {
-    int ret, exit_status = OMPI_SUCCESS;
-
-    if( OMPI_SUCCESS != (ret = ft_event_finalize_exchange() ) ) {
-        exit_status = ret;
-    }
-
-    return exit_status;
-}
-
 ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
                                   int state, 
                                   ompi_crcp_base_pml_state_t* pml_state)
@@ -3016,12 +2994,9 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
     static bool first_continue_pass = false;
     opal_list_item_t* item = NULL;
     int exit_status = OMPI_SUCCESS;
-    orte_grpcomm_collective_t coll;
     int ret;
 
     ft_event_state = state;
-    OBJ_CONSTRUCT(&coll, orte_grpcomm_collective_t);
-    coll.id = orte_process_info.peer_init_barrier;
 
     if( step_to_return_to == 1 ) {
         goto STEP_1;
@@ -3040,8 +3015,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
 
         if( opal_cr_timing_barrier_enabled ) {
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCPBR0);
-            orte_grpcomm.barrier(&coll);
-            ORTE_WAIT_FOR_COMPLETION(coll.active);
+            orte_grpcomm.barrier();
         }
         OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCP0);
 
@@ -3053,7 +3027,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
          * When we return from this function we know that all of our
          * channels have been flushed.
          */
-        if( OMPI_SUCCESS != (ret = ompi_crcp_bkmrk_pml_quiesce_start(QUIESCE_TAG_CKPT)) ) {
+        if( OMPI_SUCCESS != (ret = ft_event_coordinate_peers()) ) {
             opal_output(mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: %s ft_event: Checkpoint Coordination Failed %d",
                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -3086,7 +3060,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
         first_continue_pass = !first_continue_pass;
 
         /* Only finalize the Protocol after the PML has been rebuilt */
-        if( orte_cr_continue_like_restart && first_continue_pass ) {
+        if( ompi_cr_continue_like_restart && first_continue_pass ) {
             goto DONE;
         }
 
@@ -3095,7 +3069,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
         /*
          * Finish the coord protocol
          */
-        if( OMPI_SUCCESS != (ret = ompi_crcp_bkmrk_pml_quiesce_end(QUIESCE_TAG_CONTINUE) ) ) {
+        if( OMPI_SUCCESS != (ret = ft_event_finalize_exchange() ) ) {
             opal_output(mca_crcp_bkmrk_component.super.output_handle,
                         "crcp:bkmrk: pml_ft_event: Checkpoint Finalization Failed %d",
                         ret);
@@ -3109,8 +3083,7 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
 
         if( opal_cr_timing_barrier_enabled ) {
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_COREBR1);
-            orte_grpcomm.barrier(&coll);
-            ORTE_WAIT_FOR_COMPLETION(coll.active);
+            orte_grpcomm.barrier();
         }
         OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CORE2);
     }
@@ -3166,7 +3139,6 @@ ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event(
     }
 
  DONE:
-    OBJ_DESTRUCT(&coll);
     step_to_return_to = 0;
     ft_event_state = OPAL_CRS_RUNNING;
 
@@ -3193,7 +3165,7 @@ static int traffic_message_append(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
                                   struct ompi_communicator_t* comm,
                                   ompi_crcp_bkmrk_pml_traffic_message_ref_t **msg_ref)
 {
-    int ret, exit_status = OMPI_SUCCESS;
+    int ret, exit_status = ORTE_SUCCESS;
     size_t ddt_size = 0;
 
     if( NULL != datatype ) {
@@ -3237,7 +3209,8 @@ static int traffic_message_append(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
         } else {
             CREATE_NEW_MSG((*msg_ref), msg_type,
                            count, ddt_size, tag, dest, comm,
-                           ORTE_JOBID_INVALID, ORTE_VPID_INVALID);
+                           ORTE_JOBID_INVALID,
+                           ORTE_VPID_INVALID);
         }
 
         if( msg_type == COORD_MSG_TYPE_P_SEND ||
@@ -3308,7 +3281,7 @@ static int traffic_message_move(ompi_crcp_bkmrk_pml_traffic_message_ref_t *old_m
                                 bool keep_active,
                                 bool remove)
 {
-    int ret, exit_status = OMPI_SUCCESS;
+    int ret, exit_status = ORTE_SUCCESS;
     ompi_crcp_bkmrk_pml_message_content_ref_t *new_content = NULL, *prev_content = NULL;
     ompi_request_t *request = NULL;
     bool loc_already_drained = false;
@@ -3778,7 +3751,7 @@ static int drain_message_append(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
                                 struct ompi_communicator_t* comm,
                                 ompi_crcp_bkmrk_pml_drain_message_ref_t **msg_ref)
 {
-    int ret, exit_status = OMPI_SUCCESS;
+    int ret, exit_status = ORTE_SUCCESS;
     ompi_crcp_bkmrk_pml_message_content_ref_t *content_ref = NULL;
 
     /*
@@ -4149,7 +4122,6 @@ static int drain_message_copy_remove(ompi_crcp_bkmrk_pml_drain_message_ref_t *dr
 static ompi_crcp_bkmrk_pml_peer_ref_t * find_peer(orte_process_name_t proc)
 {
     opal_list_item_t* item = NULL;
-    orte_ns_cmp_bitmask_t mask;
 
     for(item  = opal_list_get_first(&ompi_crcp_bkmrk_pml_peer_refs);
         item != opal_list_get_end(&ompi_crcp_bkmrk_pml_peer_refs);
@@ -4157,9 +4129,7 @@ static ompi_crcp_bkmrk_pml_peer_ref_t * find_peer(orte_process_name_t proc)
         ompi_crcp_bkmrk_pml_peer_ref_t *cur_peer_ref;
         cur_peer_ref = (ompi_crcp_bkmrk_pml_peer_ref_t*)item;
 
-        mask = ORTE_NS_CMP_JOBID | ORTE_NS_CMP_VPID;
-
-        if( OPAL_EQUAL == orte_util_compare_name_fields(mask,
+        if( OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL,
                                                         &(cur_peer_ref->proc_name),
                                                         &proc) ) {
             return cur_peer_ref;
@@ -4455,7 +4425,7 @@ static int ft_event_exchange_bookmarks(void)
     /* Wait for all bookmarks to arrive */
     START_TIMER(CRCP_TIMER_CKPT_EX_WAIT);
     while( total_recv_bookmarks > 0 ) {
-        opal_event_loop(opal_event_base, OPAL_EVLOOP_NONBLOCK);
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
     }
     total_recv_bookmarks = 0;
     END_TIMER(CRCP_TIMER_CKPT_EX_WAIT);
@@ -4746,7 +4716,7 @@ static int ft_event_post_drain_acks(void)
         drain_msg_ack = (ompi_crcp_bkmrk_pml_drain_message_ack_ref_t*)item;
 
         /* Post the receive */
-        if( ORTE_SUCCESS != (ret = orte_rml.recv_buffer_nb( &drain_msg_ack->peer,
+        if( OMPI_SUCCESS != (ret = orte_rml.recv_buffer_nb( &drain_msg_ack->peer,
                                                             OMPI_CRCP_COORD_BOOKMARK_TAG,
                                                             0,
                                                             drain_message_ack_cbfunc,
@@ -5250,7 +5220,7 @@ static int wait_quiesce_drain_ack(void)
             }
         }
 
-        opal_event_loop(opal_event_base, OPAL_EVLOOP_NONBLOCK);
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
     }
         
     /* Clear the ack queue if it isn't already clear (it should already be) */
@@ -5517,7 +5487,6 @@ static int send_msg_details(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
     HOKE_DRAIN_ACK_MSG_REF_ALLOC(d_msg_ack, ret);
     d_msg_ack->peer.jobid  = peer_ref->proc_name.jobid;
     d_msg_ack->peer.vpid   = peer_ref->proc_name.vpid;
-
     d_msg_ack->complete    = false;
     opal_list_append(&drained_msg_ack_list, &(d_msg_ack->super));
     OPAL_OUTPUT_VERBOSE((10, mca_crcp_bkmrk_component.super.output_handle,
@@ -5616,7 +5585,7 @@ static int do_send_msg_detail(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
      * Check return value from peer to see if we found a match.
      */
     if (NULL == (buffer = OBJ_NEW(opal_buffer_t))) {
-        exit_status = OMPI_ERROR;
+        exit_status = ORTE_ERROR;
         goto cleanup;
     }
         
@@ -5791,6 +5760,7 @@ static int do_recv_msg_detail(ompi_crcp_bkmrk_pml_peer_ref_t *peer_ref,
     int ret;
 
     if (NULL == (buffer = OBJ_NEW(opal_buffer_t))) {
+        exit_status = ORTE_ERROR;
         goto cleanup;
     }
 
@@ -6266,19 +6236,15 @@ static void clear_timers(void) {
 static void display_all_timers(int state) {
     bool report_ready = false;
     double barrier_start, barrier_stop;
-    orte_grpcomm_collective_t coll;
     int i;
 
-    OBJ_CONSTRUCT(&coll, orte_grpcomm_collective_t);
-    coll.id = orte_process_info.peer_init_barrier;
     if( 0 != ORTE_PROC_MY_NAME->vpid ) {
         if( 2 > timing_enabled ) {
-            goto done;
+            return;
         }
         else if( 2 == timing_enabled ) {
-            orte_grpcomm.barrier(&coll);
-            ORTE_WAIT_FOR_COMPLETION(coll.active);
-            goto done;
+            orte_grpcomm.barrier();
+            return;
         }
     }
 
@@ -6288,7 +6254,7 @@ static void display_all_timers(int state) {
         }
     }
     if( !report_ready ) {
-        goto done;
+        return;
     }
 
     opal_output(0, "crcp:bkmrk: timing(%20s): ******************** Begin: [State = %12s]\n", "Summary", opal_crs_base_state_str(state));
@@ -6298,8 +6264,7 @@ static void display_all_timers(int state) {
 
     if( timing_enabled >= 2) {
         barrier_start = get_time();
-        orte_grpcomm.barrier(&coll);
-        ORTE_WAIT_FOR_COMPLETION(coll.active);
+        orte_grpcomm.barrier();
         barrier_stop = get_time();
         opal_output(0,
                     "crcp:bkmrk: timing(%20s): %20s = %10.2f s\n",
@@ -6309,9 +6274,6 @@ static void display_all_timers(int state) {
     }
 
     opal_output(0, "crcp:bkmrk: timing(%20s): ******************** End:   [State = %12s]\n", "Summary", opal_crs_base_state_str(state));
-
-done:
-    OBJ_DESTRUCT(&coll);
 }
 
 static void display_indv_timer(int idx, int proc, int msgs) {

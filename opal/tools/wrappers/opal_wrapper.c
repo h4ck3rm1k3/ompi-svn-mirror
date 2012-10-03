@@ -9,10 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -76,7 +75,6 @@ struct options_data_t {
     char *module_option;
     char **preproc_flags;
     char **comp_flags;
-    char **comp_flags_prefix;
     char **link_flags;
     char **libs;
     char *req_file;
@@ -118,8 +116,6 @@ options_data_init(struct options_data_t *data)
     data->preproc_flags[0] = NULL;
     data->comp_flags = (char **) malloc(sizeof(char*));
     data->comp_flags[0] = NULL;
-    data->comp_flags_prefix = (char **) malloc(sizeof(char*));
-    data->comp_flags_prefix[0] = NULL;
     data->link_flags = (char **) malloc(sizeof(char*));
     data->link_flags[0] = NULL;
     data->libs = (char **) malloc(sizeof(char*));
@@ -146,7 +142,6 @@ options_data_free(struct options_data_t *data)
     if (NULL != data->module_option) free(data->module_option);
     opal_argv_free(data->preproc_flags);
     opal_argv_free(data->comp_flags);
-    opal_argv_free(data->comp_flags_prefix);
     opal_argv_free(data->link_flags);
     opal_argv_free(data->libs);
     if (NULL != data->req_file) free(data->req_file);
@@ -303,13 +298,6 @@ data_callback(const char *key, const char *value)
                          values);
         expand_flags(options_data[parse_options_idx].comp_flags);
         opal_argv_free(values);
-    } else if (0 == strcmp(key, "compiler_flags_prefix")) {
-        char **values = opal_argv_split(value, ' ');
-        opal_argv_insert(&options_data[parse_options_idx].comp_flags_prefix,
-                         opal_argv_count(options_data[parse_options_idx].comp_flags_prefix),
-                         values);
-        expand_flags(options_data[parse_options_idx].comp_flags_prefix);
-        opal_argv_free(values);
     } else if (0 == strcmp(key, "linker_flags")) {
         char **values = opal_argv_split(value, ' ');
         opal_argv_insert(&options_data[parse_options_idx].link_flags,
@@ -395,9 +383,9 @@ data_init(const char *appname)
     if (NULL == datafile) return OPAL_ERR_TEMP_OUT_OF_RESOURCE;
 
     ret = opal_util_keyval_parse(datafile, data_callback);
-    if( OPAL_SUCCESS != ret ) {
-        fprintf(stderr, "Cannot open configuration file %s\n", datafile );
-    }
+	if( OPAL_SUCCESS != ret ) {
+		fprintf(stderr, "Cannot open configuration file %s\n", datafile );
+	}
     free(datafile);
 
     return ret;
@@ -637,36 +625,13 @@ main(int argc, char *argv[])
                 goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version")) ||
                        0 == strncmp(user_argv[i], "--showme:version", strlen("--showme:version"))) {
-                char * str;
-                str = opal_show_help_string("help-opal-wrapper.txt",
-                                            "version", false,
-                                            argv[0], options_data[user_data_idx].project, options_data[user_data_idx].version, options_data[user_data_idx].language, NULL);
-                if (NULL != str) {
-                    printf("%s", str);
-                    free(str);
-                }
-                goto cleanup;
-            } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help")) ||
-                       0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
-                char *str;
-                str = opal_show_help_string("help-opal-wrapper.txt", "usage", 
-                                            false, argv[0],
-                                            options_data[user_data_idx].project, 
-                                            NULL);
-                if (NULL != str) {
-                    printf("%s", str);
-                    free(str);
-                }
-
-                exit_status = 0;
+                opal_show_help("help-opal-wrapper.txt", "version", false,
+                               argv[0], options_data[user_data_idx].project, options_data[user_data_idx].version, options_data[user_data_idx].language, NULL);
                 goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:", strlen("-showme:")) ||
                        0 == strncmp(user_argv[i], "--showme:", strlen("--showme:"))) {
-                fprintf(stderr, "%s: unrecognized option: %s\n", argv[0],
-                        user_argv[i]);
-                fprintf(stderr, "Type '%s --showme:help' for usage.\n",
-                        argv[0]);
-                exit_status = 1;
+                opal_show_help("help-opal-wrapper.txt", "usage", true,
+                               argv[0], options_data[user_data_idx].project, NULL);
                 goto cleanup;
             }
 
@@ -751,19 +716,6 @@ main(int argc, char *argv[])
         exec_argv = (char **) malloc(sizeof(char*));
         exec_argv[0] = NULL;
         exec_argc = 0;
-    }
-
-    /* This error would normally not happen unless the user edits the 
-       wrapper data files manually */
-    if (NULL == exec_argv) {
-        opal_show_help("help-opal-wrapper.txt", "no-compiler-specified", true);
-        return 1;
-    }
-
-    if (flags & COMP_WANT_COMPILE) {
-        opal_argv_insert(&exec_argv, exec_argc,
-                         options_data[user_data_idx].comp_flags_prefix);
-        exec_argc = opal_argv_count(exec_argv);
     }
 
     /* Per https://svn.open-mpi.org/trac/ompi/ticket/2201, add all the

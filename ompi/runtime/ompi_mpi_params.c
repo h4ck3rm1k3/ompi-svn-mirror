@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  * 
@@ -60,6 +60,7 @@ int ompi_mpi_leave_pinned = -1;
 bool ompi_mpi_leave_pinned_pipeline = false;
 bool ompi_have_sparse_group_storage = OPAL_INT_TO_BOOL(OMPI_GROUP_SPARSE);
 bool ompi_use_sparse_group_storage = OPAL_INT_TO_BOOL(OMPI_GROUP_SPARSE);
+bool ompi_notify_init_finalize = true;
 
 static bool show_default_mca_params = false;
 static bool show_file_mca_params = false;
@@ -234,7 +235,7 @@ int ompi_mpi_register_params(void)
                                         "MPI_INIT (vs. making connections lazily -- "
                                         "upon the first MPI traffic between each "
                                         "process peer pair)",
-                                        true, false, 0, NULL);
+                                        false, false, 0, NULL);
     mca_base_param_reg_syn_name(value, "mpi", "preconnect_all", true);
     
     /* Leave pinned parameter */
@@ -285,6 +286,14 @@ int ompi_mpi_register_params(void)
             ompi_use_sparse_group_storage = false;
         }
     }
+
+    /* Do we want notifier messages upon MPI_INIT and MPI_FINALIZE? */
+
+    mca_base_param_reg_int_name("mpi", "notify_init_finalize",
+                                "If nonzero, send two notifications during MPI_INIT: one near when MPI_INIT starts, and another right before MPI_INIT finishes, and send 2 notifications during MPI_FINALIZE: one right when MPI_FINALIZE starts, and another near when MPI_FINALIZE finishes.",
+                                false, false, 
+                                (int) ompi_notify_init_finalize, &value);
+    ompi_notify_init_finalize = OPAL_INT_TO_BOOL(value);
 
     return OMPI_SUCCESS;
 }

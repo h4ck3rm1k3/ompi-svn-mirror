@@ -8,7 +8,7 @@ Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
                         University of Stuttgart.  All rights reserved.
 Copyright (c) 2004-2005 The Regents of the University of California.
                         All rights reserved.
-Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
+Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
 $COPYRIGHT$
 
 Additional copyrights may follow
@@ -33,10 +33,10 @@ If you have checked out a DEVELOPER'S COPY of Open MPI (i.e., you
 checked out from subversion), you should read the HACKING file before
 attempting to build Open MPI.  You must then run:
 
-shell$ ./autogen.pl
+shell$ ./autogen.sh
 
 You will need very recent versions of GNU Autoconf, Automake, and
-Libtool.  If autogen.pl fails, read the HACKING file.  If anything
+Libtool.  If autogen.sh fails, read the HACKING file.  If anything
 else fails, read the HACKING file.  Finally, we suggest reading the
 HACKING file.
 

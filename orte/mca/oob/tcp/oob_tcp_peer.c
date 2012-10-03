@@ -1,18 +1,17 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2011 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2007 Los Alamos National Security, LLC. 
  *                         All rights reserved.
  * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -57,13 +56,13 @@
 #include "opal/util/net.h"
 #include "opal/util/error.h"
 #include "opal/class/opal_hash_table.h"
-#include "opal/mca/event/event.h"
 
 #include "orte/util/name_fns.h"
-#include "orte/mca/state/state.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/routed/routed.h"
 #include "orte/mca/ess/ess.h"
+#include "orte/mca/notifier/notifier.h"
 #include "orte/runtime/orte_wait.h"
 
 #include "oob_tcp.h"
@@ -102,13 +101,12 @@ static void mca_oob_tcp_peer_construct(mca_oob_tcp_peer_t* peer)
 { 
     OBJ_CONSTRUCT(&(peer->peer_send_queue), opal_list_t);
     OBJ_CONSTRUCT(&(peer->peer_lock), opal_mutex_t);
+    memset(&peer->peer_send_event, 0, sizeof(peer->peer_send_event));
+    memset(&peer->peer_recv_event, 0, sizeof(peer->peer_recv_event));
     peer->peer_sd = -1;
     peer->peer_current_af = AF_UNSPEC;
-    /* get events */
-    peer->peer_send_event = opal_event_alloc();
-    peer->peer_recv_event = opal_event_alloc();
-    peer->peer_timer_event = opal_event_alloc();
-    opal_event_evtimer_set(orte_event_base, peer->peer_timer_event, mca_oob_tcp_peer_timer_handler, peer);
+    memset(&peer->peer_timer_event, 0, sizeof(peer->peer_timer_event));
+    opal_evtimer_set(&peer->peer_timer_event, mca_oob_tcp_peer_timer_handler, peer);
 }
 
 /*
@@ -134,21 +132,22 @@ static void mca_oob_tcp_peer_destruct(mca_oob_tcp_peer_t * peer)
  */
 static int mca_oob_tcp_peer_event_init(mca_oob_tcp_peer_t* peer)
 {
-     if (peer->peer_sd >= 0) {
-        opal_event_set(orte_event_base,
-                       peer->peer_recv_event,
+    memset(&peer->peer_recv_event, 0, sizeof(peer->peer_recv_event));
+    memset(&peer->peer_send_event, 0, sizeof(peer->peer_send_event));
+
+    if (peer->peer_sd >= 0) {
+        opal_event_set(
+                       &peer->peer_recv_event,
                        peer->peer_sd,
                        OPAL_EV_READ|OPAL_EV_PERSIST,
                        mca_oob_tcp_peer_recv_handler,
                        peer);
-        opal_event_set_priority(peer->peer_recv_event, ORTE_MSG_PRI);
-        opal_event_set(orte_event_base,
-                       peer->peer_send_event,
+        opal_event_set(
+                       &peer->peer_send_event,
                        peer->peer_sd,
                        OPAL_EV_WRITE|OPAL_EV_PERSIST,
                        mca_oob_tcp_peer_send_handler,
                        peer);
-        opal_event_set_priority(peer->peer_send_event, ORTE_MSG_PRI);
     }
 
     return ORTE_SUCCESS;
@@ -204,7 +203,7 @@ int mca_oob_tcp_peer_send(mca_oob_tcp_peer_t* peer, mca_oob_tcp_msg_t* msg)
             /*if the send does not complete */
             if(!mca_oob_tcp_msg_send_handler(msg, peer)) {
                 peer->peer_send_msg = msg;
-                opal_event_add(peer->peer_send_event, 0);
+                opal_event_add(&peer->peer_send_event, 0);
             } else {
                 mca_oob_tcp_msg_complete(msg, &peer->peer_name);
             }
@@ -399,7 +398,7 @@ static int mca_oob_tcp_peer_try_connect(mca_oob_tcp_peer_t* peer)
         rc = mca_oob_tcp_peer_create_socket(peer, inaddr.ss_family);
         if (ORTE_SUCCESS != rc) {
             struct timeval tv = { 1,0 };
-            opal_event_evtimer_add(peer->peer_timer_event, &tv);
+            opal_evtimer_add(&peer->peer_timer_event, &tv);
             return rc;
         }
 
@@ -414,7 +413,7 @@ static int mca_oob_tcp_peer_try_connect(mca_oob_tcp_peer_t* peer)
         if (connect(peer->peer_sd, (struct sockaddr*)&inaddr, addrlen) < 0) {
             /* non-blocking so wait for completion */
             if(opal_socket_errno == EINPROGRESS || opal_socket_errno == EWOULDBLOCK) {
-                opal_event_add(peer->peer_send_event, 0);
+                opal_event_add(&peer->peer_send_event, 0);
                 return ORTE_SUCCESS;
             }
 
@@ -445,7 +444,7 @@ static int mca_oob_tcp_peer_try_connect(mca_oob_tcp_peer_t* peer)
         /* send our globally unique process identifier to the peer */
         if((rc = mca_oob_tcp_peer_send_connect_ack(peer, peer->peer_sd)) == ORTE_SUCCESS) {
             peer->peer_state = MCA_OOB_TCP_CONNECT_ACK;
-            opal_event_add(peer->peer_recv_event, 0);
+            opal_event_add(&peer->peer_recv_event, 0);
             return ORTE_SUCCESS;
         } else {
             opal_output(0, 
@@ -505,10 +504,8 @@ static void mca_oob_tcp_peer_complete_connect(mca_oob_tcp_peer_t* peer, int sd)
     int so_error = 0;
     opal_socklen_t so_length = sizeof(so_error);
 
-    /* unregister from receiving event notifications,
-     * but keep the event in case we need it later
-     */
-    opal_event_del(peer->peer_send_event);
+    /* unregister from receiving event notifications */
+    opal_event_del(&peer->peer_send_event);
 
     /* check connect completion status */
     if(getsockopt(sd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &so_length) < 0) {
@@ -522,7 +519,7 @@ static void mca_oob_tcp_peer_complete_connect(mca_oob_tcp_peer_t* peer, int sd)
     }
 
     if(so_error == EINPROGRESS) {
-        opal_event_add(peer->peer_send_event, 0);
+        opal_event_add(&peer->peer_send_event, 0);
         return;
     } else if (so_error == ECONNREFUSED || so_error == ETIMEDOUT) {
         struct timeval tv = { 1,0 };
@@ -535,9 +532,7 @@ static void mca_oob_tcp_peer_complete_connect(mca_oob_tcp_peer_t* peer, int sd)
                         so_error);
         }
         mca_oob_tcp_peer_shutdown(peer);
-        if( MCA_OOB_TCP_FAILED != peer->peer_state ) {
-            opal_event_evtimer_add(peer->peer_timer_event, &tv);
-        }
+        opal_evtimer_add(&peer->peer_timer_event, &tv);
         return;
     } else if(so_error != 0) {
         /* No need to worry about the return code here - we return regardless
@@ -556,7 +551,7 @@ static void mca_oob_tcp_peer_complete_connect(mca_oob_tcp_peer_t* peer, int sd)
 
     if (mca_oob_tcp_peer_send_connect_ack(peer, sd) == ORTE_SUCCESS) {
         peer->peer_state = MCA_OOB_TCP_CONNECT_ACK;
-        opal_event_add(peer->peer_recv_event, 0);
+        opal_event_add(&peer->peer_recv_event, 0);
     } else {
         opal_output(0, "%s-%s mca_oob_tcp_peer_complete_connect: unable to send connect ack.",
             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -571,7 +566,7 @@ static void mca_oob_tcp_peer_complete_connect(mca_oob_tcp_peer_t* peer, int sd)
  */
 static void mca_oob_tcp_peer_connected(mca_oob_tcp_peer_t* peer, int sd)
 {
-    opal_event_del(peer->peer_timer_event);
+    opal_event_del(&peer->peer_timer_event);
     peer->peer_state = MCA_OOB_TCP_CONNECTED;
     peer->peer_retries = 0;
 
@@ -580,7 +575,7 @@ static void mca_oob_tcp_peer_connected(mca_oob_tcp_peer_t* peer, int sd)
             peer->peer_send_msg = (mca_oob_tcp_msg_t*)
                 opal_list_remove_first(&peer->peer_send_queue);
         }
-        opal_event_add(peer->peer_send_event, 0);
+        opal_event_add(&peer->peer_send_event, 0);
     }
 }
 
@@ -591,13 +586,6 @@ static void mca_oob_tcp_peer_connected(mca_oob_tcp_peer_t* peer, int sd)
  */
 void mca_oob_tcp_peer_close(mca_oob_tcp_peer_t* peer)
 {
-    if (NULL == peer) {
-        /* weird race condition that only occurs if the peer
-         * dies via signal
-         */
-        return;
-    }
-
     if(mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_CONNECT) {
         opal_output(0, "%s-%s mca_oob_tcp_peer_close(%p) sd %d state %d\n",
             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -607,39 +595,37 @@ void mca_oob_tcp_peer_close(mca_oob_tcp_peer_t* peer)
             peer->peer_state);
     }
 
-    OPAL_OUTPUT_VERBOSE((1, mca_oob_tcp_output_handle,
-            "%s-%s mca_oob_tcp_peer_close(%p) sd %d state %d\n",
-            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-            ORTE_NAME_PRINT(&(peer->peer_name)),
-            (void *) peer,
-            peer->peer_sd,
-            peer->peer_state));
-
-    mca_oob_tcp_peer_shutdown(peer);
-
-    /* inform the ERRMGR framework that we have lost a connection so
+    /* inform the routed framework that we have lost a connection so
      * it can decide if this is important, what to do about it, etc.
      */
-     ORTE_ACTIVATE_PROC_STATE(&peer->peer_name,
-                              ORTE_PROC_STATE_COMM_FAILED);
+    if (ORTE_SUCCESS != orte_routed.route_lost(&peer->peer_name)) {
+        /* Should free the peer lock before we abort so we don't 
+         * get stuck in the orte_wait_kill when receiving messages in the 
+         * tcp OOB
+         */
+        OPAL_THREAD_UNLOCK(&peer->peer_lock);
+        orte_errmgr.abort(1, NULL);        
+    }
+    
+    mca_oob_tcp_peer_shutdown(peer);
 }
 
 void mca_oob_tcp_peer_shutdown(mca_oob_tcp_peer_t* peer)
 {
-    if( MCA_OOB_TCP_CLOSED == peer->peer_state ) {
-        goto close_socket;
-    }
-
     /* giving up and cleanup any pending messages */
     if(peer->peer_retries++ > mca_oob_tcp_component.tcp_peer_retries) {
         mca_oob_tcp_msg_t *msg;
         char *host;
 
-        host = orte_get_proc_hostname(&(peer->peer_name));
+        host = orte_ess.proc_get_hostname(&(peer->peer_name));
         opal_output(0, "%s -> %s (node: %s) oob-tcp: Number of attempts to create TCP connection has been exceeded.  Can not communicate with peer",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                     ORTE_NAME_PRINT(&(peer->peer_name)),
                     (NULL == host) ? "NULL" : host);
+        /* provide a notifier message */
+        orte_notifier.peer(ORTE_NOTIFIER_CRIT, ORTE_ERR_COMM_FAILURE, &(peer->peer_name),
+                               "OOB connection retries exceeded. Cannot communicate with peer %s.",
+                               ORTE_JOBID_PRINT(peer->peer_name.jobid));
         
         /* There are cases during the initial connection setup where
            the peer_send_msg is NULL but there are things in the queue
@@ -661,23 +647,30 @@ void mca_oob_tcp_peer_shutdown(mca_oob_tcp_peer_t* peer)
            not likely to suddenly become successful, so abort the
            whole thing */
         peer->peer_state = MCA_OOB_TCP_FAILED;
+        
+        /* since we cannot communicate, and the system obviously needed
+         * to do so, let's abort so we don't just hang here
+         */
+        if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_DAEMON) {
+            /* just wake us up */
+            ORTE_UPDATE_EXIT_STATUS(ORTE_ERROR_DEFAULT_EXIT_CODE);
+            orte_abnormal_term_ordered = true;
+            orte_trigger_event(&orte_exit);
+        } else {
+            orte_errmgr.abort(1, NULL);
+        }
     }
 
- close_socket:
     if (peer->peer_sd >= 0) {
-        /* keep the events for re-use */
-        opal_event_del(peer->peer_recv_event);
-        opal_event_del(peer->peer_send_event);
+        opal_event_del(&peer->peer_recv_event);
+        opal_event_del(&peer->peer_send_event);
         CLOSE_THE_SOCKET(peer->peer_sd);
         peer->peer_sd = -1;
         peer->peer_current_af = AF_UNSPEC;
     } 
-    
-    /* keep the event for re-use */
-    opal_event_del(peer->peer_timer_event);
-    if( MCA_OOB_TCP_FAILED != peer->peer_state ) {
-        peer->peer_state = MCA_OOB_TCP_CLOSED;
-    }
+      
+    opal_event_del(&peer->peer_timer_event);
+    peer->peer_state = MCA_OOB_TCP_CLOSED;
 }
 
 /*
@@ -725,9 +718,9 @@ static int mca_oob_tcp_peer_recv_connect_ack(mca_oob_tcp_peer_t* peer, int sd)
                             ORTE_NAME_PRINT(&(peer->peer_name)),
                             strerror(opal_socket_errno));
             }
-            opal_event_del(peer->peer_recv_event);
+            opal_event_del(&peer->peer_recv_event);
             mca_oob_tcp_peer_shutdown(peer);
-            opal_event_evtimer_add(peer->peer_timer_event, &tv);
+            opal_evtimer_add(&peer->peer_timer_event, &tv);
             return ORTE_SUCCESS;
         } else {
             mca_oob_tcp_peer_close(peer);
@@ -891,11 +884,6 @@ int mca_oob_tcp_peer_send_ident(mca_oob_tcp_peer_t* peer)
 static void mca_oob_tcp_peer_recv_handler(int sd, short flags, void* user)
 {
     mca_oob_tcp_peer_t* peer = (mca_oob_tcp_peer_t *)user;
-
-    if (orte_abnormal_term_ordered) {
-        return;
-    }
-
     OPAL_THREAD_LOCK(&peer->peer_lock);
     switch(peer->peer_state) {
         case MCA_OOB_TCP_CONNECT_ACK: 
@@ -984,7 +972,7 @@ static void mca_oob_tcp_peer_send_handler(int sd, short flags, void* user)
         
         /* if nothing else to do unregister for send event notifications */
         if(NULL == peer->peer_send_msg) {
-            opal_event_del(peer->peer_send_event);
+            opal_event_del(&peer->peer_send_event);
         }
         break;
         }
@@ -993,7 +981,7 @@ static void mca_oob_tcp_peer_send_handler(int sd, short flags, void* user)
             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
             ORTE_NAME_PRINT(&(peer->peer_name)),
             peer->peer_state);
-        opal_event_del(peer->peer_send_event);
+        opal_event_del(&peer->peer_send_event);
         break;
     }
     OPAL_THREAD_UNLOCK(&peer->peer_lock);
@@ -1101,7 +1089,7 @@ bool mca_oob_tcp_peer_accept(mca_oob_tcp_peer_t* peer, int sd)
 
         mca_oob_tcp_peer_connected(peer, sd);
         if (sd == peer->peer_sd) {
-            opal_event_add(peer->peer_recv_event, 0);
+            opal_event_add(&peer->peer_recv_event, 0);
         }
         if(mca_oob_tcp_component.tcp_debug > 0) {
             mca_oob_tcp_peer_dump(peer, "accepted");

@@ -43,7 +43,6 @@ mca_btl_template_module_t mca_btl_template_module = {
         0, /* latency */
         0, /* bandwidth */
         0, /* flags */
-        0, /* segment size */
         mca_btl_template_add_procs,
         mca_btl_template_del_procs,
         mca_btl_template_register,
@@ -98,12 +97,12 @@ int mca_btl_template_add_procs(
         /*
          * Check to make sure that the peer has at least as many interface 
          * addresses exported as we are trying to use. If not, then 
-         * don't bind this BTL instance to the proc.
+         * don't bind this PTL instance to the proc.
          */
 
         OPAL_THREAD_LOCK(&template_proc->proc_lock);
 
-        /* The btl_proc datastructure is shared by all TEMPLATE BTL
+        /* The btl_proc datastructure is shared by all TEMPLATE PTL
          * instances that are trying to reach this destination. 
          * Cache the peer instance on the btl_proc.
          */

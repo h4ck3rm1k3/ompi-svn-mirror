@@ -13,7 +13,6 @@
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2007      Voltaire. All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -27,9 +26,17 @@
 
 #include "opal_config.h"
 
-#if OPAL_ENABLE_MULTI_THREADS
+/*
+ * Circumentvent problems in C++ compilers.
+ * For C++, we should not need the file, anyhow.
+ */
+#if defined(HAVE_STDBOOL_H) && !(defined(c_plusplus) || defined(__cplusplus))
+#include <stdbool.h>
+#endif
+
+#if OPAL_HAVE_THREAD_SUPPORT
 #include "opal/sys/atomic.h"
-#endif  /* OPAL_ENABLE_MULTI_THREADS */
+#endif  /* OPAL_HAVE_THREAD_SUPPORT */
 #if OPAL_ENABLE_DEBUG
 #include "opal/util/output.h"
 #endif
@@ -174,7 +181,7 @@ BEGIN_C_DECLS
  */
 static inline bool opal_set_using_threads(bool have)
 {
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_uses_threads = have;
 #else
     have = true;               /* just shut up the compiler */
@@ -198,7 +205,7 @@ static inline bool opal_set_using_threads(bool have)
  * process, return immediately.
  */
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_LOCK(mutex)                 \
     do {                                        \
         if (opal_using_threads()) {             \
@@ -239,7 +246,7 @@ static inline bool opal_set_using_threads(bool have)
  *
  * Returns 0 if mutex was locked, non-zero otherwise.
  */
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_TRYLOCK(mutex) (opal_using_threads() ? opal_mutex_trylock(mutex) : 0)
 #elif OPAL_ENABLE_DEBUG
 static inline int
@@ -283,7 +290,7 @@ opal_thread_debug_trylock(opal_mutex_t *mutex, const char *file, int line)
  * If there is no possibility that multiple threads are running in the
  * process, return immediately without modifying the mutex.
  */
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_UNLOCK(mutex)               \
     do {                                        \
         if (opal_using_threads()) {             \
@@ -326,7 +333,7 @@ opal_thread_debug_trylock(opal_mutex_t *mutex, const char *file, int line)
  * process, invoke the action without acquiring the lock.
  */
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_SCOPED_LOCK(mutex, action)  \
     do {                                        \
         if(opal_using_threads()) {              \
@@ -360,21 +367,21 @@ opal_thread_debug_trylock(opal_mutex_t *mutex, const char *file, int line)
  * indicates that threads are in use by the application or library.
  */
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_ADD32(x,y) \
    (opal_using_threads() ? opal_atomic_add_32(x,y) : (*x += y))
 #else
 #define OPAL_THREAD_ADD32(x,y) (*x += y)
 #endif
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_ADD64(x,y) \
     (opal_using_threads() ? opal_atomic_add_64(x,y) : (*x += y))
 #else
 #define OPAL_THREAD_ADD64(x,y) (*x += y)
 #endif
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 #define OPAL_THREAD_ADD_SIZE_T(x,y) \
     (opal_using_threads() ? opal_atomic_add_size_t(x,y) : (*x += y))
 #else
@@ -383,7 +390,7 @@ opal_thread_debug_trylock(opal_mutex_t *mutex, const char *file, int line)
 
 #define OPAL_CMPSET(x, y, z) ((*(x) == (y)) ? ((*(x) = (z)), 1) : 0)
 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 # if OPAL_HAVE_ATOMIC_CMPSET_32
 #  define OPAL_ATOMIC_CMPSET_32(x, y, z) \
     (opal_using_threads() ? opal_atomic_cmpset_32(x, y, z) : OPAL_CMPSET(x, y, z))

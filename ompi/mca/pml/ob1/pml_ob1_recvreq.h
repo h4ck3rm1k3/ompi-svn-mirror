@@ -10,9 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
- *                         reserved.
- *
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -182,7 +179,7 @@ recv_request_pml_complete(mca_pml_ob1_recv_request_t *recvreq)
 static inline bool
 recv_request_pml_complete_check(mca_pml_ob1_recv_request_t *recvreq)
 {
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_rmb();
 #endif
     if(recvreq->req_match_received &&
@@ -222,7 +219,7 @@ static inline void recv_req_matched(mca_pml_ob1_recv_request_t *req,
     req->req_recv.req_base.req_ompi.req_status.MPI_SOURCE = hdr->hdr_src;
     req->req_recv.req_base.req_ompi.req_status.MPI_TAG = hdr->hdr_tag;
     req->req_match_received = true;
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_wmb();
 #endif
     if(req->req_recv.req_bytes_packed > 0) {
@@ -258,6 +255,7 @@ do {                                                                            
         size_t n, offset = seg_offset;                                            \
         mca_btl_base_segment_t* segment = segments;                               \
                                                                                   \
+        OPAL_THREAD_LOCK(&request->lock);                                         \
         for( n = 0; n < num_segments; n++, segment++ ) {                          \
             if(offset >= segment->seg_len) {                                      \
                 offset -= segment->seg_len;                                       \
@@ -269,7 +267,6 @@ do {                                                                            
                 offset = 0;                                                       \
             }                                                                     \
         }                                                                         \
-        OPAL_THREAD_LOCK(&request->lock);                                         \
         PERUSE_TRACE_COMM_OMPI_EVENT (PERUSE_COMM_REQ_XFER_CONTINUE,              \
                                       &(recvreq->req_recv.req_base), max_data,    \
                                       PERUSE_RECV);                               \

@@ -1,4 +1,3 @@
-.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
 .\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Alltoall 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
@@ -36,29 +35,17 @@ void MPI::Comm::Alltoall(const void* \fIsendbuf\fP, int \fIsendcount\fP,
 	int \fIrecvcount\fP, const MPI::Datatype& \fIrecvtype\fP)
 
 .fi
-.SH Java Syntax
-.nf
-import mpi.*;
-void MPI.COMM_WORLD.Alltoall(Object \fIsendbuf\fP, int \fIsendoffset\fP, int \fIsendcount\fP, MPI.Datatype \fIsendtype\fP,
-                             Object \fIrecvbuf\fP, int \fIrecvoffset\fP, int \fIrecvcount\fP, MPI.Datatype \fIrecvtype\fP)
-.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1.2i
 sendbuf
 Starting address of send buffer (choice).
 .TP 1.2i
-sendoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
-.TP 1.2i
 sendcount
 Number of elements to send to each process (integer).
 .TP 1.2i
 sendtype
 Datatype of send buffer elements (handle).
-.TP 1.2i
-recvoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
 .TP 1.2i
 recvcount
 Number of elements to receive from each process (integer).
@@ -129,7 +116,7 @@ Almost all MPI routines return an error value; C routines as
 the value of the function and Fortran routines in the last argument. C++
 functions do not return errors. If the default error handler is set to
 MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism
-will be used to throw an MPI::Exception object.
+will be used to throw an MPI:Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for

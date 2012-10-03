@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2006 High Performance Computing Center Stuttgart,
@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -29,8 +27,8 @@
 #include "opal/dss/dss.h"
 #include "opal/util/arch.h"
 
-#include "orte/mca/db/db_types.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/ess/ess.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/name_fns.h"
 #include "orte/util/show_help.h"
@@ -109,7 +107,6 @@ int ompi_proc_init(void)
 
         proc->proc_name.jobid = ORTE_PROC_MY_NAME->jobid;
         proc->proc_name.vpid = i;
-
         if (i == ORTE_PROC_MY_NAME->vpid) {
             ompi_proc_local_proc = proc;
             proc->proc_flags = OPAL_PROC_ALL_LOCAL;
@@ -126,47 +123,30 @@ int ompi_proc_init(void)
 }
 
 
-/**
- * The process creation is split into two steps. The second step
- * is the important one, it sets the properties of the remote
- * process, such as architecture, node name and locality flags.
- *
- * This function is to be called __only__ after the modex exchange
- * has been performed, in order to allow the modex to carry the data
- * instead of requiring the runtime to provide it.
+/* in some cases, all MPI procs are required to do a modex so they
+ * can (at the least) exchange their architecture. Since we cannot
+ * know in advance if this was required, we provide a separate function
+ * to set the arch (instead of doing it inside of ompi_proc_init) that
+ * can be called after the modex completes in ompi_mpi_init. Thus, we
+ * know that - regardless of how the arch is known, whether via modex
+ * or dropped in from a local daemon - the arch can be set correctly
+ * at this time
  */
-int ompi_proc_complete_init(void)
+int ompi_proc_set_arch(void)
 {
     ompi_proc_t *proc = NULL;
     opal_list_item_t *item = NULL;
-    int ret, errcode = OMPI_SUCCESS;
-    opal_hwloc_locality_t *hwlocale;
-    uint32_t *ui32ptr;
-
+    int ret;
+    
     OPAL_THREAD_LOCK(&ompi_proc_lock);
-
+    
     for( item  = opal_list_get_first(&ompi_proc_list);
-         item != opal_list_get_end(&ompi_proc_list);
-         item  = opal_list_get_next(item)) {
+        item != opal_list_get_end(&ompi_proc_list);
+        item  = opal_list_get_next(item)) {
         proc = (ompi_proc_t*)item;
         
         if (proc->proc_name.vpid != ORTE_PROC_MY_NAME->vpid) {
-            /* get the locality information */
-            hwlocale = &(proc->proc_flags);
-            ret = ompi_modex_recv_key_value(ORTE_DB_LOCALITY, proc, (void**)&hwlocale, OPAL_HWLOC_LOCALITY_T);
-            if (OMPI_SUCCESS != ret) {
-                errcode = ret;
-                break;
-            }
-            /* get a pointer to the name of the node it is on */
-            ret = ompi_modex_recv_string_pointer(ORTE_DB_HOSTNAME, proc, (void**)&(proc->proc_hostname), OPAL_STRING);
-            if (OMPI_SUCCESS != ret) {
-                errcode = ret;
-                break;
-            }
-            /* get the remote architecture */
-            ui32ptr = &(proc->proc_arch);
-            ret = ompi_modex_recv_key_value("OMPI_ARCH", proc, (void**)&ui32ptr, OPAL_UINT32);
+            ret = ompi_modex_recv_key_value("OMPI_ARCH", proc, (void*)&(proc->proc_arch), OPAL_UINT32);
             if (OMPI_SUCCESS == ret) {
                 /* if arch is different than mine, create a new convertor for this proc */
                 if (proc->proc_arch != opal_local_arch) {
@@ -177,21 +157,26 @@ int ompi_proc_complete_init(void)
                     orte_show_help("help-mpi-runtime",
                                    "heterogeneous-support-unavailable",
                                    true, orte_process_info.nodename, 
-                                   proc->proc_hostname == NULL ? "<hostname unavailable>" : proc->proc_hostname);
-                    errcode = OMPI_ERR_NOT_SUPPORTED;
-                    break;
+                                   proc->proc_hostname == NULL ? "<hostname unavailable>" :
+                                   proc->proc_hostname);
+                    OPAL_THREAD_UNLOCK(&ompi_proc_lock);
+                    return OMPI_ERR_NOT_SUPPORTED;
 #endif
                 }
             } else if (OMPI_ERR_NOT_IMPLEMENTED == ret) {
                 proc->proc_arch = opal_local_arch;
             } else {
-                errcode = ret;
-                break;
+                OPAL_THREAD_UNLOCK(&ompi_proc_lock);
+                return ret;
             }
+            /* get the locality information */
+            proc->proc_flags = orte_ess.proc_get_locality(&proc->proc_name);
+            /* get the name of the node it is on */
+            proc->proc_hostname = orte_ess.proc_get_hostname(&proc->proc_name);
         }
     }
     OPAL_THREAD_UNLOCK(&ompi_proc_lock);
-    return errcode;
+    return OMPI_SUCCESS;
 }
 
 
@@ -364,9 +349,6 @@ int ompi_proc_refresh(void) {
     ompi_proc_t *proc = NULL;
     opal_list_item_t *item = NULL;
     orte_vpid_t i = 0;
-    int ret=OMPI_SUCCESS;
-    opal_hwloc_locality_t *hwlocale;
-    uint32_t *uiptr;
 
     OPAL_THREAD_LOCK(&ompi_proc_lock);
 
@@ -387,19 +369,8 @@ int ompi_proc_refresh(void) {
             proc->proc_hostname = orte_process_info.nodename;
             proc->proc_arch = opal_local_arch;
         } else {
-            hwlocale = &(proc->proc_flags);
-            ret = ompi_modex_recv_key_value(ORTE_DB_LOCALITY, proc, (void**)&hwlocale, OPAL_HWLOC_LOCALITY_T);
-            if (OMPI_SUCCESS != ret) {
-                break;
-            }
-            /* get the name of the node it is on */
-            ret = ompi_modex_recv_string_pointer(ORTE_DB_HOSTNAME, proc, (void**)&(proc->proc_hostname), OPAL_STRING);
-            if (OMPI_SUCCESS != ret) {
-                break;
-            }
-            /* get the remote architecture */
-            uiptr = &(proc->proc_arch);
-            ret = ompi_modex_recv_key_value("OMPI_ARCH", proc, (void**)&uiptr, OPAL_UINT32);
+            proc->proc_flags = orte_ess.proc_get_locality(&proc->proc_name);
+            proc->proc_hostname = orte_ess.proc_get_hostname(&proc->proc_name);
             /* if arch is different than mine, create a new convertor for this proc */
             if (proc->proc_arch != opal_local_arch) {
 #if OPAL_ENABLE_HETEROGENEOUS_SUPPORT
@@ -420,7 +391,7 @@ int ompi_proc_refresh(void) {
 
     OPAL_THREAD_UNLOCK(&ompi_proc_lock);
 
-    return ret;   
+    return OMPI_SUCCESS;   
 }
 
 int
@@ -444,19 +415,19 @@ ompi_proc_pack(ompi_proc_t **proclist, int proclistsize, opal_buffer_t* buf)
      */
     for (i=0; i<proclistsize; i++) {
         rc = opal_dss.pack(buf, &(proclist[i]->proc_name), 1, ORTE_NAME);
-        if(rc != OPAL_SUCCESS) {
+        if(rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             OPAL_THREAD_UNLOCK(&ompi_proc_lock);
             return rc;
         }
         rc = opal_dss.pack(buf, &(proclist[i]->proc_arch), 1, OPAL_UINT32);
-        if(rc != OPAL_SUCCESS) {
+        if(rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             OPAL_THREAD_UNLOCK(&ompi_proc_lock);
             return rc;
         }
         rc = opal_dss.pack(buf, &(proclist[i]->proc_hostname), 1, OPAL_STRING);
-        if(rc != OPAL_SUCCESS) {
+        if(rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             OPAL_THREAD_UNLOCK(&ompi_proc_lock);
             return rc;
@@ -539,21 +510,21 @@ ompi_proc_unpack(opal_buffer_t* buf,
         int rc;
         
         rc = opal_dss.unpack(buf, &new_name, &count, ORTE_NAME);
-        if (rc != OPAL_SUCCESS) {
+        if (rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             free(plist);
             free(newprocs);
             return rc;
         }
         rc = opal_dss.unpack(buf, &new_arch, &count, OPAL_UINT32);
-        if (rc != OPAL_SUCCESS) {
+        if (rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             free(plist);
             free(newprocs);
             return rc;
         }
         rc = opal_dss.unpack(buf, &new_hostname, &count, OPAL_STRING);
-        if (rc != OPAL_SUCCESS) {
+        if (rc != ORTE_SUCCESS) {
             ORTE_ERROR_LOG(rc);
             free(plist);
             free(newprocs);

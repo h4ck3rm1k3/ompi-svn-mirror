@@ -11,7 +11,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -107,10 +106,9 @@ struct ompi_predefined_file_t {
 typedef struct ompi_predefined_file_t ompi_predefined_file_t;
 
 /**
- * Back-end instances for MPI_FILE_NULL (_addr flavor is for F03 bindings)
+ * Back-end instances for MPI_FILE_NULL
  */
 OMPI_DECLSPEC extern ompi_predefined_file_t  ompi_mpi_file_null;
-OMPI_DECLSPEC extern ompi_predefined_file_t  *ompi_mpi_file_null_addr;
 
 
 /**

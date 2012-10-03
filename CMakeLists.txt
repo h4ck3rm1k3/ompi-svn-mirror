@@ -61,10 +61,9 @@ ENDIF(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
 
 # Make the include path visible to all targets
 INCLUDE_DIRECTORIES (
-  ${OpenMPI_SOURCE_DIR}/contrib/platform/win32/include
+  ${OpenMPI_SOURCE_DIR}/contrib/platform/win32
   ${OpenMPI_SOURCE_DIR}/
   ${OpenMPI_SOURCE_DIR}/opal
-  ${OpenMPI_SOURCE_DIR}/opal/mca/hwloc
   ${OpenMPI_SOURCE_DIR}/opal/include
   ${OpenMPI_SOURCE_DIR}/ompi
   ${OpenMPI_SOURCE_DIR}/ompi/include
@@ -104,11 +103,10 @@ INCLUDE (find_flex)
 FIND_FLEX()
 
 ADD_SUBDIRECTORY(opal)
-# set up the libevent and hwloc include dirs
-INCLUDE_DIRECTORIES (${LIBEVENT_INCLUDE_DIRS} ${HWLOC_PATH}/hwloc/include)
+# set up the libevent include dirs
+INCLUDE_DIRECTORIES (${LIBEVENT_INCLUDE_DIRS})
 ADD_SUBDIRECTORY(ompi)
 ADD_SUBDIRECTORY(orte)
-ADD_SUBDIRECTORY(contrib/platform/win32/examples)
 
 END_CONFIGURE()
 

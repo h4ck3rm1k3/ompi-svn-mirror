@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,8 +11,6 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,12 +37,9 @@
 #endif
 #endif
 
-#include "opal/mca/event/event.h"
 
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/ess/ess.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/util/name_fns.h"
 #include "orte/mca/odls/odls_types.h"
 
@@ -54,12 +49,8 @@
 /* LOCAL FUNCTIONS */
 static void stdin_write_handler(int fd, short event, void *cbdata);
 
-static void
-orte_iof_hnp_exception_handler(const orte_process_name_t* peer, orte_rml_exception_t reason);
 
 /* API FUNCTIONS */
-static int init(void);
-
 static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag, int fd);
 
 static int hnp_pull(const orte_process_name_t* src_name,
@@ -68,8 +59,6 @@ static int hnp_pull(const orte_process_name_t* src_name,
 
 static int hnp_close(const orte_process_name_t* peer,
                  orte_iof_tag_t source_tag);
-
-static int finalize(void);
 
 static int hnp_ft_event(int state);
 
@@ -80,46 +69,12 @@ static int hnp_ft_event(int state);
  */
 
 orte_iof_base_module_t orte_iof_hnp_module = {
-    init,
     hnp_push,
     hnp_pull,
     hnp_close,
-    NULL,
-    finalize,
     hnp_ft_event
 };
 
-/* Initialize the module */
-static int init(void)
-{
-    int rc;
-    
-    /* post non-blocking recv to catch forwarded IO from
-     * the orteds
-     */    
-    if (ORTE_SUCCESS != (rc = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD,
-                                                      ORTE_RML_TAG_IOF_HNP,
-						      ORTE_RML_PERSISTENT,
-                                                      orte_iof_hnp_recv,
-                                                      NULL))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-        
-    }
-    
-    if (ORTE_SUCCESS != (rc = orte_rml.add_exception_handler(orte_iof_hnp_exception_handler))) {
-        ORTE_ERROR_LOG(rc);
-        orte_rml.recv_cancel(ORTE_NAME_WILDCARD, ORTE_RML_TAG_IOF_HNP);
-        return rc;
-    }
-    
-    OBJ_CONSTRUCT(&mca_iof_hnp_component.lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&mca_iof_hnp_component.sinks, opal_list_t);
-    OBJ_CONSTRUCT(&mca_iof_hnp_component.procs, opal_list_t);
-    mca_iof_hnp_component.stdinev = NULL;
-    
-    return ORTE_SUCCESS;
-}
 
 /* Setup to read local data. If the tag is other than STDIN,
  * then this is output being pushed from one of my child processes
@@ -147,8 +102,9 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
     int flags;
     char *outfile;
     int fdout;
+    orte_odls_job_t *jobdat=NULL;
     int np, numdigs;
-    orte_ns_cmp_bitmask_t mask;
+    int rc;
 
     /* don't do this if the dst vpid is invalid or the fd is negative! */
     if (ORTE_VPID_INVALID == dst_name->vpid || fd < 0) {
@@ -176,8 +132,8 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
              item != opal_list_get_end(&mca_iof_hnp_component.procs);
              item = opal_list_get_next(item)) {
             proct = (orte_iof_proc_t*)item;
-            mask = ORTE_NS_CMP_ALL;
-            if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &proct->name, dst_name)) {
+            if (proct->name.jobid == dst_name->jobid &&
+                proct->name.vpid == dst_name->vpid) {
                 /* found it */
                 goto SETUP;
             }
@@ -189,12 +145,20 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
         opal_list_append(&mca_iof_hnp_component.procs, &proct->super);
         /* see if we are to output to a file */
         if (NULL != orte_output_filename) {
-            /* get the jobdata for this proc */
-            if (NULL == (jdata = orte_get_job_data_object(dst_name->jobid))) {
+            /* get the local jobdata for this proc */
+            for (item = opal_list_get_first(&orte_local_jobdata);
+                 item != opal_list_get_end(&orte_local_jobdata);
+                 item = opal_list_get_next(item)) {
+                jobdat = (orte_odls_job_t*)item;
+                if (jobdat->jobid == proct->name.jobid) {
+                    break;
+                }
+            }
+            if (NULL == jobdat) {
                 ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
                 return ORTE_ERR_NOT_FOUND;
             }
-            np = jdata->num_procs / 10;
+            np = jobdat->num_procs / 10;
             /* determine the number of digits required for max vpid */
             numdigs = 1;
             while (np > 0) {
@@ -238,11 +202,11 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
          */
         if (NULL != proct->revstdout && NULL != proct->revstderr && NULL != proct->revstddiag) {
             proct->revstdout->active = true;
-            opal_event_add(proct->revstdout->ev, 0);
+            opal_event_add(&(proct->revstdout->ev), 0);
             proct->revstderr->active = true;
-            opal_event_add(proct->revstderr->ev, 0);
+            opal_event_add(&(proct->revstderr->ev), 0);
             proct->revstddiag->active = true;
-            opal_event_add(proct->revstddiag->ev, 0);
+            opal_event_add(&(proct->revstddiag->ev), 0);
         }
         return ORTE_SUCCESS;
     }
@@ -306,9 +270,9 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
              * filedescriptor is not a tty, don't worry about it
              * and always stay connected.
              */
-            opal_event_signal_set(orte_event_base, &mca_iof_hnp_component.stdinsig,
-                                  SIGCONT, orte_iof_hnp_stdin_cb,
-                                  NULL);
+            opal_signal_set(&mca_iof_hnp_component.stdinsig,
+                            SIGCONT, orte_iof_hnp_stdin_cb,
+                            NULL);
             
             /* setup a read event to read stdin, but don't activate it yet. The
              * dst_name indicates who should receive the stdin. If that recipient
@@ -325,7 +289,9 @@ static int hnp_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag,
              */
             if (!(src_tag & ORTE_IOF_STDIN) || orte_iof_hnp_stdin_check(fd)) {
                 mca_iof_hnp_component.stdinev->active = true;
-                opal_event_add(mca_iof_hnp_component.stdinev->ev, 0);
+                if (OPAL_SUCCESS != (rc = opal_event_add(&(mca_iof_hnp_component.stdinev->ev), 0))) {
+                    ORTE_ERROR_LOG(rc);
+                }
             }
         } else {
             /* if we are not looking at a tty, just setup a read event
@@ -391,17 +357,15 @@ static int hnp_close(const orte_process_name_t* peer,
 {
     opal_list_item_t *item, *next_item;
     orte_iof_sink_t* sink;
-    orte_ns_cmp_bitmask_t mask;
     
     for(item = opal_list_get_first(&mca_iof_hnp_component.sinks);
         item != opal_list_get_end(&mca_iof_hnp_component.sinks);
         item = next_item ) {
         sink = (orte_iof_sink_t*)item;
         next_item = opal_list_get_next(item);
-
-        mask = ORTE_NS_CMP_ALL;
         
-        if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &sink->name, peer) &&
+        if((sink->name.jobid == peer->jobid) &&
+           (sink->name.vpid == peer->vpid) &&
            (source_tag & sink->tag)) {
             
             /* No need to delete the event or close the file
@@ -413,56 +377,6 @@ static int hnp_close(const orte_process_name_t* peer,
             break;
         }
     }
-    return ORTE_SUCCESS;
-}
-
-static int finalize(void)
-{
-    opal_list_item_t* item;
-    orte_iof_write_output_t *output;
-    orte_iof_write_event_t *wev;
-    int num_written;
-    bool dump;
-    
-    /* check if anything is still trying to be written out */
-    wev = orte_iof_base.iof_write_stdout->wev;
-    if (!opal_list_is_empty(&wev->outputs)) {
-        dump = false;
-        /* make one last attempt to write this out */
-        while (NULL != (item = opal_list_remove_first(&wev->outputs))) {
-            output = (orte_iof_write_output_t*)item;
-            if (!dump) {
-                num_written = write(wev->fd, output->data, output->numbytes);
-                if (num_written < output->numbytes) {
-                    /* don't retry - just cleanout the list and dump it */
-                    dump = true;
-                }
-            }
-            OBJ_RELEASE(output);
-        }
-    }
-    if (!orte_xml_output) {
-        /* we only opened stderr channel if we are NOT doing xml output */
-        wev = orte_iof_base.iof_write_stderr->wev;
-        if (!opal_list_is_empty(&wev->outputs)) {
-            dump = false;
-            /* make one last attempt to write this out */
-            while (NULL != (item = opal_list_remove_first(&wev->outputs))) {
-                output = (orte_iof_write_output_t*)item;
-                if (!dump) {
-                    num_written = write(wev->fd, output->data, output->numbytes);
-                    if (num_written < output->numbytes) {
-                        /* don't retry - just cleanout the list and dump it */
-                        dump = true;
-                    }
-                }
-                OBJ_RELEASE(output);
-            }
-        }
-    }
-    
-    orte_rml.recv_cancel(ORTE_NAME_WILDCARD, ORTE_RML_TAG_IOF_HNP);
-
     return ORTE_SUCCESS;
 }
 
@@ -527,7 +441,7 @@ static void stdin_write_handler(int fd, short event, void *cbdata)
                  * when the fd is ready.
                  */
                 wev->pending = true;
-                opal_event_add(wev->ev, 0);
+                opal_event_add(&wev->ev, 0);
                 goto CHECK;
             }            
             /* otherwise, something bad happened so all we can do is declare an
@@ -552,7 +466,7 @@ static void stdin_write_handler(int fd, short event, void *cbdata)
              * when the fd is ready. 
              */
             wev->pending = true;
-            opal_event_add(wev->ev, 0);
+            opal_event_add(&wev->ev, 0);
             goto CHECK;
         }
         OBJ_RELEASE(output);
@@ -579,45 +493,11 @@ CHECK:
             OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
                                  "restarting read event"));
             mca_iof_hnp_component.stdinev->active = true;
-            opal_event_add(mca_iof_hnp_component.stdinev->ev, 0);
+            opal_event_add(&(mca_iof_hnp_component.stdinev->ev), 0);
         }
     }
 
 DEPART:
     /* unlock and go */
     OPAL_THREAD_UNLOCK(&mca_iof_hnp_component.lock);
-}
-
-/**
- * Callback when peer is disconnected
- */
-
-static void
-orte_iof_hnp_exception_handler(const orte_process_name_t* peer, orte_rml_exception_t reason)
-{
-#if 0
-    orte_iof_base_endpoint_t *endpoint;
-    opal_output_verbose(1, orte_iof_base.iof_output, 
-                        "iof svc exception handler! %s\n",
-                        ORTE_NAME_PRINT((orte_process_name_t*)peer));
-    
-    /* If we detect an exception on the RML connection to a peer,
-     delete all of its subscriptions and publications.  Note that
-     exceptions can be detected during a normal RML shutdown; they
-     are recoverable events (no need to abort). */
-    orte_iof_hnp_sub_delete_all(peer);
-    orte_iof_hnp_pub_delete_all(peer);
-    opal_output_verbose(1, orte_iof_base.iof_output, "deleted all pubs and subs\n");
-    
-    /* Find any streams on any endpoints for this peer and close them */
-    while (NULL != 
-           (endpoint = orte_iof_base_endpoint_match(peer, ORTE_NS_CMP_ALL,
-                                                    ORTE_IOF_ANY))) {
-        orte_iof_base_endpoint_closed(endpoint);
-        
-        /* Delete the endpoint that we just matched */
-        orte_iof_base_endpoint_delete(peer, ORTE_NS_CMP_ALL, ORTE_IOF_ANY);
-    }
-#endif
-    opal_output_verbose(1, orte_iof_base.iof_output, "done with exception handler\n");
 }

@@ -173,9 +173,12 @@ int ompi_attr_create_predefined(void)
     if (OMPI_SUCCESS != ret) {
         return ret;
     }
-
-    ret = set_f(MPI_APPNUM, orte_process_info.app_num);
-
+    
+    /* check the app_num - if it was set, then define it - otherwise, don't */
+    if (orte_process_info.app_num >= 0) {
+        ret = set_f(MPI_APPNUM, orte_process_info.app_num);
+    }
+    
     return ret;
 }
 

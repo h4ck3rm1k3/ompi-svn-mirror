@@ -27,20 +27,19 @@
 #include <string.h>
 #include <errno.h>
 
-#include <opal/mca/event/event.h>
-#include "opal/runtime/opal.h"
+#include <opal/event/event.h>
 
 int called = 0;
 
 void
 signal_cb(int fd, short event, void *arg)
 {
-	opal_event_t *signal = arg;
+	struct opal_event *signal = arg;
 
 	printf("%s: got signal %d\n", __func__, OPAL_EVENT_SIGNAL(signal));
 
 	if (called >= 2)
-		opal_event.del(signal);
+		opal_event_del(signal);
 	
 	called++;
 }
@@ -48,21 +47,21 @@ signal_cb(int fd, short event, void *arg)
 int
 main (int argc, char **argv)
 {
-    opal_event_t signal_int, signal_term;
+    struct opal_event signal_int, signal_term;
  
 	/* Initalize the event library */
-	opal_init();
+	opal_event_init();
 
 	/* Initalize one event */
-	opal_event.set(opal_event_base, &signal_term, SIGUSR1, OPAL_EV_SIGNAL|OPAL_EV_PERSIST, signal_cb,
+	opal_event_set(&signal_term, SIGUSR1, OPAL_EV_SIGNAL|OPAL_EV_PERSIST, signal_cb,
 	    &signal_term);
-	opal_event.set(opal_event_base, &signal_int, SIGUSR2, OPAL_EV_SIGNAL|OPAL_EV_PERSIST, signal_cb,
+	opal_event_set(&signal_int, SIGUSR2, OPAL_EV_SIGNAL|OPAL_EV_PERSIST, signal_cb,
 	    &signal_int);
 
-	opal_event.add(&signal_int, NULL);
-	opal_event.add(&signal_term, NULL);
+	opal_event_add(&signal_int, NULL);
+	opal_event_add(&signal_term, NULL);
 
-	opal_event.dispatch(opal_event_base);
+	opal_event_dispatch();
 
 	return (0);
 }

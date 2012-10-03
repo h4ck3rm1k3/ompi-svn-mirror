@@ -15,8 +15,7 @@ dnl Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserved.
 dnl Copyright (c) 2009      IBM Corporation.  All rights reserved.
 dnl Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
 dnl                         reserved.
-dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
-dnl Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
+dnl Copyright (c) 2009      Oak Ridge National Labs.  All rights reserved.
 dnl
 dnl $COPYRIGHT$
 dnl 
@@ -337,8 +336,8 @@ elif test "$with_cross" != "" ; then
     fi
 
     # eval into environment
-    OPAL_LOG_MSG([Loading cross-compile file $with_cross, with contents below])
-    OPAL_LOG_FILE([$with_cross])
+    OMPI_LOG_MSG([Loading cross-compile file $with_cross, with contents below])
+    OMPI_LOG_FILE([$with_cross])
     . "$with_cross"
 fi
 
@@ -347,7 +346,6 @@ fi
 #  TYPE:
 #    - LAM (synonym for 'cr' currently)
 #    - cr
-#    - orcm
 #  /* General FT sections */
 #  #if OPAL_ENABLE_FT == 0 /* FT Disabled globaly */
 #  #if OPAL_ENABLE_FT == 1 /* FT Enabled globaly */
@@ -358,17 +356,17 @@ fi
 AC_MSG_CHECKING([if want fault tolerance])
 AC_ARG_WITH(ft,
     [AC_HELP_STRING([--with-ft=TYPE],
-            [Specify the type of fault tolerance to enable. Options: LAM (LAM/MPI-like), cr (Checkpoint/Restart), orcm (OpenRCM) (default: disabled)])],
-        [opal_want_ft=1],
-        [opal_want_ft=0])
-if test "$with_ft" = "no" -o "$opal_want_ft" = "0"; then
-    opal_want_ft=0
-    opal_want_ft_cr=0
+            [Specify the type of fault tolerance to enable. Options: LAM (LAM/MPI-like), cr (Checkpoint/Restart) (default: disabled)])],
+        [ompi_want_ft=1],
+        [ompi_want_ft=0])
+if test "$with_ft" = "no" -o "$ompi_want_ft" = "0"; then
+    ompi_want_ft=0
+    ompi_want_ft_cr=0
     AC_MSG_RESULT([Disabled fault tolerance])
 else
-    opal_want_ft=1
-    opal_want_ft_cr=0
-    opal_want_ft_type=none
+    ompi_want_ft=1
+    ompi_want_ft_cr=0
+    ompi_want_ft_type=none
 
     as_save_IFS=$IFS
     IFS=","
@@ -377,43 +375,36 @@ else
 
         # Default value
         if test "$opt" = "" -o "$opt" = "yes"; then
-            opal_want_ft_cr=1
+            ompi_want_ft_cr=1
         elif test "$opt" = "LAM"; then
-            opal_want_ft_cr=1
+            ompi_want_ft_cr=1
         elif test "$opt" = "lam"; then
-            opal_want_ft_cr=1
+            ompi_want_ft_cr=1
         elif test "$opt" = "CR"; then
-            opal_want_ft_cr=1
+            ompi_want_ft_cr=1
         elif test "$opt" = "cr"; then
-            opal_want_ft_cr=1
-        elif test "$opt" = "orcm"; then
-            opal_want_ft_orcm=1
-        elif test "$opt" = "ORCM"; then
-            opal_want_ft_orcm=1
+            ompi_want_ft_cr=1
         else
             AC_MSG_RESULT([Unrecognized FT TYPE: $opt])
             AC_MSG_ERROR([Cannot continue])
         fi
     done
-    if test "$opal_want_ft_cr" = 1; then
-        opal_want_ft_type="cr"
-    elif test "$opal_want_ft_orcm" = 1; then
-        opal_want_ft_type="orcm"
+    if test "$ompi_want_ft_cr" = 1; then
+        ompi_want_ft_type="cr"
     fi
 
-    AC_MSG_RESULT([Enabled $opal_want_ft_type (Specified $with_ft)])
+    AC_MSG_RESULT([Enabled $ompi_want_ft_type (Specified $with_ft)])
     AC_MSG_WARN([**************************************************])
     AC_MSG_WARN([*** Fault Tolerance Integration into Open MPI is *])
     AC_MSG_WARN([*** a research quality implementation, and care  *])
     AC_MSG_WARN([*** should be used when choosing to enable it.   *])
     AC_MSG_WARN([**************************************************])
 fi
-AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT], [$opal_want_ft],
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT], [$ompi_want_ft],
                    [Enable fault tolerance general components and logic])
-AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_CR], [$opal_want_ft_cr],
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_CR], [$ompi_want_ft_cr],
                    [Enable fault tolerance checkpoint/restart components and logic])
-AM_CONDITIONAL(WANT_FT, test "$opal_want_ft" = "1")
-AM_CONDITIONAL(WANT_FT_CR,  test "$opal_want_ft_cr" = "1")
+AM_CONDITIONAL(WANT_FT, test "$ompi_want_ft" = "1")
 
 #
 # Do we want to install binaries?
@@ -438,7 +429,7 @@ AM_CONDITIONAL([OPAL_WANT_SCRIPT_WRAPPER_COMPILERS], [test "$enable_script_wrapp
 #
 AC_ARG_ENABLE([per-user-config-files],
    [AC_HELP_STRING([--enable-per-user-config-files],
-      [Disable per-user configuration files, to save disk accesses during job start-up.  This is likely desirable for large jobs.  Note that this can also be acheived by environment variables at run-time.  (default: enabled)])])
+      [Disable per-user configuration files, to save disk accesses during job strart-up.  This is likely desirable for large jobs.  Note that this can also be acheived by environment variables at run-time.  (default: enabled)])])
 if test "$enable_per_user_config_files" = "no" ; then
   result=0
 else
@@ -473,7 +464,7 @@ AC_ARG_WITH([package-string],
      [AC_HELP_STRING([--with-package-string=STRING],
                      [Use a branding string throughout Open MPI])])
 if test "$with_package_string" = "" -o "$with_package_string" = "no"; then
-    with_package_string="Open MPI $OPAL_CONFIGURE_USER@$OPAL_CONFIGURE_HOST Distribution"
+    with_package_string="Open MPI $OMPI_CONFIGURE_USER@$OMPI_CONFIGURE_HOST Distribution"
 fi
 AC_DEFINE_UNQUOTED([OPAL_PACKAGE_STRING], ["$with_package_string"],
      [package/branding string for Open MPI])
@@ -552,111 +543,4 @@ OPAL_WITH_OPTION_MIN_MAX_VALUE(datarep_string,  128,  64,  256)
 AC_ARG_WITH([libltdl],
     [AC_HELP_STRING([--with-libltdl(=DIR)],
          [Where to find libltdl (this option is ignored if --disable-dlopen is used).  DIR can take one of three values: "internal", "external", or a valid directory name.  "internal" (or no DIR value) forces Open MPI to use its internal copy of libltdl.  "external" forces Open MPI to use an external installation of libltdl.  Supplying a valid directory name also forces Open MPI to use an external installation of libltdl, and adds DIR/include, DIR/lib, and DIR/lib64 to the search path for headers and libraries.])])
-
-#
-# Checkpoint/restart enabled debugging
-#
-AC_MSG_CHECKING([if want checkpoint/restart enabled debugging option])
-AC_ARG_ENABLE([crdebug],
-    [AC_HELP_STRING([--enable-crdebug],
-            [enable checkpoint/restart debugging functionality (default: disabled)])])
- 
-if test "$ompi_want_ft" = "0"; then
-    ompi_want_prd=0
-    AC_MSG_RESULT([Disabled (fault tolerance disabled --without-ft)])
-elif test "$enable_crdebug" = "yes"; then
-    ompi_want_prd=1
-    AC_MSG_RESULT([Enabled])
-else
-    ompi_want_prd=0
-    AC_MSG_RESULT([Disabled])
-fi
- 
-AC_DEFINE_UNQUOTED([OPAL_ENABLE_CRDEBUG], [$ompi_want_prd],
-    [Whether we want checkpoint/restart enabled debugging functionality or not])
-
-#
-# Check to see if user wants CUDA support in datatype and convertor code.
-#
-AC_ARG_WITH([cuda],
-            [AC_HELP_STRING([--with-cuda(=DIR)],
-            [Build cuda support, optionally adding DIR/include, DIR/lib, and DIR/lib64])])
-AC_MSG_CHECKING([if --with-cuda is set])
-
-# CUDA support is off by default.  User has to request it.
-AS_IF([test "$with_cuda" = "no" -o "x$with_cuda" = "x"],
-      [opal_check_cuda_happy="no"
-       AC_MSG_RESULT([not set (--with-cuda=$with_cuda)])],
-      [AS_IF([test "$with_cuda" = "yes"],
-             [AS_IF([test "x`ls /usr/local/cuda/include/cuda.h 2> /dev/null`" = "x"],
-                    [AC_MSG_RESULT([not found in standard location])
-                     AC_MSG_WARN([Expected file /usr/local/cuda/include/cuda.h not found])
-                     AC_MSG_ERROR([Cannot continue])],
-                    [AC_MSG_RESULT([found])
-                     opal_check_cuda_happy="yes"
-                     with_cuda="/usr/local/cuda"])],
-             [AS_IF([test ! -d "$with_cuda"],
-                    [AC_MSG_RESULT([not found])
-                     AC_MSG_WARN([Directory $with_cuda not found])
-                     AC_MSG_ERROR([Cannot continue])],
-                    [AS_IF([test "x`ls $with_cuda/include/cuda.h 2> /dev/null`" = "x"],
-                           [AC_MSG_RESULT([not found])
-                            AC_MSG_WARN([Expected file $with_cuda/include/cuda.h not found])
-                            AC_MSG_ERROR([Cannot continue])],
-                           [opal_check_cuda_happy="yes"
-                            AC_MSG_RESULT([found ($with_cuda/include/cuda.h)])])])])])
-
-# Check for optional libdir setting
-AC_ARG_WITH([cuda-libdir],
-            [AC_HELP_STRING([--with-cuda-libdir=DIR],
-            [Search for cuda libraries in DIR])])
-AC_MSG_CHECKING([if --with-cuda-libdir is set])
-
-# Only check for the extra cuda libdir if we have passed the --with-cuda tests.
-AS_IF([test "$opal_check_cuda_happy" = "yes"],
-      [AS_IF([test "$with_cuda_libdir" != "yes" -a "$with_cuda_libdir" != "no" -a "x$with_cuda_libdir" != "x"],
-             [AS_IF([test ! -d "$with_cuda_libdir"],
-                    [AC_MSG_RESULT([not found])
-                     AC_MSG_WARN([Directory $with_cuda_libdir not found])
-                     AC_MSG_ERROR([Cannot continue])],
-                    [AS_IF([test "x`ls $with_cuda_libdir/libcuda.* 2> /dev/null`" = "x"],
-                           [AC_MSG_RESULT([not found])
-                            AC_MSG_WARN([Expected file $with_cuda_libdir/libcuda.* not found])
-                            AC_MSG_ERROR([Cannot continue])],
-                           [AC_MSG_RESULT([ok - found directory ($with_cuda_libdir)])])])],
-             [with_cuda_libdir=/usr/lib64
-              AS_IF([test "x`ls $with_cuda_libdir/libcuda.* 2> /dev/null`" = "x"],
-                    [AC_MSG_RESULT([not found])
-                     AC_MSG_WARN([Expected file $with_cuda_libdir/libcuda.* not found])
-                     AC_MSG_ERROR([Cannot continue])],
-                    [AC_MSG_RESULT([ok - found directory ($with_cuda_libdir)])])])],
-      [AC_MSG_RESULT([not applicable since --with-cuda is not set])])
-
-# If we have CUDA support, check to see if we have CUDA 4.1 support
-AS_IF([test "$opal_check_cuda_happy"="yes"],
-    AC_CHECK_MEMBER([struct CUipcMemHandle_st.reserved], [CUDA_SUPPORT_41=1], [CUDA_SUPPORT_41=0],
-        [#include <$with_cuda/include/cuda.h>]),
-    [])
-
-AC_MSG_CHECKING([if have cuda support])
-if test "$opal_check_cuda_happy" = "yes"; then
-    AC_MSG_RESULT([yes (-I$with_cuda/include -L$with_cuda_libdir -lcuda)])
-    CUDA_SUPPORT=1
-    opal_datatype_CPPFLAGS="-I$with_cuda/include"
-    opal_datatype_LIBS="-L$with_cuda_libdir -lcuda"
-    AC_SUBST([opal_datatype_CPPFLAGS])
-    AC_SUBST([opal_datatype_LIBS])
-else
-    AC_MSG_RESULT([no])
-    CUDA_SUPPORT=0
-fi
-
-AM_CONDITIONAL([OPAL_cuda_support], [test "x$CUDA_SUPPORT" = "x1"])
-AC_DEFINE_UNQUOTED([OPAL_CUDA_SUPPORT],$CUDA_SUPPORT,
-                   [Whether we want cuda device pointer support])
-
-AM_CONDITIONAL([OPAL_cuda_support_41], [test "x$CUDA_SUPPORT_41" = "x1"])
-AC_DEFINE_UNQUOTED([OPAL_CUDA_SUPPORT_41],$CUDA_SUPPORT_41,
-                   [Whether we have CUDA 4.1 support available])
-
 ])dnl

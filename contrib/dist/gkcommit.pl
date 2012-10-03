@@ -94,17 +94,15 @@ if (!@cmrs) {
         }
         
         print "CMR number (-1 to exit)? ";
-        my $cmrs = <STDIN>;
-        chomp($cmrs);
+        my $cmr = <STDIN>;
+        chomp($cmr);
         last
-            if (-1 == $cmrs);
-
-        foreach my $cmr (split(/[\s,]+/, $cmrs)) {
-            if ($cmr > 0) {
-                push(@cmrs, $cmr);
-            } else {
-                print "Invalid CMR number ($cmr); must be greater than 0 (ignored).\n";
-            }
+            if (-1 == $cmr);
+        
+        if ($cmr > 0) {
+            push(@cmrs, $cmr);
+        } else {
+            print "Invalid CMR number; must be greater than 0 (ignored).\n";
         }
     }
     print("\n");
@@ -126,18 +124,15 @@ if (!@rs) {
         }
         
         print "SVN r number (-1 to exit)? ";
-        my $rs = <STDIN>;
-        chomp($rs);
+        my $r = <STDIN>;
+        chomp($r);
         last
-            if (-1 == $rs);
-
-        foreach my $r (split(/[\s,]+/, $rs)) {
-            $r =~ s/^r//;
-            if ($r > 0) {
-                push(@rs, $r);
-            } else {
-                print "Invalid SVN r number ($r); must be greater than 0 (ignored).\n";
-            }
+            if (-1 == $r);
+        
+        if ($r > 0) {
+            push(@rs, $r);
+        } else {
+            print "Invalid SVN r number; must be greater than 0 (ignored).\n";
         }
     }
     print("\n");
@@ -253,10 +248,10 @@ print FILE "\n";
 # If we have r numbers, print them.  Use a special line to make the
 # pre-commit hook ignore all of these messages (i.e., so that it
 # doesn't try to close some ticket twice, or something like that).
-print FILE "---svn-pre-commit-ignore-below---\n\n"
+print FILE "---svn-pre-commit-ignore-below---\n"
     if ($#rs >= 0);
 foreach my $r (@rs) {
-    print FILE "r$r [[BR]]
+    print FILE "r$r
 $logentries->{$r}->{msg}\n\n";
 }
 close(FILE);

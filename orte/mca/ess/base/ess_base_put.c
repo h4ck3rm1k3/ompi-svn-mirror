@@ -39,14 +39,12 @@ int orte_ess_env_put(orte_std_cntr_t num_procs,
     char* param;
     char* value;
 
-    /* tell the ESS to select the env component - but don't override
-     * anything that may have been provided elsewhere
-     */
+    /* tell the ESS to select the env component */
     if(NULL == (param = mca_base_param_environ_variable("ess",NULL,NULL))) {
         ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
         return ORTE_ERR_OUT_OF_RESOURCE;
     }
-    opal_setenv(param, "env", false, env);
+    opal_setenv(param, "env", true, env);
     free(param);
 
     /* since we want to pass the name as separate components, make sure

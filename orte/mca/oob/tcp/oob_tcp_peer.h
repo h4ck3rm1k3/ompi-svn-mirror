@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC. 
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -35,7 +33,7 @@
 
 #include "opal/class/opal_list.h"
 #include "opal/threads/mutex.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 
 #include "oob_tcp_msg.h"
 #include "oob_tcp_addr.h"
@@ -66,9 +64,9 @@ struct mca_oob_tcp_peer_t {
     mca_oob_tcp_addr_t* peer_addr;    /**< the addresses of the peer process */
     int peer_sd;                      /**< socket descriptor of the connection */
     uint16_t peer_current_af;         /**< currently connecting af */
-    opal_event_t *peer_send_event;    /**< registration with event thread for send events */
-    opal_event_t *peer_recv_event;    /**< registration with event thread for recv events */
-    opal_event_t *peer_timer_event;   /**< timer for retrying connection failures */
+    opal_event_t peer_send_event;     /**< registration with event thread for send events */
+    opal_event_t peer_recv_event;     /**< registration with event thread for recv events */
+    opal_event_t peer_timer_event;    /**< timer for retrying connection failures */
     opal_mutex_t peer_lock;           /**< protect critical data structures */
     opal_list_t peer_send_queue;      /**< list of messages to send */
     mca_oob_tcp_msg_t *peer_send_msg; /**< current send in progress */

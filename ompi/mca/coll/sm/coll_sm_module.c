@@ -10,9 +10,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Los Alamos National Security, LLC.  
- *                         All rights reserved. 
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -48,7 +48,8 @@
 
 #include "mpi.h"
 #include "opal_stdint.h"
-#include "opal/mca/hwloc/base/base.h"
+#include "opal/mca/maffinity/maffinity.h"
+#include "opal/mca/maffinity/base/base.h"
 #include "opal/util/os_path.h"
 
 #include "orte/util/proc_info.h"
@@ -97,10 +98,10 @@ static void mca_coll_sm_module_destruct(mca_coll_sm_module_t *module)
 
     if (NULL != c) {
         /* Munmap the per-communicator shmem data segment */
-        if (NULL != c->sm_bootstrap_meta) {
+        if (NULL != c->mcb_mmap) {
             /* Ignore any errors -- what are we going to do about
                them? */
-            mca_common_sm_fini(c->sm_bootstrap_meta);
+            mca_common_sm_fini(c->mcb_mmap);
         }
         free(c);
     }
@@ -128,10 +129,36 @@ OBJ_CLASS_INSTANCE(mca_coll_sm_module_t,
 int mca_coll_sm_init_query(bool enable_progress_threads,
                            bool enable_mpi_threads)
 {
-    /* if no session directory was created, then we cannot be used */
-    if (!orte_create_session_dirs) {
+    ompi_proc_t *my_proc, **procs;
+    size_t i, size;
+
+    /* See if there are other procs in my job on this node.  If not,
+       then don't bother going any further. */
+    if (NULL == (my_proc = ompi_proc_local()) ||
+        NULL == (procs = ompi_proc_all(&size))) {
+        opal_output_verbose(10, mca_coll_base_output,
+                            "coll:sm:init_query: weirdness on procs; disqualifying myself");
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
+    if (size <= 1) {
+        opal_output_verbose(10, mca_coll_base_output,
+                            "coll:sm:init_query: comm size too small; disqualifying myself");
+        return OMPI_ERR_NOT_AVAILABLE;
+    }
+    for (i = 0; i < size; ++i) {
+        if (procs[i] != my_proc &&
+            procs[i]->proc_name.jobid == my_proc->proc_name.jobid &&
+            OPAL_PROC_ON_LOCAL_NODE(procs[i]->proc_flags)) {
+            break;
+        }
+    }
+    if (i >= size) {
+        opal_output_verbose(10, mca_coll_base_output,
+                            "coll:sm:init_query: no other local procs; disqualifying myself");
+        return OMPI_ERR_NOT_AVAILABLE;
+    }
+    free(procs);
+
     /* Don't do much here because we don't really want to allocate any
        shared memory until this component is selected to be used. */
     opal_output_verbose(10, mca_coll_base_output,
@@ -169,12 +196,8 @@ mca_coll_sm_comm_query(struct ompi_communicator_t *comm, int *priority)
 	return NULL;
     }
 
-    sm_module = OBJ_NEW(mca_coll_sm_module_t);
-    if (NULL == sm_module) {
-        return NULL;
-    }
-
     /* All is good -- return a module */
+    sm_module = OBJ_NEW(mca_coll_sm_module_t);
     sm_module->super.coll_module_enable = sm_module_enable;
     sm_module->super.ft_event        = mca_coll_sm_ft_event;
     sm_module->super.coll_allgather  = NULL;
@@ -229,7 +252,7 @@ int ompi_coll_sm_lazy_enable(mca_coll_base_module_t *module,
     mca_coll_sm_comm_t *data = NULL;
     size_t control_size, frag_size;
     mca_coll_sm_component_t *c = &mca_coll_sm_component;
-    opal_hwloc_base_memory_segment_t *maffinity;
+    opal_maffinity_base_segment_t *maffinity;
     int parent, min_child, max_child, num_children;
     unsigned char *base = NULL;
     const int num_barrier_buffers = 2;
@@ -242,8 +265,8 @@ int ompi_coll_sm_lazy_enable(mca_coll_base_module_t *module,
 
     /* Get some space to setup memory affinity (just easier to try to
        alloc here to handle the error case) */
-    maffinity = (opal_hwloc_base_memory_segment_t*)
-        malloc(sizeof(opal_hwloc_base_memory_segment_t) * 
+    maffinity = (opal_maffinity_base_segment_t*)
+        malloc(sizeof(opal_maffinity_base_segment_t) * 
                c->sm_comm_num_segments * 3);
     if (NULL == maffinity) {
         opal_output_verbose(10, mca_coll_base_output,
@@ -351,7 +374,7 @@ int ompi_coll_sm_lazy_enable(mca_coll_base_module_t *module,
        children are contiguous, so having the first pointer and the
        num_children from the mcb_tree data is sufficient). */
     control_size = c->sm_control_size;
-    base = data->sm_bootstrap_meta->module_data_addr;
+    base = data->mcb_mmap->module_data_addr;
     data->mcb_barrier_control_me = (uint32_t*)
         (base + (rank * control_size * num_barrier_buffers * 2));
     if (data->mcb_tree[rank].mcstn_parent) {
@@ -430,7 +453,7 @@ int ompi_coll_sm_lazy_enable(mca_coll_base_module_t *module,
 
     /* Setup memory affinity so that the pages that belong to this
        process are local to this process */
-    opal_hwloc_base_memory_set(maffinity, j);
+    opal_maffinity_base_set(maffinity, j);
     free(maffinity);
 
     /* Zero out the control structures that belong to this process */
@@ -447,21 +470,20 @@ int ompi_coll_sm_lazy_enable(mca_coll_base_module_t *module,
     OBJ_RETAIN(sm_module->previous_reduce_module);
 
     /* Indicate that we have successfully attached and setup */
-    opal_atomic_add(&(data->sm_bootstrap_meta->module_seg->seg_inited), 1);
+    opal_atomic_add(&(data->mcb_mmap->module_seg->seg_inited), 1);
 
     /* Wait for everyone in this communicator to attach and setup */
     opal_output_verbose(10, mca_coll_base_output,
                         "coll:sm:enable (%d/%s): waiting for peers to attach",
                         comm->c_contextid, comm->c_name);
-    SPIN_CONDITION(size == data->sm_bootstrap_meta->module_seg->seg_inited, seg_init_exit);
+    SPIN_CONDITION(size == data->mcb_mmap->module_seg->seg_inited, seg_init_exit);
 
     /* Once we're all here, remove the mmap file; it's not needed anymore */
     if (0 == rank) {
-        unlink(data->sm_bootstrap_meta->shmem_ds.seg_name);
+        unlink(data->mcb_mmap->shmem_ds.seg_name);
         opal_output_verbose(10, mca_coll_base_output,
                             "coll:sm:enable (%d/%s): removed mmap file %s", 
-                            comm->c_contextid, comm->c_name,
-                            data->sm_bootstrap_meta->shmem_ds.seg_name);
+                            comm->c_contextid, comm->c_name, data->mcb_mmap->shmem_ds.seg_name);
     }
 
     /* All done */
@@ -565,13 +587,13 @@ static int bootstrap_comm(ompi_communicator_t *comm,
     opal_output_verbose(10, mca_coll_base_output,
                         "coll:sm:enable:bootstrap comm (%d/%s): attaching to %" PRIsize_t " byte mmap: %s",
                         comm->c_contextid, comm->c_name, size, fullpath);
-    data->sm_bootstrap_meta =
+    data->mcb_mmap =
         mca_common_sm_init_group(comm->c_local_group, size, fullpath,
-                                 sizeof(mca_common_sm_seg_header_t),
-                                 sizeof(void*));
-    if (NULL == data->sm_bootstrap_meta) {
+                                sizeof(mca_common_sm_seg_header_t),
+                                sizeof(void*));
+    if (NULL == data->mcb_mmap) {
         opal_output_verbose(10, mca_coll_base_output,
-                            "coll:sm:enable:bootstrap comm (%d/%s): mca_common_sm_init_group failed", 
+                            "coll:sm:enable:bootstrap comm (%d/%s): common_sm_mmap_init_group failed", 
                             comm->c_contextid, comm->c_name);
         return OMPI_ERR_OUT_OF_RESOURCE;
     }

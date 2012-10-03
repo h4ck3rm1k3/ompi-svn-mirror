@@ -10,7 +10,6 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -30,11 +29,16 @@ libopen_pal_la_SOURCES += \
         dss/dss_compare.c \
         dss/dss_copy.c \
         dss/dss_dump.c \
+        dss/dss_get.c \
         dss/dss_load_unload.c \
         dss/dss_lookup.c \
         dss/dss_pack.c \
         dss/dss_peek.c \
         dss/dss_print.c \
         dss/dss_register.c \
+        dss/dss_release.c \
+        dss/dss_set.c \
+        dss/dss_set_buffer_type.c \
+        dss/dss_size.c \
         dss/dss_unpack.c \
         dss/dss_open_close.c

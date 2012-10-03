@@ -10,7 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,7 +24,6 @@
 #include <errno.h>
 
 #include "mpi.h"
-#include "opal/util/bit_ops.h"
 #include "ompi/constants.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -114,7 +112,7 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
 
     if ((op->o_flags & OMPI_OP_FLAGS_COMMUTE) &&
         (buf_size < COMMUTATIVE_LONG_MSG) && (!zerocounts)) {
-        int tmp_size, remain = 0, tmp_rank;
+        int tmp_size = 1, remain = 0, tmp_rank;
 
         /* temporary receive buffer.  See coll_basic_reduce.c for details on sizing */
         recv_buf_free = (char*) malloc(buf_size);
@@ -135,7 +133,7 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
         /* figure out power of two mapping: grow until larger than
            comm size, then go back one, to get the largest power of
            two less than comm size */
-        tmp_size = opal_next_poweroftwo(size);
+        while (tmp_size <= size) tmp_size <<= 1;
         tmp_size >>= 1;
         remain = size - tmp_size;
 
@@ -156,7 +154,6 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
                 err = MCA_PML_CALL(recv(recv_buf, count, dtype, rank - 1,
                                         MCA_COLL_BASE_TAG_REDUCE_SCATTER,
                                         comm, MPI_STATUS_IGNORE));
-                if (OMPI_SUCCESS != err) goto cleanup;
 
                 /* integrate their results into our temp results */
                 ompi_op_reduce(op, recv_buf, result_buf, count, dtype);

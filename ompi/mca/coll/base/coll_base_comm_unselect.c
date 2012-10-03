@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Oak Rigde National Laboratory. 
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -53,30 +51,10 @@ int mca_coll_base_comm_unselect(ompi_communicator_t * comm)
     CLOSE(comm, gather);
     CLOSE(comm, gatherv);
     CLOSE(comm, reduce);
-    CLOSE(comm, reduce_scatter_block);
     CLOSE(comm, reduce_scatter);
     CLOSE(comm, scan);
     CLOSE(comm, scatter);
     CLOSE(comm, scatterv);
-
-    CLOSE(comm, iallgather);
-    CLOSE(comm, iallgatherv);
-    CLOSE(comm, iallreduce);
-    CLOSE(comm, ialltoall);
-    CLOSE(comm, ialltoallv);
-    CLOSE(comm, ialltoallw);
-    CLOSE(comm, ibarrier);
-    CLOSE(comm, ibcast);
-    CLOSE(comm, iexscan);
-    CLOSE(comm, igather);
-    CLOSE(comm, igatherv);
-    CLOSE(comm, ireduce);
-    CLOSE(comm, ireduce_scatter_block);
-    CLOSE(comm, ireduce_scatter);
-    CLOSE(comm, iscan);
-    CLOSE(comm, iscatter);
-    CLOSE(comm, iscatterv);
-
 
     /* All done */
     return OMPI_SUCCESS;

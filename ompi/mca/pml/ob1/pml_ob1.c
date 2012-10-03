@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -12,11 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
- * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
- *                         reserved.
- * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,22 +26,11 @@
 #include <string.h>
 
 #include "opal/class/opal_bitmap.h"
-#include "opal/util/output.h"
-#include "opal_stdint.h"
-
-#include "orte/runtime/orte_wait.h"
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/grpcomm/grpcomm.h"
-#include "orte/util/show_help.h"
-
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/btl/base/base.h"
-#include "ompi/mca/bml/base/base.h"
-#include "ompi/runtime/ompi_cr.h"
-
 #include "pml_ob1.h"
 #include "pml_ob1_component.h"
 #include "pml_ob1_comm.h"
@@ -54,6 +39,12 @@
 #include "pml_ob1_sendreq.h"
 #include "pml_ob1_recvreq.h"
 #include "pml_ob1_rdmafrag.h"
+#include "ompi/mca/bml/base/base.h"
+#include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/grpcomm/grpcomm.h"
+#include "orte/util/show_help.h"
+
+#include "ompi/runtime/ompi_cr.h"
 
 mca_pml_ob1_t mca_pml_ob1 = {
     {
@@ -72,10 +63,6 @@ mca_pml_ob1_t mca_pml_ob1 = {
         mca_pml_ob1_iprobe,
         mca_pml_ob1_probe,
         mca_pml_ob1_start,
-        mca_pml_ob1_improbe,
-        mca_pml_ob1_mprobe,
-        mca_pml_ob1_imrecv,
-        mca_pml_ob1_mrecv,
         mca_pml_ob1_dump,
         mca_pml_ob1_ft_event,
         65535,
@@ -150,7 +137,6 @@ int mca_pml_ob1_enable(bool enable)
     OBJ_CONSTRUCT(&mca_pml_ob1.recv_pending, opal_list_t);
     OBJ_CONSTRUCT(&mca_pml_ob1.pckt_pending, opal_list_t);
     OBJ_CONSTRUCT(&mca_pml_ob1.rdma_pending, opal_list_t);
-
     /* missing communicator pending list */
     OBJ_CONSTRUCT(&mca_pml_ob1.non_existing_communicator_pending, opal_list_t);
 
@@ -360,21 +346,21 @@ int mca_pml_ob1_add_procs(ompi_proc_t** procs, size_t nprocs)
         mca_btl_base_selected_module_t *sm = 
             (mca_btl_base_selected_module_t*) item;
         if (sm->btl_module->btl_eager_limit < sizeof(mca_pml_ob1_hdr_t)) {
-            orte_show_help("help-mpi-pml-ob1.txt", "eager_limit_too_small",
-                           true, 
-                           sm->btl_component->btl_version.mca_component_name,
-                           orte_process_info.nodename,
-                           sm->btl_component->btl_version.mca_component_name,
-                           sm->btl_module->btl_eager_limit,
-                           sm->btl_component->btl_version.mca_component_name,
-                           sizeof(mca_pml_ob1_hdr_t),
-                           sm->btl_component->btl_version.mca_component_name);
+	    orte_show_help("help-mpi-pml-ob1.txt", "eager_limit_too_small",
+			   true, 
+			   sm->btl_component->btl_version.mca_component_name,
+			   orte_process_info.nodename,
+			   sm->btl_component->btl_version.mca_component_name,
+			   sm->btl_module->btl_eager_limit,
+			   sm->btl_component->btl_version.mca_component_name,
+			   sizeof(mca_pml_ob1_hdr_t),
+			   sm->btl_component->btl_version.mca_component_name);
             rc = OMPI_ERR_BAD_PARAM;
             goto cleanup_and_return;
         }
     }
 
-
+		    
     /* TODO: Move these callback registration to another place */
     rc = mca_bml.bml_register( MCA_PML_OB1_HDR_TYPE_MATCH,
                                mca_pml_ob1_recv_frag_callback_match,
@@ -443,111 +429,10 @@ int mca_pml_ob1_del_procs(ompi_proc_t** procs, size_t nprocs)
  * diagnostics
  */
 
-static void mca_pml_ob1_dump_hdr(mca_pml_ob1_hdr_t* hdr)
-{
-    char *type, header[128];
-
-    switch(hdr->hdr_common.hdr_type) {
-    case MCA_PML_OB1_HDR_TYPE_MATCH:
-        type = "MATCH";
-        snprintf( header, 128, "ctx %5d src %d tag %d seq %d",
-                  hdr->hdr_match.hdr_ctx, hdr->hdr_match.hdr_src,
-                  hdr->hdr_match.hdr_tag, hdr->hdr_match.hdr_seq);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_RNDV:
-        type = "RNDV";
-        snprintf( header, 128, "ctx %5d src %d tag %d seq %d msg_length %" PRIu64,
-                  hdr->hdr_rndv.hdr_match.hdr_ctx, hdr->hdr_rndv.hdr_match.hdr_src,
-                  hdr->hdr_rndv.hdr_match.hdr_tag, hdr->hdr_rndv.hdr_match.hdr_seq,
-                  hdr->hdr_rndv.hdr_msg_length);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_RGET:
-        type = "RGET";
-        snprintf( header, 128, "ctx %5d src %d tag %d seq %d msg_length %" PRIu64
-                  "seg_cnt %d  hdr_des %" PRIu64,
-                  hdr->hdr_rndv.hdr_match.hdr_ctx, hdr->hdr_rndv.hdr_match.hdr_src,
-                  hdr->hdr_rndv.hdr_match.hdr_tag, hdr->hdr_rndv.hdr_match.hdr_seq,
-                  hdr->hdr_rndv.hdr_msg_length,
-                  hdr->hdr_rget.hdr_seg_cnt, hdr->hdr_rget.hdr_des.lval);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_ACK:
-        type = "ACK";
-        snprintf( header, 128, "src_req %p dst_req %p offset %" PRIu64,
-                  hdr->hdr_ack.hdr_src_req.pval, hdr->hdr_ack.hdr_dst_req.pval,
-                  hdr->hdr_ack.hdr_send_offset);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_FRAG:
-        type = "FRAG";
-        snprintf( header, 128, "offset %" PRIu64 " src_req %p dst_req %p",
-                  hdr->hdr_frag.hdr_frag_offset,
-                  hdr->hdr_frag.hdr_src_req.pval, hdr->hdr_frag.hdr_dst_req.pval);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_PUT:
-        type = "PUT";
-        snprintf( header, 128, "seg_cnt %d dst_req %p src_des %p recv_req %p offset %" PRIu64 " [%p %" PRIu64 "]",
-                  hdr->hdr_rdma.hdr_seg_cnt, hdr->hdr_rdma.hdr_req.pval, hdr->hdr_rdma.hdr_des.pval,
-                  hdr->hdr_rdma.hdr_recv_req.pval, hdr->hdr_rdma.hdr_rdma_offset,
-                  hdr->hdr_rdma.hdr_segs[0].seg_addr.pval, hdr->hdr_rdma.hdr_segs[0].seg_len);
-        break;
-    case MCA_PML_OB1_HDR_TYPE_FIN:
-        type = "FIN";
-        break;
-    default:
-        assert(0);
-        break;
-    }
-    opal_output(0,"hdr %s [%s] %s", type,
-                (hdr->hdr_common.hdr_flags & MCA_PML_OB1_HDR_FLAGS_NBO ? "nbo" : "   "),
-                header);
-}
-
-static void mca_pml_ob1_dump_frag_list(opal_list_t* queue, bool is_req)
-{
-    opal_list_item_t* item;
-    char cpeer[64], ctag[64];
-
-    for( item = opal_list_get_first(queue);
-         item != opal_list_get_end(queue);
-         item =  opal_list_get_next(item) ) {
-
-        if( is_req ) {
-            mca_pml_base_request_t *req = &(((mca_pml_ob1_recv_request_t*)item)->req_recv.req_base);
-
-            if( OMPI_ANY_SOURCE == req->req_peer ) snprintf(cpeer, 64, "%s", "ANY_SOURCE");
-            else snprintf(cpeer, 64, "%d", req->req_peer);
-
-            if( OMPI_ANY_TAG == req->req_tag ) snprintf(ctag, 64, "%s", "ANY_TAG");
-            else snprintf(ctag, 64, "%d", req->req_tag);
-
-            opal_output(0, "req %p peer %s tag %s addr %p count %lu datatype %s [%p] [%s %s] req_seq %" PRIu64,
-                        (void*) req, cpeer, ctag, 
-                        (void*) req->req_addr, req->req_count,
-                        (0 != req->req_count ? req->req_datatype->name : "N/A"),
-                        (void*) req->req_datatype,
-                        (req->req_pml_complete ? "pml_complete" : ""),
-                        (req->req_free_called ? "freed" : ""),
-                        req->req_sequence);
-        } else {
-            mca_pml_ob1_recv_frag_t* frag = (mca_pml_ob1_recv_frag_t*)item;
-            mca_pml_ob1_dump_hdr( &frag->hdr );
-        }
-    }
-}
-
 int mca_pml_ob1_dump(struct ompi_communicator_t* comm, int verbose)
 {
     struct mca_pml_comm_t* pml_comm = comm->c_pml_comm;
     int i;
-
-    /* TODO: don't forget to dump mca_pml_ob1.non_existing_communicator_pending */
-
-    opal_output(0, "Communicator %s [%p](%d) rank %d recv_seq %d num_procs %lu last_probed %lu\n",
-                comm->c_name, (void*) comm, comm->c_contextid, comm->c_my_rank,
-                pml_comm->recv_sequence, pml_comm->num_procs, pml_comm->last_probed);
-    if( opal_list_get_size(&pml_comm->wild_receives) ) {
-        opal_output(0, "expected MPI_ANY_SOURCE fragments\n");
-        mca_pml_ob1_dump_frag_list(&pml_comm->wild_receives, true);
-    }
 
     /* iterate through all procs on communicator */
     for( i = 0; i < (int)pml_comm->num_procs; i++ ) {
@@ -555,24 +440,11 @@ int mca_pml_ob1_dump(struct ompi_communicator_t* comm, int verbose)
         mca_bml_base_endpoint_t* ep = (mca_bml_base_endpoint_t*)proc->ompi_proc->proc_bml;
         size_t n;
 
-        opal_output(0, "[Rank %d] expected_seq %d ompi_proc %p send_seq %d\n",
-                    i, proc->expected_sequence, (void*) proc->ompi_proc, 
-                    proc->send_sequence);
+        opal_output(0, "[Rank %d]\n", i);
         /* dump all receive queues */
-        if( opal_list_get_size(&proc->specific_receives) ) {
-            opal_output(0, "expected specific receives\n");
-            mca_pml_ob1_dump_frag_list(&proc->specific_receives, true);
-        }
-        if( opal_list_get_size(&proc->frags_cant_match) ) {
-            opal_output(0, "out of sequence\n");
-            mca_pml_ob1_dump_frag_list(&proc->frags_cant_match, false);
-        }
-        if( opal_list_get_size(&proc->unexpected_frags) ) {
-            opal_output(0, "unexpected frag\n");
-            mca_pml_ob1_dump_frag_list(&proc->unexpected_frags, false);
-        }
-        /* dump all btls used for eager messages */
-        for( n = 0; n < ep->btl_eager.arr_size; n++ ) {
+
+        /* dump all btls */
+        for(n=0; n<ep->btl_eager.arr_size; n++) {
             mca_bml_base_btl_t* bml_btl = &ep->btl_eager.bml_btls[n];
             bml_btl->btl->btl_dump(bml_btl->btl, bml_btl->btl_endpoint, verbose);
         }
@@ -717,10 +589,8 @@ void mca_pml_ob1_process_pending_rdma(void)
         OPAL_THREAD_UNLOCK(&mca_pml_ob1.lock);
         if(NULL == frag)
             break;
-
-        frag->retries++;
-
         if(frag->rdma_state == MCA_PML_OB1_RDMA_PUT) {
+            frag->retries++;
             rc = mca_pml_ob1_send_request_put_frag(frag);
         } else {
             rc = mca_pml_ob1_recv_request_get_frag(frag);
@@ -748,15 +618,11 @@ int mca_pml_ob1_ft_event( int state )
     ompi_proc_t** procs = NULL;
     size_t num_procs;
     int ret, p;
-    orte_grpcomm_collective_t *coll, *modex;
 
-    coll = OBJ_NEW(orte_grpcomm_collective_t);
-    coll->id = orte_process_info.peer_init_barrier;
     if(OPAL_CRS_CHECKPOINT == state) {
         if( opal_cr_timing_barrier_enabled ) {
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCPBR1);
-            orte_grpcomm.barrier(coll);
-            ORTE_WAIT_FOR_COMPLETION(coll->active);
+            orte_grpcomm.barrier();
         }
 
         OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P0);
@@ -767,20 +633,18 @@ int mca_pml_ob1_ft_event( int state )
         if( !first_continue_pass ) { 
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_COREBR0);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P2);
         }
 
-        if( orte_cr_continue_like_restart && !first_continue_pass ) {
+        if( ompi_cr_continue_like_restart && !first_continue_pass ) {
             /*
              * Get a list of processes
              */
             procs = ompi_proc_all(&num_procs);
             if(NULL == procs) {
-                ret = OMPI_ERR_OUT_OF_RESOURCE;
-                goto clean;
+                return OMPI_ERR_OUT_OF_RESOURCE;
             }
 
             /*
@@ -798,7 +662,7 @@ int mca_pml_ob1_ft_event( int state )
                     OBJ_RELEASE(procs[p]);
                 }
                 free (procs);
-                goto clean;
+                return ret;
             }
         }
     }
@@ -811,8 +675,7 @@ int mca_pml_ob1_ft_event( int state )
          */
         procs = ompi_proc_all(&num_procs);
         if(NULL == procs) {
-            ret = OMPI_ERR_OUT_OF_RESOURCE;
-            goto clean;
+            return OMPI_ERR_OUT_OF_RESOURCE;
         }
 
         /*
@@ -838,7 +701,7 @@ int mca_pml_ob1_ft_event( int state )
                 OBJ_RELEASE(procs[p]);
             }
             free (procs);
-            goto clean;
+            return ret;
         }
     }
     else if(OPAL_CRS_TERM == state ) {
@@ -870,28 +733,22 @@ int mca_pml_ob1_ft_event( int state )
         if( !first_continue_pass ) {
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2PBR1);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2P3);
         }
 
-        if( orte_cr_continue_like_restart && !first_continue_pass ) {
+        if( ompi_cr_continue_like_restart && !first_continue_pass ) {
             /*
              * Exchange the modex information once again.
              * BTLs will have republished their modex information.
              */
-            modex = OBJ_NEW(orte_grpcomm_collective_t);
-            modex->id = orte_process_info.peer_modex;
-            if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(modex))) {
+            if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(NULL))) {
                 opal_output(0,
                             "pml:ob1: ft_event(Restart): Failed orte_grpcomm.modex() = %d",
                             ret);
-                OBJ_RELEASE(modex);
-                goto clean;
+                return ret;
             }
-            ORTE_WAIT_FOR_COMPLETION(modex->active);
-            OBJ_RELEASE(modex);
 
             /*
              * Startup the PML stack now that the modex is running again
@@ -899,15 +756,14 @@ int mca_pml_ob1_ft_event( int state )
              */
             if( OMPI_SUCCESS != (ret = mca_pml_ob1_add_procs(procs, num_procs) ) ) {
                 opal_output(0, "pml:ob1: ft_event(Restart): Failed in add_procs (%d)", ret);
-                goto clean;
+                return ret;
             }
 
             /* Is this barrier necessary ? JJH */
-            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(coll))) {
+            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
                 opal_output(0, "pml:ob1: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
-                goto clean;
+                return ret;
             }
-            ORTE_WAIT_FOR_COMPLETION(coll->active);
 
             if( NULL != procs ) {
                 for(p = 0; p < (int)num_procs; ++p) {
@@ -920,8 +776,7 @@ int mca_pml_ob1_ft_event( int state )
         if( !first_continue_pass ) {
             if( opal_cr_timing_barrier_enabled ) {
                 OPAL_CR_SET_TIMER(OPAL_CR_TIMER_P2PBR2);
-                orte_grpcomm.barrier(coll);
-                ORTE_WAIT_FOR_COMPLETION(coll->active);
+                orte_grpcomm.barrier();
             }
             OPAL_CR_SET_TIMER(OPAL_CR_TIMER_CRCP1);
         }
@@ -934,17 +789,12 @@ int mca_pml_ob1_ft_event( int state )
          * Exchange the modex information once again.
          * BTLs will have republished their modex information.
          */
-        modex = OBJ_NEW(orte_grpcomm_collective_t);
-        modex->id = orte_process_info.peer_modex;
-        if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(modex))) {
+        if (OMPI_SUCCESS != (ret = orte_grpcomm.modex(NULL))) {
             opal_output(0,
                         "pml:ob1: ft_event(Restart): Failed orte_grpcomm.modex() = %d",
                         ret);
-            OBJ_RELEASE(modex);
-            goto clean;
+            return ret;
         }
-        ORTE_WAIT_FOR_COMPLETION(modex->active);
-        OBJ_RELEASE(modex);
 
         /*
          * Startup the PML stack now that the modex is running again
@@ -952,15 +802,14 @@ int mca_pml_ob1_ft_event( int state )
          */
         if( OMPI_SUCCESS != (ret = mca_pml_ob1_add_procs(procs, num_procs) ) ) {
             opal_output(0, "pml:ob1: ft_event(Restart): Failed in add_procs (%d)", ret);
-            goto clean;
+            return ret;
         }
 
         /* Is this barrier necessary ? JJH */
-        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(coll))) {
+        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
             opal_output(0, "pml:ob1: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
-            goto clean;
+            return ret;
         }
-        ORTE_WAIT_FOR_COMPLETION(coll->active);
 
         if( NULL != procs ) {
             for(p = 0; p < (int)num_procs; ++p) {
@@ -977,11 +826,7 @@ int mca_pml_ob1_ft_event( int state )
         ;
     }
 
-    ret = OMPI_SUCCESS;
-
-clean:
-    OBJ_RELEASE(coll);
-    return ret;
+    return OMPI_SUCCESS;
 }
 #endif /* OPAL_ENABLE_FT_CR */
 

@@ -11,7 +11,6 @@
 #                         All rights reserved.
 # Copyright (c) 2006      Sun Microsystems, Inc.  All rights reserved.
 #                         Use is subject to license terms.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -30,7 +29,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_orte_ras_gridengine_DSO
+if OMPI_BUILD_ras_gridengine_DSO
 component_noinst =
 component_install = mca_ras_gridengine.la
 else

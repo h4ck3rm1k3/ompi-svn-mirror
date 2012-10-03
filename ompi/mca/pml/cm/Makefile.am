@@ -3,7 +3,6 @@
 #                         All rights reserved.
 # Copyright (c) 2009      High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,7 +16,7 @@
 
 EXTRA_DIST = post_configure.sh .windows
 
-if MCA_BUILD_ompi_pml_cm_DSO
+if OMPI_BUILD_pml_cm_DSO
 component_noinst =
 component_install = mca_pml_cm.la
 else

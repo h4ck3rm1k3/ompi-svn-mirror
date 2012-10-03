@@ -137,7 +137,6 @@ opal_net_init()
                                     &string_value );
 
     args = opal_argv_split( string_value, ';' );
-    free(string_value);
     if( NULL != args ) {
         count = opal_argv_count(args);
         private_ipv4 = (private_ipv4_t*)malloc( (count + 1) * sizeof(private_ipv4_t));
@@ -155,8 +154,9 @@ opal_net_init()
                  * get added to the trunk.
                  */
                 if (0 == found_bad) {
+                    opal_output(0, "FOUND BAD!\n");
                     opal_show_help("help-opal-util.txt", 
-                                   "malformed net_private_ipv4",
+                                   "malformed IP address or netmask",
                                    true, args[i]);
                     found_bad = 1;
                 }

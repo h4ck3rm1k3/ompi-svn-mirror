@@ -1,5 +1,5 @@
 dnl
-dnl Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+dnl Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 dnl                         University Research and Technology
 dnl                         Corporation.  All rights reserved.
 dnl Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -9,8 +9,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
-dnl Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
-dnl Copyright (c) 2009-2011 Oak Ridge National Labs.  All rights reserved.
+dnl Copyright (c) 2010-2012 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -118,12 +117,16 @@ AC_MSG_RESULT($THREAD_TYPE)
 #
 # Blah - this should be made better, but I don't know how...
 #
+AH_TEMPLATE([OPAL_THREADS_HAVE_DIFFERENT_PIDS],
+    [Do threads have different pids (pthreads on linux)])
+
 if test "$THREAD_TYPE" = "solaris"; then
     AC_DEFINE(OPAL_HAVE_SOLARIS_THREADS, 1)
     AC_DEFINE(OPAL_HAVE_POSIX_THREADS, 0)
+    AC_DEFINE(OPAL_THREADS_HAVE_DIFFERENT_PIDS, 0)
 
     THREAD_CFLAGS="$STHREAD_CFLAGS"
-    THREAD_FCFLAGS="$STHREAD_FCFLAGS"
+    THREAD_FFLAGS="$STHREAD_FFLAGS"
     THREAD_CXXFLAGS="$STHREAD_CXXFLAGS"
     THREAD_CPPFLAGS="$STHREAD_CPPFLAGS"
     THREAD_CXXCPPFLAGS="$STHREAD_CXXCPPFLAGS"
@@ -134,20 +137,21 @@ elif test "$THREAD_TYPE" = "posix"; then
     AC_DEFINE(OPAL_HAVE_POSIX_THREADS, 1)
 
     THREAD_CFLAGS="$PTHREAD_CFLAGS"
-    THREAD_FCFLAGS="$PTHREAD_FCFLAGS"
+    THREAD_FFLAGS="$PTHREAD_FFLAGS"
     THREAD_CXXFLAGS="$PTHREAD_CXXFLAGS"
     THREAD_CPPFLAGS="$PTHREAD_CPPFLAGS"
     THREAD_CXXCPPFLAGS="$PTHREAD_CXXCPPFLAGS"
     THREAD_LDFLAGS="$PTHREAD_LDFLAGS"
     THREAD_LIBS="$PTHREAD_LIBS"
 
-    OPAL_CHECK_PTHREAD_PIDS
+    OMPI_CHECK_PTHREAD_PIDS
 else
     AC_DEFINE(OPAL_HAVE_SOLARIS_THREADS, 0)
     AC_DEFINE(OPAL_HAVE_POSIX_THREADS, 0)
+    AC_DEFINE(OPAL_THREADS_HAVE_DIFFERENT_PIDS, 0)
 
     TRHEAD_CFLAGS=
-    THREAD_FCFLAGS=
+    THREAD_FFLAGS=
     THREAD_CXXFLAGS=
     THREAD_CPPFLAGS=
     THREAD_CXXCPPFLAGS=
@@ -224,47 +228,44 @@ AC_MSG_RESULT([$enable_opal_multi_threads])
 AC_MSG_CHECKING([if want fault tolerance thread])
 AC_ARG_ENABLE([ft_thread],
     [AC_HELP_STRING([--disable-ft-thread],
-                    [Disable fault tolerance thread running inside all processes. Requires OPAL thread support (default: enabled)])],
+                    [Disable fault tolerance thread running inside all processes. Requires progress and/or MPI threads (default: enabled)])],
     [enable_ft_thread="$enableval"],
     [enable_ft_thread="undef"])
 
 # if they do not want FT support, then they do not want this thread either
-if test "$opal_want_ft" = "0"; then
-    opal_want_ft_thread=0
+if test "$ompi_want_ft" = "0"; then
+    ompi_want_ft_thread=0
     AC_MSG_RESULT([Disabled (fault tolerance disabled --without-ft)])
 # if --disable-ft-thread
 elif test "$enable_ft_thread" = "no"; then
-    opal_want_ft_thread=0
+    ompi_want_ft_thread=0
     AC_MSG_RESULT([Disabled])
 # if default, and no progress or MPI threads
-elif test "$enable_ft_thread" = "undef" -a "$enable_opal_multi_threads" = "no" ; then
-    opal_want_ft_thread=0
+elif test "$enable_ft_thread" = "undef" -a "$enable_opal_progress_threads" = "no"  -a "$enable_opal_multi_threads" = "no" ; then
+    ompi_want_ft_thread=0
     AC_MSG_RESULT([Disabled (OPAL Thread Support Disabled)])
-# if default, and MPI threads enabled for C/R only
-elif test "$opal_want_ft_cr" = 1; then
+# if default, and MPI threads enabled
+else
     # Default: Enable
     # Make sure we have OPAL Threads enabled 
     if test "$enable_opal_multi_threads" = "no"; then
-        AC_MSG_RESULT([Must enable OPAL basic thread support to use this option])
+        AC_MSG_RESULT([Must enable OPALbasic thread support to use this option])
         AC_MSG_ERROR([Cannot continue])
     else
         AC_MSG_RESULT([yes])
-        opal_want_ft_thread=1
+        ompi_want_ft_thread=1
         AC_MSG_WARN([**************************************************])
         AC_MSG_WARN([*** Fault Tolerance with a thread in Open MPI    *])
         AC_MSG_WARN([*** is an experimental, research quality option. *])
-        AC_MSG_WARN([*** It requires OPAL thread support and care     *])
-        AC_MSG_WARN([*** should be used when enabling these options.  *])
+        AC_MSG_WARN([*** It requires OPAL thread support or progress  *])
+        AC_MSG_WARN([*** and care should be used when enabling these  *])
+        AC_MSG_WARN([*** options.                                     *])
         AC_MSG_WARN([**************************************************])
     fi
-# Otherwise disabled
-else
-    opal_want_ft_thread=0
-    AC_MSG_RESULT([Disabled (Non-C/R Fault Tolerance enabled)])
 fi
-AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_THREAD], [$opal_want_ft_thread],
+AC_DEFINE_UNQUOTED([OPAL_ENABLE_FT_THREAD], [$ompi_want_ft_thread],
                    [Enable fault tolerance thread in Open PAL])
-AM_CONDITIONAL(WANT_FT_THREAD, test "$opal_want_ft_thread" = "1")
+AM_CONDITIONAL(WANT_FT_THREAD, test "$ompi_want_ft_thread" = "1")
 
 ])dnl
 

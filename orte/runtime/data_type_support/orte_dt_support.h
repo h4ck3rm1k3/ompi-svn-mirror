@@ -2,14 +2,12 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -31,6 +29,7 @@
 #include "orte/types.h"
 
 #include "opal/dss/dss_types.h"
+#include "orte/mca/grpcomm/grpcomm_types.h"
 #include "orte/mca/odls/odls_types.h"
 #include "orte/mca/plm/plm_types.h"
 #include "orte/mca/rmaps/rmaps_types.h"
@@ -53,7 +52,6 @@ int orte_dt_compare_jobid(orte_jobid_t *value1,
 int orte_dt_compare_vpid(orte_vpid_t *value1,
                          orte_vpid_t *value2,
                          opal_data_type_t type);
-
 #if !ORTE_DISABLE_FULL_SUPPORT
 int orte_dt_compare_job(orte_job_t *value1, orte_job_t *value2, opal_data_type_t type);
 int orte_dt_compare_node(orte_node_t *value1, orte_node_t *value2, opal_data_type_t type);
@@ -76,6 +74,7 @@ int orte_dt_compare_tags(orte_rml_tag_t *value1,
                          orte_rml_tag_t *value2, 
                          opal_data_type_t type);
 int orte_dt_compare_daemon_cmd(orte_daemon_cmd_flag_t *value1, orte_daemon_cmd_flag_t *value2, opal_data_type_t type);
+int orte_dt_compare_grpcomm_mode(orte_grpcomm_mode_t *value1, orte_grpcomm_mode_t *value2, opal_data_type_t type);
 int orte_dt_compare_iof_tag(orte_iof_tag_t *value1, orte_iof_tag_t *value2, opal_data_type_t type);
 #endif
 
@@ -84,7 +83,6 @@ int orte_dt_copy_std_cntr(orte_std_cntr_t **dest, orte_std_cntr_t *src, opal_dat
 int orte_dt_copy_name(orte_process_name_t **dest, orte_process_name_t *src, opal_data_type_t type);
 int orte_dt_copy_jobid(orte_jobid_t **dest, orte_jobid_t *src, opal_data_type_t type);
 int orte_dt_copy_vpid(orte_vpid_t **dest, orte_vpid_t *src, opal_data_type_t type);
-
 #if !ORTE_DISABLE_FULL_SUPPORT
 int orte_dt_copy_job(orte_job_t **dest, orte_job_t *src, opal_data_type_t type);
 int orte_dt_copy_node(orte_node_t **dest, orte_node_t *src, opal_data_type_t type);
@@ -99,6 +97,7 @@ int orte_dt_copy_tag(orte_rml_tag_t **dest,
                            orte_rml_tag_t *src, 
                            opal_data_type_t type);
 int orte_dt_copy_daemon_cmd(orte_daemon_cmd_flag_t **dest, orte_daemon_cmd_flag_t *src, opal_data_type_t type);
+int orte_dt_copy_grpcomm_mode(orte_grpcomm_mode_t **dest, orte_grpcomm_mode_t *src, opal_data_type_t type);
 int orte_dt_copy_iof_tag(orte_iof_tag_t **dest, orte_iof_tag_t *src, opal_data_type_t type);
 #endif
 
@@ -113,7 +112,6 @@ int orte_dt_pack_jobid(opal_buffer_t *buffer, const void *src,
                        int32_t num_vals, opal_data_type_t type);
 int orte_dt_pack_vpid(opal_buffer_t *buffer, const void *src,
                       int32_t num_vals, opal_data_type_t type);
-
 #if !ORTE_DISABLE_FULL_SUPPORT
 int orte_dt_pack_job(opal_buffer_t *buffer, const void *src,
                      int32_t num_vals, opal_data_type_t type);
@@ -139,6 +137,8 @@ int orte_dt_pack_tag(opal_buffer_t *buffer,
                            opal_data_type_t type);
 int orte_dt_pack_daemon_cmd(opal_buffer_t *buffer, const void *src,
                           int32_t num_vals, opal_data_type_t type);
+int orte_dt_pack_grpcomm_mode(opal_buffer_t *buffer, const void *src,
+                              int32_t num_vals, opal_data_type_t type);
 int orte_dt_pack_iof_tag(opal_buffer_t *buffer, const void *src, int32_t num_vals,
                          opal_data_type_t type);
 #endif
@@ -154,6 +154,22 @@ int orte_dt_print_app_context(char **output, char *prefix, orte_app_context_t *s
 int orte_dt_print_map(char **output, char *prefix, orte_job_map_t *src, opal_data_type_t type);
 #endif
 
+/** Data type release functions */
+#if !ORTE_DISABLE_FULL_SUPPORT
+void orte_dt_std_obj_release(opal_dss_value_t *value);
+#endif
+void orte_dt_std_release(opal_dss_value_t *value);
+
+/** Data type size functions */
+int orte_dt_std_size(size_t *size, void *src, opal_data_type_t type);
+#if !ORTE_DISABLE_FULL_SUPPORT
+int orte_dt_size_job(size_t *size, orte_job_t *src, opal_data_type_t type);
+int orte_dt_size_node(size_t *size, orte_node_t *src, opal_data_type_t type);
+int orte_dt_size_proc(size_t *size, orte_proc_t *src, opal_data_type_t type);
+int orte_dt_size_app_context(size_t *size, orte_app_context_t *src, opal_data_type_t type);
+int orte_dt_size_map(size_t *size, orte_job_map_t *src, opal_data_type_t type);
+#endif
+
 /** Data type unpack functions */
 int orte_dt_unpack_std_cntr(opal_buffer_t *buffer, void *dest,
                         int32_t *num_vals, opal_data_type_t type);
@@ -163,7 +179,6 @@ int orte_dt_unpack_jobid(opal_buffer_t *buffer, void *dest,
                          int32_t *num_vals, opal_data_type_t type);
 int orte_dt_unpack_vpid(opal_buffer_t *buffer, void *dest,
                         int32_t *num_vals, opal_data_type_t type);
-
 #if !ORTE_DISABLE_FULL_SUPPORT
 int orte_dt_unpack_job(opal_buffer_t *buffer, void *dest,
                        int32_t *num_vals, opal_data_type_t type);
@@ -189,6 +204,8 @@ int orte_dt_unpack_tag(opal_buffer_t *buffer,
                              opal_data_type_t type);
 int orte_dt_unpack_daemon_cmd(opal_buffer_t *buffer, void *dest,
                             int32_t *num_vals, opal_data_type_t type);
+int orte_dt_unpack_grpcomm_mode(opal_buffer_t *buffer, void *dest,
+                              int32_t *num_vals, opal_data_type_t type);
 int orte_dt_unpack_iof_tag(opal_buffer_t *buffer, void *dest, int32_t *num_vals,
                            opal_data_type_t type);
 #endif

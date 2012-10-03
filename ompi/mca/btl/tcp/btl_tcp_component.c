@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -12,8 +12,6 @@
  * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Oak Ridge National Laboratory
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -50,7 +48,7 @@
 #include <ctype.h>
 #include <limits.h>
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/if.h"
 #include "opal/util/output.h"
 #include "opal/util/argv.h"
@@ -59,7 +57,7 @@
 
 #include "orte/types.h"
 #include "orte/util/show_help.h"
-#include "orte/util/proc_info.h"
+#include "orte/mca/ess/ess.h"
 
 #include "ompi/constants.h"
 #include "ompi/mca/btl/btl.h"
@@ -189,9 +187,9 @@ static int mca_btl_tcp_component_register(void)
     mca_btl_tcp_component.tcp_num_links =
         mca_btl_tcp_param_register_int("links", NULL, 1);
     mca_btl_tcp_component.tcp_if_include =
-        mca_btl_tcp_param_register_string("if_include", "Comma-delimited list of devices and/or CIDR notation of networks to use for MPI communication (e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with btl_tcp_if_exclude.", "");
+        mca_btl_tcp_param_register_string("if_include", "Comma-delimited list of devices or CIDR notation of networks to use for MPI communication (e.g., \"eth0,eth1\" or \"192.168.0.0/16,10.1.4.0/24\").  Mutually exclusive with btl_tcp_if_exclude.", "");
     mca_btl_tcp_component.tcp_if_exclude =
-        mca_btl_tcp_param_register_string("if_exclude", "Comma-delimited list of devices and/or CIDR notation of networks to NOT use for MPI communication -- all devices not matching these specifications will be used (e.g., \"eth0,192.168.0.0/16\").  If set to a non-default value, it is mutually exclusive with btl_tcp_if_include.", "127.0.0.1/8,sppp");
+        mca_btl_tcp_param_register_string("if_exclude", "Comma-delimited list of devices or CIDR notation of networks to NOT use for MPI communication -- all devices not matching these specifications will be used (e.g., \"eth0,eth1\" or \"192.168.0.0/16,10.1.4.0/24\").  Mutually exclusive with btl_tcp_if_include.", "127.0.0.1/8,sppp");
 
     mca_btl_tcp_component.tcp_free_list_num =
         mca_btl_tcp_param_register_int ("free_list_num", NULL, 8);
@@ -262,7 +260,6 @@ static int mca_btl_tcp_component_register(void)
                                        MCA_BTL_FLAGS_NEED_CSUM |
                                        MCA_BTL_FLAGS_NEED_ACK |
                                        MCA_BTL_FLAGS_HETEROGENEOUS_RDMA;
-    mca_btl_tcp_module.super.btl_seg_size = sizeof (mca_btl_base_segment_t);
     mca_btl_tcp_module.super.btl_bandwidth = 100;
     mca_btl_tcp_module.super.btl_latency = 100;
 
@@ -284,7 +281,7 @@ static int mca_btl_tcp_component_register(void)
             orte_node_rank_t node_rank;
             char name[256];
 
-            node_rank = orte_process_info.my_node_rank;
+            node_rank = orte_ess.get_node_rank(ORTE_PROC_MY_NAME);
 
             /* Now that we've got that local rank, take the
                corresponding entry from the tcp_if_seq list (wrapping
@@ -708,7 +705,7 @@ static int mca_btl_tcp_component_create_instances(void)
             /* check to see if this interface exists in the exclude list */
             argv = exclude;
             while(argv && *argv) {
-                if(strncmp(*argv,if_name,strlen(*argv)) == 0)
+                if(strcmp(*argv,if_name) == 0)
                     break;
                 argv++;
             }
@@ -891,7 +888,7 @@ static int mca_btl_tcp_component_create_listen(uint16_t af_family)
 
     /* register listen port */
     if (AF_INET == af_family) {
-        opal_event_set(opal_event_base, &mca_btl_tcp_component.tcp_recv_event,
+        opal_event_set( &mca_btl_tcp_component.tcp_recv_event,
                         mca_btl_tcp_component.tcp_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp_component_accept_handler,
@@ -900,7 +897,7 @@ static int mca_btl_tcp_component_create_listen(uint16_t af_family)
     }
 #if OPAL_WANT_IPV6
     if (AF_INET6 == af_family) {
-        opal_event_set(opal_event_base, &mca_btl_tcp_component.tcp6_recv_event,
+        opal_event_set( &mca_btl_tcp_component.tcp6_recv_event,
                         mca_btl_tcp_component.tcp6_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp_component_accept_handler,
@@ -1057,8 +1054,7 @@ mca_btl_base_module_t** mca_btl_tcp_component_init(int *num_btl_modules,
     }
 #if OPAL_WANT_IPV6
     if((ret = mca_btl_tcp_component_create_listen(AF_INET6)) != OMPI_SUCCESS) {
-        if (!(OMPI_ERR_IN_ERRNO == ret &&
-              EAFNOSUPPORT == opal_socket_errno)) {
+        if (!(OMPI_ERR_IN_ERRNO == ret && EAFNOSUPPORT == opal_socket_errno)) {
             opal_output (0, "mca_btl_tcp_component: IPv6 listening socket failed\n");
             return 0;
         }
@@ -1079,6 +1075,15 @@ mca_btl_base_module_t** mca_btl_tcp_component_init(int *num_btl_modules,
     memcpy(btls, mca_btl_tcp_component.tcp_btls, mca_btl_tcp_component.tcp_num_btls*sizeof(mca_btl_tcp_module_t*));
     *num_btl_modules = mca_btl_tcp_component.tcp_num_btls;
     return btls;
+}
+
+/*
+ *  TCP module control
+ */
+
+int mca_btl_tcp_component_control(int param, void* value, size_t size)
+{
+    return OMPI_SUCCESS;
 }
 
 
@@ -1114,7 +1119,7 @@ static void mca_btl_tcp_component_accept_handler( int incoming_sd,
         /* wait for receipt of peers process identifier to complete this connection */
          
         event = OBJ_NEW(mca_btl_tcp_event_t);
-        opal_event_set(opal_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_tcp_component_recv_handler, event);
+        opal_event_set(&event->event, sd, OPAL_EV_READ, mca_btl_tcp_component_recv_handler, event);
         opal_event_add(&event->event, 0);
     }
 }

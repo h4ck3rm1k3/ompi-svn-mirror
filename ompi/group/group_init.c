@@ -11,9 +11,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 University of Houston. All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -45,8 +44,6 @@ opal_pointer_array_t ompi_group_f_to_c_table;
  */
 ompi_predefined_group_t ompi_mpi_group_empty;
 ompi_predefined_group_t ompi_mpi_group_null;
-ompi_predefined_group_t *ompi_mpi_group_empty_addr = &ompi_mpi_group_empty;
-ompi_predefined_group_t *ompi_mpi_group_null_addr = &ompi_mpi_group_null;
 
 
 /*
@@ -62,11 +59,10 @@ ompi_group_t *ompi_group_allocate(int group_size)
     /* create new group group element */
     new_group = OBJ_NEW(ompi_group_t);
 
-    if (NULL == new_group) {
-        goto error_exit;
-    }
+    if (NULL == new_group)
+      goto error_exit;
 
-    if (0 > new_group->grp_f_to_c_index) {
+    if (OMPI_ERROR == new_group->grp_f_to_c_index) {
         OBJ_RELEASE (new_group);
         new_group = NULL;
         goto error_exit;
@@ -93,7 +89,7 @@ ompi_group_t *ompi_group_allocate(int group_size)
     new_group->grp_my_rank = MPI_UNDEFINED;
     OMPI_GROUP_SET_DENSE(new_group);
     
- error_exit:
+error_exit:
     /* return */
     return new_group;
 }
@@ -110,7 +106,7 @@ ompi_group_t *ompi_group_allocate_sporadic(int group_size)
     if( NULL == new_group) {
         goto error_exit;
     }
-    if (0 > new_group->grp_f_to_c_index) {
+    if (OMPI_ERROR == new_group->grp_f_to_c_index) {
         OBJ_RELEASE(new_group);
         new_group = NULL;
         goto error_exit;
@@ -139,7 +135,7 @@ ompi_group_t *ompi_group_allocate_sporadic(int group_size)
     new_group->grp_proc_pointers = NULL;
     OMPI_GROUP_SET_SPORADIC(new_group);    
         
- error_exit:
+error_exit:
     return new_group;
 }
 
@@ -152,7 +148,7 @@ ompi_group_t *ompi_group_allocate_strided(void)
     if( NULL == new_group ) {
         goto error_exit;
     }
-    if (0 > new_group->grp_f_to_c_index) {
+    if (OMPI_ERROR == new_group->grp_f_to_c_index) {
         OBJ_RELEASE(new_group);
         new_group = NULL;
         goto error_exit;
@@ -164,7 +160,7 @@ ompi_group_t *ompi_group_allocate_strided(void)
     new_group->sparse_data.grp_strided.grp_strided_stride         = -1;
     new_group->sparse_data.grp_strided.grp_strided_offset         = -1;
     new_group->sparse_data.grp_strided.grp_strided_last_element   = -1;
- error_exit:
+error_exit:
     /* return */
     return new_group;
 }
@@ -179,7 +175,7 @@ ompi_group_t *ompi_group_allocate_bmap(int orig_group_size , int group_size)
     if( NULL == new_group) {
         goto error_exit;
     }
-    if (0 > new_group->grp_f_to_c_index) {
+    if (OMPI_ERROR == new_group->grp_f_to_c_index) {
         OBJ_RELEASE(new_group);
         new_group = NULL;
         goto error_exit;
@@ -198,7 +194,7 @@ ompi_group_t *ompi_group_allocate_bmap(int orig_group_size , int group_size)
     new_group->grp_proc_pointers     = NULL;
     OMPI_GROUP_SET_BITMAP(new_group);
     
- error_exit:
+error_exit:
     /* return */
     return new_group;
 }
@@ -211,8 +207,8 @@ void ompi_group_increment_proc_count(ompi_group_t *group)
     int proc;
     ompi_proc_t * proc_pointer;
     for (proc = 0; proc < group->grp_proc_count; proc++) {
-        proc_pointer = ompi_group_peer_lookup(group,proc);
-        OBJ_RETAIN(proc_pointer);
+      proc_pointer = ompi_group_peer_lookup(group,proc);
+      OBJ_RETAIN(proc_pointer);
     }
 
     return;
@@ -227,8 +223,8 @@ void ompi_group_decrement_proc_count(ompi_group_t *group)
     int proc;
     ompi_proc_t * proc_pointer;
     for (proc = 0; proc < group->grp_proc_count; proc++) {
-        proc_pointer = ompi_group_peer_lookup(group,proc);
-        OBJ_RELEASE(proc_pointer);
+      proc_pointer = ompi_group_peer_lookup(group,proc);
+      OBJ_RELEASE(proc_pointer);
     }
 
     return;
@@ -294,9 +290,9 @@ static void ompi_group_destruct(ompi_group_t *group)
     /* reset the ompi_group_f_to_c_table entry - make sure that the
      * entry is in the table */
     if (NULL != opal_pointer_array_get_item(&ompi_group_f_to_c_table,
-                                            group->grp_f_to_c_index)) {
+                                           group->grp_f_to_c_index)) {
         opal_pointer_array_set_item(&ompi_group_f_to_c_table,
-                                    group->grp_f_to_c_index, NULL);
+                                   group->grp_f_to_c_index, NULL);
     }
 
     /* return */
@@ -324,7 +320,7 @@ int ompi_group_init(void)
     ompi_mpi_group_null.group.grp_flags            |= OMPI_GROUP_DENSE;
     ompi_mpi_group_null.group.grp_flags            |= OMPI_GROUP_INTRINSIC;
         
-    /* add MPI_GROUP_EMPTY to table */
+    /* add MPI_GROUP_EMPTRY to table */
     OBJ_CONSTRUCT(&ompi_mpi_group_empty, ompi_group_t);
     ompi_mpi_group_empty.group.grp_proc_count        = 0;
     ompi_mpi_group_empty.group.grp_my_rank           = MPI_UNDEFINED;
@@ -351,3 +347,6 @@ int ompi_group_finalize(void)
     
     return OMPI_SUCCESS;
 }
+
+/*  LocalWords:  grp
+ */

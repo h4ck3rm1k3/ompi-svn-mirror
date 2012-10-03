@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -38,7 +38,7 @@
 static int example_component_open(void);
 static int example_component_close(void);
 static int example_component_init_query(bool enable_progress_threads,
-                                     bool enable_mpi_thread_multiple);
+                                     bool enable_mpi_threads);
 static struct ompi_op_base_module_1_0_0_t *
     example_component_op_query(struct ompi_op_t *op, int *priority);
 static int example_component_register(void);
@@ -168,7 +168,7 @@ static int example_component_register(void)
  * Query whether this component wants to be used in this process.
  */
 static int example_component_init_query(bool enable_progress_threads,
-                                        bool enable_mpi_thread_multiple)
+                                        bool enable_mpi_threads)
 {
     opal_output(ompi_op_base_output, "example component init query");
 
@@ -184,9 +184,9 @@ static int example_component_init_query(bool enable_progress_threads,
        the MPI_Op component selection process.
 
        The input parameters enable_progress_threads and
-       enable_mpi_thread_multiple also tell the component the following:
+       enable_mpi_threads also tell the component the following:
 
-       - If enable_progress_threads==true, then the component is
+       - If enable_process_threads==true, then the component is
          allowed to have a progress thread in the background that is
          supported by the OMPI infrastructure (i.e., all of OMPI's
          locks and whatnot are active in this build).  Note that the
@@ -194,12 +194,12 @@ static int example_component_init_query(bool enable_progress_threads,
          background regardless of the value of this parameter as lone
          as the HAVE_THREADS macro is true and the component uses its
          own locking schemes (i.e., does not rely on external
-         OPAL/OMPI data structures to be thread safe).  This flag
-         simply indicates whether OPAL/OMPI data structures are
+         OPAL/ORTE/OMPI data structures to be thread safe).  This flag
+         simply indicates whether OPAL/ORTE/OMPI data structures are
          multi-threaded safe and whether multi-threading sync/IPC
          mechanisms in the OMPI code base are active.
 
-       - If enable_mpi_thread_multiple==true, then MPI_THREAD_MULTIPLE is
+       - If enable_mpi_threads==true, the MPI_THREAD_MULTIPLE is
          active.
 
        Note that a component can uses these values to deactivate
@@ -223,7 +223,7 @@ static int example_component_init_query(bool enable_progress_threads,
        be called in the future for each intrinsic MPI_Op).  Otherwise,
        return OMPI_ERR_NOT_SUPPORTED (indicating that this component
        will be closed and discarded). */
-    if (mca_op_example_component.hardware_available && !enable_mpi_thread_multiple) {
+    if (mca_op_example_component.hardware_available && !enable_mpi_threads) {
         return OMPI_SUCCESS;
     }
     return OMPI_ERR_NOT_SUPPORTED;

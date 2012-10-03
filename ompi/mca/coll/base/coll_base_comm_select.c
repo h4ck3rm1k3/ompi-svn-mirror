@@ -13,7 +13,6 @@
  *                         rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2012      Oak Rigde National Laboratory.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -96,14 +95,18 @@ static OBJ_CLASS_INSTANCE(avail_coll_t, opal_list_item_t, NULL, NULL);
  */
 int mca_coll_base_comm_select(ompi_communicator_t * comm)
 {
+    int ret;
+    char name[MPI_MAX_OBJECT_NAME + 32];
     opal_list_t *selectable;
     opal_list_item_t *item;
-    int ret;
 
     /* Announce */
+    snprintf(name, sizeof(name), "%s (cid %d)", comm->c_name,
+             comm->c_contextid);
+    name[sizeof(name) - 1] = '\0';
     opal_output_verbose(10, mca_coll_base_output,
-                        "coll:base:comm_select: new communicator: %s (cid %d)",
-                        comm->c_name, comm->c_contextid);
+                        "coll:base:comm_select: new communicator: %s",
+                        name);
 
     /* Initialize all the relevant pointers, since they're used as
      * sentinel values */
@@ -152,29 +155,11 @@ int mca_coll_base_comm_select(ompi_communicator_t * comm)
         COPY(avail->ac_module, comm, gather);
         COPY(avail->ac_module, comm, gatherv);
         COPY(avail->ac_module, comm, reduce);
-        COPY(avail->ac_module, comm, reduce_scatter_block);
         COPY(avail->ac_module, comm, reduce_scatter);
         COPY(avail->ac_module, comm, scan);
         COPY(avail->ac_module, comm, scatter);
         COPY(avail->ac_module, comm, scatterv);
 
-        COPY(avail->ac_module, comm, iallgather);
-        COPY(avail->ac_module, comm, iallgatherv);
-        COPY(avail->ac_module, comm, iallreduce);
-        COPY(avail->ac_module, comm, ialltoall);
-        COPY(avail->ac_module, comm, ialltoallv);
-        COPY(avail->ac_module, comm, ialltoallw);
-        COPY(avail->ac_module, comm, ibarrier);
-        COPY(avail->ac_module, comm, ibcast);
-        COPY(avail->ac_module, comm, iexscan);
-        COPY(avail->ac_module, comm, igather);
-        COPY(avail->ac_module, comm, igatherv);
-        COPY(avail->ac_module, comm, ireduce);
-        COPY(avail->ac_module, comm, ireduce_scatter_block);
-        COPY(avail->ac_module, comm, ireduce_scatter);
-        COPY(avail->ac_module, comm, iscan);
-        COPY(avail->ac_module, comm, iscatter);
-        COPY(avail->ac_module, comm, iscatterv);
         /* release the original module reference and the list item */
         OBJ_RELEASE(avail->ac_module);
         OBJ_RELEASE(avail);
@@ -192,36 +177,18 @@ int mca_coll_base_comm_select(ompi_communicator_t * comm)
         (NULL == comm->c_coll.coll_alltoallw) ||
         (NULL == comm->c_coll.coll_barrier) ||
         (NULL == comm->c_coll.coll_bcast) ||
-        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_exscan)) ||
-        (NULL == comm->c_coll.coll_gather) ||
-        (NULL == comm->c_coll.coll_gatherv) ||
-        (NULL == comm->c_coll.coll_reduce) ||
-        (NULL == comm->c_coll.coll_reduce_scatter_block) ||
-        (NULL == comm->c_coll.coll_reduce_scatter) ||
-        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_scan)) ||
-        (NULL == comm->c_coll.coll_scatter) ||
-        (NULL == comm->c_coll.coll_scatterv) ||
-        (NULL == comm->c_coll.coll_iallgather) ||
-        (NULL == comm->c_coll.coll_iallgatherv) ||
-        (NULL == comm->c_coll.coll_iallreduce) ||
-        (NULL == comm->c_coll.coll_ialltoall) ||
-        (NULL == comm->c_coll.coll_ialltoallv) ||
-        (NULL == comm->c_coll.coll_ialltoallw) ||
-        (NULL == comm->c_coll.coll_ibarrier) ||
-        (NULL == comm->c_coll.coll_ibcast) ||
-        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_iexscan)) ||
-        (NULL == comm->c_coll.coll_igather) ||
-        (NULL == comm->c_coll.coll_igatherv) ||
-        (NULL == comm->c_coll.coll_ireduce) ||
-        (NULL == comm->c_coll.coll_ireduce_scatter_block) ||
-        (NULL == comm->c_coll.coll_ireduce_scatter) ||
-        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_iscan)) ||
-        (NULL == comm->c_coll.coll_iscatter) ||
-        (NULL == comm->c_coll.coll_iscatterv)
-        ) {
+        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_exscan))
+        || (NULL == comm->c_coll.coll_gather)
+        || (NULL == comm->c_coll.coll_gatherv)
+        || (NULL == comm->c_coll.coll_reduce)
+        || (NULL == comm->c_coll.coll_reduce_scatter)
+        || ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_scan))
+        || (NULL == comm->c_coll.coll_scatter)
+        || (NULL == comm->c_coll.coll_scatterv)) {
         mca_coll_base_comm_unselect(comm);
         return OMPI_ERR_NOT_FOUND;
     }
+
     return OMPI_SUCCESS;
 }
 

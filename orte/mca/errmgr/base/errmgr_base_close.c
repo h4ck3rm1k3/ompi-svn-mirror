@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -33,28 +33,16 @@
 int orte_errmgr_base_close(void)
 {
     OPAL_TRACE(5);
-
-    /* if not initialized, then skip this action. */
-    if( !orte_errmgr_base.initialized ) {
-        return ORTE_SUCCESS;
-    }
-
-    /* Close selected component */
-    if( NULL != orte_errmgr.finalize ) {
-        orte_errmgr.finalize();
-    }
-
-    /* Close all remaining available components (may be one if this is a
-     * OMPI RTE program, or [possibly] multiple if this is ompi_info)
-     */
-    mca_base_components_close(orte_errmgr_base.output, 
-                              &orte_errmgr_base_components_available,
-                              NULL);
-
-    orte_errmgr_base.initialized = false;
     
-    /* always leave a default set of fn pointers */
-    orte_errmgr = orte_errmgr_default_fns;
-
+    /* Close all remaining available components (may be one if this is a
+        OMPI RTE program, or [possibly] multiple if this is ompi_info) */
+    
+    mca_base_components_close(orte_errmgr_base_output, 
+                              &orte_errmgr_base_components_available, NULL);
+    
+    orte_errmgr_initialized = false;
+    
+    /* All done */
+    
     return ORTE_SUCCESS;
 }

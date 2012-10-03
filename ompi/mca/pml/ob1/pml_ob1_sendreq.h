@@ -11,9 +11,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2011-2012 NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
- *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -55,7 +52,6 @@ struct mca_pml_ob1_send_request_t {
     mca_pml_ob1_send_pending_t req_pending;
     opal_mutex_t req_send_range_lock; 
     opal_list_t req_send_ranges;
-    mca_btl_base_descriptor_t *src_des;
     mca_pml_ob1_com_btl_t req_rdma[1]; 
 };
 typedef struct mca_pml_ob1_send_request_t mca_pml_ob1_send_request_t;
@@ -131,7 +127,6 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
             OMPI_FREE_LIST_WAIT(&mca_pml_base_send_requests, item, rc); \
             sendreq = (mca_pml_ob1_send_request_t*)item;                \
             sendreq->req_send.req_base.req_proc = proc;                 \
-            sendreq->src_des = NULL;                                    \
         }                                                               \
     }
 
@@ -159,13 +154,13 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
         (sendreq)->req_recv.pval = NULL;                                \
     }
 
-#define MCA_PML_OB1_SEND_REQUEST_RESET(sendreq)                             \
-{                                                                           \
-    size_t _position = 0;                                                   \
-    opal_convertor_set_position(&sendreq->req_send.req_base.req_convertor,  \
-                                &_position);                                \
-    assert( 0 == _position );                                               \
-}
+#define MCA_PML_OB1_SEND_REQUEST_RESET(sendreq)                                \
+    {                                                                          \
+        size_t _position = 0;                                                  \
+        opal_convertor_set_position(&sendreq->req_send.req_base.req_convertor, \
+                                    &_position);                               \
+        assert( 0 == _position );                                              \
+    }
 
 static inline void mca_pml_ob1_free_rdma_resources(mca_pml_ob1_send_request_t* sendreq)
 {
@@ -267,7 +262,7 @@ send_request_pml_complete(mca_pml_ob1_send_request_t *sendreq)
 static inline bool
 send_request_pml_complete_check(mca_pml_ob1_send_request_t *sendreq)
 {
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
     opal_atomic_rmb();
 #endif
     /* if no more events are expected for the request and the whole message is
@@ -322,13 +317,6 @@ mca_pml_ob1_send_request_schedule(mca_pml_ob1_send_request_t* sendreq)
 
     mca_pml_ob1_send_request_schedule_exclusive(sendreq);
 }
-
-#if OMPI_CUDA_SUPPORT
-int mca_pml_ob1_send_request_start_cuda(
-    mca_pml_ob1_send_request_t* sendreq, 
-    mca_bml_base_btl_t* bml_btl,
-    size_t size);
-#endif /* OMPI_CUDA_SUPPORT */
 
 /**
  *  Start the specified request
@@ -414,11 +402,6 @@ mca_pml_ob1_send_request_start_btl( mca_pml_ob1_send_request_t* sendreq,
                                                          MCA_PML_OB1_HDR_FLAGS_CONTIG);
             }
         } else {
-#if OMPI_CUDA_SUPPORT
-            if (sendreq->req_send.req_base.req_convertor.flags & CONVERTOR_CUDA) {
-                return mca_pml_ob1_send_request_start_cuda(sendreq, bml_btl, size);
-            }
-#endif /* OMPI_CUDA_SUPPORT */
             rc = mca_pml_ob1_send_request_start_rndv(sendreq, bml_btl, size, 0);
         }
     }

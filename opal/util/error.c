@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC. 
+ * Copyright (c) 2007      Los Alamos National Security, LLC. 
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -47,18 +47,16 @@ typedef struct converter_info_t converter_info_t;
 /* all default to NULL */
 converter_info_t converters[MAX_CONVERTERS];
 
-static int
-opal_strerror_int(int errnum, const char **str)
+static const char *
+opal_strerror_int(int errnum)
 {
-    int i, ret = OPAL_SUCCESS;
-    *str = NULL;
+    int i;
+    const char *ret = NULL;
 
     for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
-        if (0 != converters[i].init &&
-            errnum < converters[i].err_base &&
-            converters[i].err_max < errnum) {
-            ret = converters[i].converter(errnum, str);
-            break;
+        if (0 != converters[i].init) {
+            ret = converters[i].converter(errnum);
+            if (NULL != ret) break;
         }
     }
 
@@ -67,47 +65,44 @@ opal_strerror_int(int errnum, const char **str)
 
 
 /* caller must free string */
-static int
-opal_strerror_unknown(int errnum, char **str)
+static char*
+opal_strerror_unknown(int errnum)
 {
     int i;
-    *str = NULL;
+    char *ret;
 
     for (i = 0 ; i < MAX_CONVERTERS ; ++i) {
         if (0 != converters[i].init) {
             if (errnum < converters[i].err_base && 
                 errnum > converters[i].err_max) {
-                asprintf(str, "Unknown error: %d (%s error %d)",
+                asprintf(&ret, "Unknown error: %d (%s error %d)",
                          errnum, converters[i].project, 
                          errnum - converters[i].err_base);
-                return OPAL_SUCCESS;
+                return ret;
             }
         }
     }
 
-    asprintf(str, "Unknown error: %d", errnum);
+    asprintf(&ret, "Unknown error: %d", errnum);
 
-    return OPAL_SUCCESS;
+    return ret;
 }
 
 
 void
 opal_perror(int errnum, const char *msg)
 {
-    int ret;
-    const char* errmsg;
-    ret = opal_strerror_int(errnum, &errmsg);
+    const char* errmsg = opal_strerror_int(errnum);
 
     if (NULL != msg && errnum != OPAL_ERR_IN_ERRNO) {
         fprintf(stderr, "%s: ", msg);
     }
 
-    if (OPAL_SUCCESS != ret) {
+    if (NULL == errmsg) {
         if (errnum == OPAL_ERR_IN_ERRNO) {
             perror(msg);
         } else {
-            char *ue_msg;
-            ret = opal_strerror_unknown(errnum, &ue_msg);
+            char *ue_msg = opal_strerror_unknown(errnum);
             fprintf(stderr, "%s\n", ue_msg);
             free(ue_msg);
         }
@@ -125,18 +120,16 @@ static char unknown_retbuf[UNKNOWN_RETBUF_LEN];
 const char *
 opal_strerror(int errnum)
 {
-    int ret;
     const char* errmsg;
 
     if (errnum == OPAL_ERR_IN_ERRNO) {
         return strerror(errno);
     }
 
-    ret = opal_strerror_int(errnum, &errmsg);
+    errmsg = opal_strerror_int(errnum);
 
-    if (OPAL_SUCCESS != ret) {
-        char *ue_msg;
-        ret = opal_strerror_unknown(errnum, &ue_msg);
+    if (NULL == errmsg) {
+        char *ue_msg = opal_strerror_unknown(errnum);
         snprintf(unknown_retbuf, UNKNOWN_RETBUF_LEN, "%s", ue_msg);
         free(ue_msg);
         errno = EINVAL;
@@ -150,21 +143,19 @@ opal_strerror(int errnum)
 int
 opal_strerror_r(int errnum, char *strerrbuf, size_t buflen)
 {
-    const char* errmsg;
-    int ret, len;
+    const char* errmsg = opal_strerror_int(errnum);
+    int ret;
 
-    ret = opal_strerror_int(errnum, &errmsg);
-    if (OPAL_SUCCESS != ret) {
+    if (NULL == errmsg) {
         if (errnum == OPAL_ERR_IN_ERRNO) {
             char *tmp = strerror(errno);
             strncpy(strerrbuf, tmp, buflen);
             return OPAL_SUCCESS;
         } else {
-            char *ue_msg;
-            ret = opal_strerror_unknown(errnum, &ue_msg);
-            len =  snprintf(strerrbuf, buflen, "%s", ue_msg);
+            char *ue_msg = opal_strerror_unknown(errnum);
+            ret =  snprintf(strerrbuf, buflen, "%s", ue_msg);
             free(ue_msg);
-            if (len > (int) buflen) {
+            if (ret > (int) buflen) {
                 errno = ERANGE;
                 return OPAL_ERR_OUT_OF_RESOURCE;
             } else {
@@ -173,8 +164,8 @@ opal_strerror_r(int errnum, char *strerrbuf, size_t buflen)
             }
         }
     } else {
-        len =  snprintf(strerrbuf, buflen, "%s", errmsg);
-        if (len > (int) buflen) {
+        ret =  snprintf(strerrbuf, buflen, "%s", errmsg);
+        if (ret > (int) buflen) {
             errno = ERANGE;
             return OPAL_ERR_OUT_OF_RESOURCE;
         } else {

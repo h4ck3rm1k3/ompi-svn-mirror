@@ -9,7 +9,6 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -21,7 +20,8 @@
 noinst_LTLIBRARIES = libmca_odls.la
 libmca_odls_la_SOURCES =
 
-# pkgdata setup
+# header setup
+nobase_orte_HEADERS =
 dist_pkgdata_DATA =
 
 # local files
@@ -30,8 +30,10 @@ libmca_odls_la_SOURCES += $(headers)
 
 # Conditionally install the header files
 if WANT_INSTALL_HEADERS
-ortedir = $(includedir)/openmpi/$(subdir)
-nobase_orte_HEADERS = $(headers)
+nobase_orte_HEADERS += $(headers)
+ortedir = $(includedir)/openmpi/orte/mca/odls
+else
+ortedir = $(includedir)
 endif
 
 include base/Makefile.am
