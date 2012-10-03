@@ -31,6 +31,7 @@
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/mca/mpool/mpool.h"
+#include "ompi/mca/mpool/rdma/mpool_rdma.h"
 
 #include "btl_ofud.h"
 #include "btl_ofud_frag.h"
@@ -51,7 +52,6 @@ mca_btl_ud_module_t mca_btl_ofud_module = {
         0, /* latency */
         0, /* bandwidth */
         MCA_BTL_FLAGS_SEND,
-        0, /* segment length */
         mca_btl_ud_add_procs,
         mca_btl_ud_del_procs,
         NULL,
@@ -543,8 +543,7 @@ int mca_btl_ud_module_init(mca_btl_ud_module_t *ud_btl)
                 ibv_get_device_name(ud_btl->ib_dev), strerror(errno)));
         return OMPI_ERROR;
     }
-
-    mpool_resources.pool_name = "ofud";
+        
     mpool_resources.reg_data = (void*)ud_btl;
     mpool_resources.sizeof_reg = sizeof(mca_btl_ud_reg_t);
     mpool_resources.register_mem = mca_btl_ud_reg_mr;

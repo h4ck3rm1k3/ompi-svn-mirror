@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2004-2012 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
@@ -46,8 +46,7 @@ static orte_snapc_base_module_t loc_module = {
     orte_snapc_full_release_job,
     orte_snapc_full_ft_event,
     orte_snapc_full_start_ckpt,
-    orte_snapc_full_end_ckpt,
-    orte_snapc_full_request_op
+    orte_snapc_full_end_ckpt
 };
 
 /*
@@ -85,6 +84,12 @@ void orte_snapc_full_orted_construct(orte_snapc_full_orted_snapshot_t *snapshot)
     snapshot->process_name.vpid   = 0;
 
     snapshot->state = ORTE_SNAPC_CKPT_STATE_NONE;
+
+    snapshot->opal_crs = NULL;
+
+    snapshot->options = OBJ_NEW(opal_crs_base_ckpt_options_t);
+
+    snapshot->filem_request = NULL;
 }
 
 void orte_snapc_full_orted_destruct( orte_snapc_full_orted_snapshot_t *snapshot) {
@@ -92,6 +97,21 @@ void orte_snapc_full_orted_destruct( orte_snapc_full_orted_snapshot_t *snapshot)
     snapshot->process_name.vpid   = 0;
 
     snapshot->state = ORTE_SNAPC_CKPT_STATE_NONE;
+
+    if( NULL != snapshot->opal_crs ) {
+        free( snapshot->opal_crs );
+        snapshot->opal_crs = NULL;
+    }
+
+    if( NULL != snapshot->options ) {
+        OBJ_RELEASE(snapshot->options);
+        snapshot->options = NULL;
+    }
+
+    if( NULL != snapshot->filem_request ) {
+        OBJ_RELEASE(snapshot->filem_request);
+        snapshot->filem_request = NULL;
+    }
 }
 
 void orte_snapc_full_app_construct(orte_snapc_full_app_snapshot_t *app_snapshot) {
@@ -102,13 +122,10 @@ void orte_snapc_full_app_construct(orte_snapc_full_app_snapshot_t *app_snapshot)
     app_snapshot->comm_pipe_w_fd = -1;
 
     app_snapshot->is_eh_active = false;
-    app_snapshot->unique_pipe_id = 0;
 
     app_snapshot->process_pid  = 0;
 
-    app_snapshot->migrating = false;
-
-    app_snapshot->finished = false;
+    app_snapshot->options = OBJ_NEW(opal_crs_base_ckpt_options_t);
 }
 
 void orte_snapc_full_app_destruct( orte_snapc_full_app_snapshot_t *app_snapshot) {
@@ -126,13 +143,13 @@ void orte_snapc_full_app_destruct( orte_snapc_full_app_snapshot_t *app_snapshot)
     app_snapshot->comm_pipe_w_fd = -1;
 
     app_snapshot->is_eh_active = false;
-    app_snapshot->unique_pipe_id = 0;
 
     app_snapshot->process_pid  = 0;
 
-    app_snapshot->migrating = false;
-
-    app_snapshot->finished = false;
+    if( NULL != app_snapshot->options ) {
+        OBJ_RELEASE(app_snapshot->options);
+        app_snapshot->options = NULL;
+    }
 }
 
 /*
@@ -194,13 +211,6 @@ int orte_snapc_full_module_init(bool seed, bool app)
      * Application Snapshot Coordinator
      */
     else if(app) {
-        /*
-         * Start the app coordinator only after ORTE has initialized.
-         */
-        if(!orte_initialized) {
-            goto cleanup;
-        }
-
         opal_output_verbose(5, mca_snapc_full_component.super.output_handle,
                             "snapc:full: module_init: Application Snapshot Coordinator");
 
@@ -315,7 +325,7 @@ int orte_snapc_full_start_ckpt(orte_snapc_base_quiesce_t *datum)
             ; /* Do nothing */
             break;
         case ORTE_SNAPC_APP_COORD_TYPE:
-            ; /* Do nothing. Use app_coord_request_op() instead */
+            return app_coord_start_ckpt(datum);
             break;
         default:
             break;
@@ -335,27 +345,7 @@ int orte_snapc_full_end_ckpt(orte_snapc_base_quiesce_t *datum)
             ; /* Do nothing */
             break;
         case ORTE_SNAPC_APP_COORD_TYPE:
-            ; /* Do nothing. Use app_coord_request_op() instead */
-            break;
-        default:
-            break;
-        }
-
-    return ORTE_SUCCESS;
-}
-
-int orte_snapc_full_request_op(orte_snapc_base_request_op_t *datum)
-{
-    switch(orte_snapc_coord_type) 
-        {
-        case ORTE_SNAPC_GLOBAL_COORD_TYPE:
-            ; /* Do nothing */
-            break;
-        case ORTE_SNAPC_LOCAL_COORD_TYPE:
-            ; /* Do nothing */
-            break;
-        case ORTE_SNAPC_APP_COORD_TYPE:
-            return app_coord_request_op(datum);
+            return app_coord_end_ckpt(datum);
             break;
         default:
             break;

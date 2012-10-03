@@ -25,6 +25,7 @@ SUBDIRS = \
 	asm \
         datatype \
         etc \
+        event \
         util \
 	mca/base \
 	$(MCA_opal_FRAMEWORKS_SUBDIRS) \
@@ -41,6 +42,7 @@ DIST_SUBDIRS = \
 	asm \
         datatype \
         etc \
+	event \
 	util \
 	mca/base \
 	$(MCA_opal_FRAMEWORKS_SUBDIRS) \
@@ -54,6 +56,7 @@ libopen_pal_la_LIBADD = \
         $(LIBLTDL) \
         asm/libasm.la \
         datatype/libdatatype.la \
+        event/libevent.la \
         mca/base/libmca_base.la \
         util/libopalutil.la \
 	$(MCA_opal_FRAMEWORK_LIBS)
@@ -63,19 +66,22 @@ libopen_pal_la_LDFLAGS = -version-info $(libopen_pal_so_version)
 # included subdirectory Makefile.am's and appended-to variables
 headers =
 noinst_LTLIBRARIES =
+nobase_opal_HEADERS = 
 dist_pkgdata_DATA =
 libopen_pal_la_SOURCES += $(headers)
 
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-opaldir = $(includedir)/openmpi/$(subdir)
-nobase_opal_HEADERS = $(headers)
+opaldir = $(includedir)/openmpi/opal
+nobase_opal_HEADERS += $(headers)
 
 # This is somewhat of a hack -- libltdl is installed by libtoolize,
 # and us installing the header here is slightly less kludgey than
 # hacking their Makefile.am.
 nobase_opal_HEADERS += libltdl/ltdl.h
+else
+opaldir = $(includedir)
 endif
 
 include class/Makefile.am

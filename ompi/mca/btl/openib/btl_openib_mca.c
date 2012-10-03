@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
@@ -26,11 +26,10 @@
 
 #include <string.h>
 
-#include "opal/util/bit_ops.h"
 #include "opal/mca/installdirs/installdirs.h"
+#include "orte/util/show_help.h"
 #include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h"
 #include "btl_openib.h"
 #include "btl_openib_mca.h"
 #include "btl_openib_ini.h"
@@ -65,7 +64,7 @@ enum {
 /*
  * utility routine for string parameter registration
  */
-static int reg_string(const char* param_name,
+static int reg_string(const char* param_name, 
                       const char* deprecated_param_name,
                       const char* param_desc,
                       const char* default_value, char **out_value,
@@ -77,8 +76,8 @@ static int reg_string(const char* param_name,
                                       param_name, param_desc, false, false,
                                       default_value, &value);
     if (NULL != deprecated_param_name) {
-        mca_base_param_reg_syn(index,
-                               &mca_btl_openib_component.super.btl_version,
+        mca_base_param_reg_syn(index, 
+                               &mca_btl_openib_component.super.btl_version, 
                                deprecated_param_name, true);
     }
     mca_base_param_lookup_string(index, &value);
@@ -96,7 +95,7 @@ static int reg_string(const char* param_name,
 /*
  * utility routine for integer parameter registration
  */
-static int reg_int(const char* param_name,
+static int reg_int(const char* param_name, 
                    const char* deprecated_param_name,
                    const char* param_desc,
                    int default_value, int *out_value, int flags)
@@ -106,12 +105,12 @@ static int reg_int(const char* param_name,
                                    param_name, param_desc, false, false,
                                    default_value, NULL);
     if (NULL != deprecated_param_name) {
-        mca_base_param_reg_syn(index,
-                               &mca_btl_openib_component.super.btl_version,
+        mca_base_param_reg_syn(index, 
+                               &mca_btl_openib_component.super.btl_version, 
                                deprecated_param_name, true);
     }
     mca_base_param_lookup_int(index, &value);
-
+    
     if (0 != (flags & REGINT_NEG_ONE_OK) && -1 == value) {
         *out_value = value;
         return OMPI_SUCCESS;
@@ -134,6 +133,7 @@ int btl_openib_register_mca_params(void)
 {
     char default_qps[100];
     uint32_t mid_qp_size;
+    int i;
     char *msg, *str, *pkey;
     int ival, ival2, ret, tmp;
 
@@ -190,7 +190,7 @@ int btl_openib_register_mca_params(void)
         orte_show_help("help-mpi-btl-openib.txt",
                        "ibv_fork requested but not supported", true,
                        orte_process_info.nodename);
-        return OMPI_ERR_BAD_PARAM;
+        return OMPI_ERROR;
     }
 #endif
 
@@ -200,8 +200,8 @@ int btl_openib_register_mca_params(void)
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
     CHECK(reg_string("device_param_files", "hca_param_files",
-                     "Colon-delimited list of INI-style files that contain device vendor/part-specific parameters (use semicolon for Windows)",
-                     str, &mca_btl_openib_component.device_params_file_names,
+                     "Colon-delimited list of INI-style files that contain device vendor/part-specific parameters",
+                     str, &mca_btl_openib_component.device_params_file_names, 
                      0));
     free(str);
 
@@ -221,7 +221,7 @@ int btl_openib_register_mca_params(void)
         orte_show_help("help-mpi-btl-openib.txt",
                        "ibv_fork requested but not supported", true,
                        orte_process_info.nodename);
-        return OMPI_ERR_BAD_PARAM;
+        return OMPI_ERROR;
     }
     free(str);
 
@@ -247,7 +247,7 @@ int btl_openib_register_mca_params(void)
                   REGINT_GE_ONE));
     CHECK(reg_string("mpool", NULL,
                      "Name of the memory pool to be used (it is unlikely that you will ever want to change this)",
-                     "grdma", &mca_btl_openib_component.ib_mpool_name,
+                     "rdma", &mca_btl_openib_component.ib_mpool_name,
                      0));
     CHECK(reg_int("reg_mru_len", NULL,
                   "Length of the registration cache most recently used list "
@@ -272,11 +272,11 @@ int btl_openib_register_mca_params(void)
                   -1, &ival, REGINT_NEG_ONE_OK | REGINT_GE_ZERO));
     mca_btl_openib_component.ib_max_inline_data = (int32_t) ival;
 
-    CHECK(reg_string("pkey", "ib_pkey_val",
+    CHECK(reg_string("pkey", "ib_pkey_val", 
                      "OpenFabrics partition key (pkey) value. "
                      "Unsigned integer decimal or hex values are allowed (e.g., \"3\" or \"0x3f\") and will be masked against the maximum allowable IB partition key value (0x7fff)",
                      "0", &pkey, 0));
-    mca_btl_openib_component.ib_pkey_val =
+    mca_btl_openib_component.ib_pkey_val = 
         ompi_btl_openib_ini_intify(pkey) & MCA_BTL_IB_PKEY_MASK;
     free(pkey);
 
@@ -286,7 +286,7 @@ int btl_openib_register_mca_params(void)
                   0, &ival, REGINT_GE_ZERO));
     mca_btl_openib_component.ib_psn = (uint32_t) ival;
 
-    CHECK(reg_int("ib_qp_ous_rd_atom", NULL,
+    CHECK(reg_int("ib_qp_ous_rd_atom", NULL, 
                   "InfiniBand outstanding atomic reads "
                   "(must be >= 0)",
                   4, &ival, REGINT_GE_ZERO));
@@ -527,11 +527,6 @@ int btl_openib_register_mca_params(void)
                   10, &ival, REGINT_GE_ONE));
     mca_btl_openib_component.cq_poll_progress = (uint32_t)ival;
 
-    CHECK(reg_int("max_hw_msg_size", NULL,
-                  "Maximum size (in bytes) of a single fragment of a long message when using the RDMA protocols (must be > 0 and <= hw capabilities).",
-                  0, &ival, REGINT_GE_ZERO));
-    mca_btl_openib_component.max_hw_msg_size = (uint32_t)ival;
-
     /* Info only */
     mca_base_param_reg_int(&mca_btl_openib_component.super.btl_version,
                            "have_fork_support",
@@ -562,10 +557,16 @@ int btl_openib_register_mca_params(void)
             &mca_btl_openib_module.super));
 
     /* setup all the qp stuff */
+    mid_qp_size = mca_btl_openib_module.super.btl_eager_limit / 4;
     /* round mid_qp_size to smallest power of two */
-    mid_qp_size = opal_next_poweroftwo (mca_btl_openib_module.super.btl_eager_limit / 4) >> 1;
+    for(i = 31; i > 0; i--) {
+        if(!(mid_qp_size & (1<<i))) {
+            continue;
+        }
+        mid_qp_size = (1<<i);
+        break;
+    }
 
-    /* mid_qp_size = MAX (mid_qp_size, 1024); ?! */
     if(mid_qp_size <= 128) {
         mid_qp_size = 1024;
     }
@@ -584,11 +585,11 @@ int btl_openib_register_mca_params(void)
 
     CHECK(reg_string("receive_queues", NULL,
                      "Colon-delimited, comma-delimited list of receive queues: P,4096,8,6,4:P,32768,8,6,4",
-                     default_qps, &mca_btl_openib_component.receive_queues,
+                     default_qps, &mca_btl_openib_component.receive_queues, 
                      0));
-    mca_btl_openib_component.receive_queues_source =
-        (0 == strcmp(default_qps,
-                     mca_btl_openib_component.receive_queues)) ?
+    mca_btl_openib_component.receive_queues_source = 
+        (0 == strcmp(default_qps, 
+                     mca_btl_openib_component.receive_queues)) ? 
         BTL_OPENIB_RQ_SOURCE_DEFAULT : BTL_OPENIB_RQ_SOURCE_MCA;
 
     CHECK(reg_string("if_include", NULL,
@@ -646,7 +647,6 @@ int btl_openib_register_mca_params(void)
     }
     mca_btl_openib_component.memalign_threshold = (size_t)ival;
 #endif
-
     /* Register any MCA params for the connect pseudo-components */
     if (OMPI_SUCCESS == ret) {
         ret = ompi_btl_openib_connect_base_register();

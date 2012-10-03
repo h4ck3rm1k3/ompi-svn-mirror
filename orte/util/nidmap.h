@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -42,19 +42,23 @@ BEGIN_C_DECLS
 
 ORTE_DECLSPEC int orte_util_nidmap_init(opal_buffer_t *buffer);
 ORTE_DECLSPEC void orte_util_nidmap_finalize(void);
+ORTE_DECLSPEC int orte_util_setup_local_nidmap_entries(void);
 
-ORTE_DECLSPEC int orte_util_encode_nodemap(opal_byte_object_t *boptr, bool update);
+ORTE_DECLSPEC orte_jmap_t* orte_util_lookup_jmap(orte_jobid_t job);
+ORTE_DECLSPEC orte_pmap_t* orte_util_lookup_pmap(orte_process_name_t *proc);
+ORTE_DECLSPEC orte_nid_t* orte_util_lookup_nid(orte_process_name_t *proc);
+
+ORTE_DECLSPEC int orte_util_encode_nodemap(opal_byte_object_t *boptr);
 ORTE_DECLSPEC int orte_util_decode_nodemap(opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_daemon_nodemap(opal_byte_object_t *bo);
 
-ORTE_DECLSPEC int orte_util_encode_pidmap(opal_byte_object_t *boptr, bool update);
+ORTE_DECLSPEC int orte_util_encode_pidmap(opal_byte_object_t *boptr);
 ORTE_DECLSPEC int orte_util_decode_pidmap(opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_daemon_pidmap(opal_byte_object_t *bo);
 
-#if ORTE_ENABLE_STATIC_PORTS
 ORTE_DECLSPEC int orte_util_build_daemon_nidmap(char **nodes);
-#endif
+
+ORTE_DECLSPEC void orte_nidmap_dump(void);
+ORTE_DECLSPEC void orte_jmap_dump(orte_jmap_t *jmap);
+ORTE_DECLSPEC void orte_jobmap_dump(void);
 
 END_C_DECLS
-
 #endif

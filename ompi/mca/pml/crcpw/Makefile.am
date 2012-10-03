@@ -10,7 +10,6 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 #
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,7 +22,7 @@ crcpw_sources  = \
 	pml_crcpw_component.c \
 	pml_crcpw_module.c
 
-if MCA_BUILD_ompi_pml_crcpw_DSO
+if OMPI_BUILD_pml_crcpw_DSO
 component_noinst =
 component_install = mca_pml_crcpw.la
 else

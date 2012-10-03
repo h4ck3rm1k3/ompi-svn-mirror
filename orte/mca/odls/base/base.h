@@ -2,14 +2,13 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -75,6 +74,13 @@ ORTE_DECLSPEC int orte_odls_base_select(void);
  */
 ORTE_DECLSPEC int orte_odls_base_finalize(void);
 ORTE_DECLSPEC int orte_odls_base_close(void);
+
+/* proc termination entry points */
+ORTE_DECLSPEC void orte_odls_base_notify_iof_complete(orte_process_name_t *proc);
+ORTE_DECLSPEC void orte_base_default_waitpid_fired(orte_process_name_t *proc, int32_t status);
+
+/* setup singleton job data */
+ORTE_DECLSPEC void orte_odls_base_setup_singleton_jobdat(orte_jobid_t jobid);
 
 #endif /* ORTE_DISABLE_FULL_SUPPORT */
 

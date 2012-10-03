@@ -18,7 +18,6 @@
 
 #include "opal_config.h"
 
-#include "opal/constants.h"
 #include "opal/mca/timer/timer.h"
 #include "opal/mca/timer/aix/timer_aix.h"
 

@@ -55,7 +55,6 @@ struct opal_condition_t {
 #elif OPAL_HAVE_SOLARIS_THREADS
     cond_t c_cond;
 #endif
-    char *name;
 };
 typedef struct opal_condition_t opal_condition_t;
 
@@ -67,7 +66,7 @@ static inline int opal_condition_wait(opal_condition_t *c, opal_mutex_t *m)
     int rc = 0;
     c->c_waiting++;
 
-#if OPAL_ENABLE_DEBUG && !OPAL_ENABLE_MULTI_THREADS
+#if OPAL_ENABLE_DEBUG && !OPAL_HAVE_THREAD_SUPPORT
     if (opal_mutex_check_locks && 0 == m->m_lock_debug) {                                         \
         opal_output(0, "Warning -- mutex not locked in condition_wait"); \
     }                                                                   \
@@ -75,9 +74,9 @@ static inline int opal_condition_wait(opal_condition_t *c, opal_mutex_t *m)
 #endif
 
     if (opal_using_threads()) {
-#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         rc = pthread_cond_wait(&c->c_cond, &m->m_lock_pthread);
-#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_MULTI_THREADS
+#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         rc = cond_wait(&c->c_cond, &m->m_lock_solaris);
 #else
         if (c->c_signaled) {
@@ -102,7 +101,7 @@ static inline int opal_condition_wait(opal_condition_t *c, opal_mutex_t *m)
         }
     }
 
-#if OPAL_ENABLE_DEBUG && !OPAL_ENABLE_MULTI_THREADS
+#if OPAL_ENABLE_DEBUG && !OPAL_HAVE_THREAD_SUPPORT
     m->m_lock_debug++;
 #endif
 
@@ -119,7 +118,7 @@ static inline int opal_condition_timedwait(opal_condition_t *c,
     struct timeval absolute;
     int rc = 0;
 
-#if OPAL_ENABLE_DEBUG && !OPAL_ENABLE_MULTI_THREADS
+#if OPAL_ENABLE_DEBUG && !OPAL_HAVE_THREAD_SUPPORT
     if (opal_mutex_check_locks && 0 == m->m_lock_debug) {                                         \
         opal_output(0, "Warning -- mutex not locked in condition_wait"); \
     }                                                                   \
@@ -128,9 +127,9 @@ static inline int opal_condition_timedwait(opal_condition_t *c,
 
     c->c_waiting++;
     if (opal_using_threads()) {
-#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         rc = pthread_cond_timedwait(&c->c_cond, &m->m_lock_pthread, abstime);
-#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_MULTI_THREADS
+#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         /* deal with const-ness */
         timestruc_t to;
         to.tv_sec = abstime->tv_sec;
@@ -165,7 +164,7 @@ static inline int opal_condition_timedwait(opal_condition_t *c,
         }
     }
 
-#if OPAL_ENABLE_DEBUG && !OPAL_ENABLE_MULTI_THREADS
+#if OPAL_ENABLE_DEBUG && !OPAL_HAVE_THREAD_SUPPORT
     m->m_lock_debug++;
 #endif
 
@@ -178,11 +177,11 @@ static inline int opal_condition_signal(opal_condition_t *c)
 {
     if (c->c_waiting) {
         c->c_signaled++;
-#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         if(opal_using_threads()) {
             pthread_cond_signal(&c->c_cond);
         }
-#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_MULTI_THREADS
+#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_PROGRESS_THREADS
         if(opal_using_threads()) {
             cond_signal(&c->c_cond);
         }
@@ -194,16 +193,16 @@ static inline int opal_condition_signal(opal_condition_t *c)
 static inline int opal_condition_broadcast(opal_condition_t *c)
 {
     c->c_signaled = c->c_waiting;
-#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_MULTI_THREADS
-    if (opal_using_threads()) {
+#if OPAL_HAVE_POSIX_THREADS && OPAL_ENABLE_PROGRESS_THREADS
+    if(opal_using_threads()) {
         if( 1 == c->c_waiting ) {
             pthread_cond_signal(&c->c_cond);
         } else {
             pthread_cond_broadcast(&c->c_cond);
         }
     }
-#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_MULTI_THREADS
-    if (opal_using_threads()) {
+#elif OPAL_HAVE_SOLARIS_THREADS && OPAL_ENABLE_PROGRESS_THREADS
+    if(opal_using_threads()) {
         cond_broadcast(&c->c_cond);
     }
 #endif

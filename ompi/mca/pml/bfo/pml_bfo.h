@@ -1,4 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -122,19 +121,6 @@ extern int mca_pml_bfo_probe( int dst,
                               struct ompi_communicator_t* comm,
                               ompi_status_public_t* status );
 
-extern int mca_pml_bfo_improbe( int dst,
-                               int tag,
-                               struct ompi_communicator_t* comm,
-                               int *matched,
-                               struct ompi_message_t **message,
-                               ompi_status_public_t* status );
-
-extern int mca_pml_bfo_mprobe( int dst,
-                              int tag,
-                              struct ompi_communicator_t* comm,
-                              struct ompi_message_t **message,
-                              ompi_status_public_t* status );
-
 extern int mca_pml_bfo_isend_init( void *buf,
                                    size_t count,
                                    ompi_datatype_t *datatype,
@@ -184,18 +170,6 @@ extern int mca_pml_bfo_recv( void *buf,
                              int tag,
                              struct ompi_communicator_t* comm,
                              ompi_status_public_t* status );
-
-extern int mca_pml_bfo_imrecv( void *buf,
-                               size_t count,
-                               ompi_datatype_t *datatype,
-                               struct ompi_message_t **message,
-                               struct ompi_request_t **request );
-
-extern int mca_pml_bfo_mrecv( void *buf,
-                              size_t count,
-                              ompi_datatype_t *datatype,
-                              struct ompi_message_t **message,
-                              ompi_status_public_t* status );
 
 extern int mca_pml_bfo_dump( struct ompi_communicator_t* comm,
                              int verbose );
@@ -286,30 +260,15 @@ void mca_pml_bfo_process_pending_rdma(void);
 /*
  * Compute the total number of bytes on supplied descriptor
  */
-static inline int mca_pml_bfo_compute_segment_length (size_t seg_size, void *segments, size_t count,
-                                                      size_t hdrlen) {
-    size_t i, length;
-
-    for (i = 0, length = -hdrlen ; i < count ; ++i) {
-        mca_btl_base_segment_t *segment =
-            (mca_btl_base_segment_t *)((char *) segments + i * seg_size);
-
-        length += segment->seg_len;
-    }
-
-    return length;
-}
-
-static inline int mca_pml_bfo_compute_segment_length_base (mca_btl_base_segment_t *segments,
-                                                           size_t count, size_t hdrlen) {
-    size_t i, length;
-
-    for (i = 0, length = -hdrlen ; i < count ; ++i) {
-        length += segments[i].seg_len;
-    }
-
-    return length;
-}
+#define MCA_PML_BFO_COMPUTE_SEGMENT_LENGTH(segments, count, hdrlen, length) \
+do {                                                                        \
+   size_t i;                                                                \
+                                                                            \
+   for( i = 0; i < count; i++ ) {                                           \
+       length += segments[i].seg_len;                                       \
+   }                                                                        \
+   length -= hdrlen;                                                        \
+} while(0)
 
 /* represent BTL chosen for sending request */
 struct mca_pml_bfo_com_btl_t {

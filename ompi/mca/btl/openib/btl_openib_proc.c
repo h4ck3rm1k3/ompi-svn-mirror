@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -146,6 +146,10 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
     module_proc->proc_endpoint_count = 0;
     module_proc->proc_ompi = ompi_proc;
 
+    /* build a unique identifier (of arbitrary
+     * size) to represent the proc */
+    module_proc->proc_guid = ompi_proc->proc_name;
+
     /* query for the peer address info */
     rc = ompi_modex_recv(&mca_btl_openib_component.super.btl_version,
                          ompi_proc,
@@ -167,12 +171,12 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
     modex_message_size = ((char *) &(dummy.end)) - ((char*) &dummy);
 
     /* Unpack the number of modules in the message */
-    offset = (char *) message;
+    offset = message;
     unpack8(&offset, &(module_proc->proc_port_count));
     BTL_VERBOSE(("unpack: %d btls", module_proc->proc_port_count));
     if (module_proc->proc_port_count > 0) {
         module_proc->proc_ports = (mca_btl_openib_proc_modex_t *)
-            malloc(sizeof(mca_btl_openib_proc_modex_t) *
+            malloc(sizeof(mca_btl_openib_proc_modex_t) * 
                    module_proc->proc_port_count);
     } else {
         module_proc->proc_ports = NULL;
@@ -194,9 +198,9 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         /* Unpack the number of CPCs that follow */
         unpack8(&offset, &(module_proc->proc_ports[i].pm_cpc_data_count));
         BTL_VERBOSE(("unpacked btl %d: number of cpcs to follow %d (offset now %d)",
-                     i, module_proc->proc_ports[i].pm_cpc_data_count,
+                     i, module_proc->proc_ports[i].pm_cpc_data_count, 
                      (int)(offset-((char*)message))));
-        module_proc->proc_ports[i].pm_cpc_data = (ompi_btl_openib_connect_base_module_data_t *)
+        module_proc->proc_ports[i].pm_cpc_data = 
             calloc(module_proc->proc_ports[i].pm_cpc_data_count,
                    sizeof(ompi_btl_openib_connect_base_module_data_t));
         if (NULL == module_proc->proc_ports[i].pm_cpc_data) {
@@ -211,15 +215,15 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
             unpack8(&offset, &u8);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: index %d (offset now %d)",
                          i, j, u8, (int)(offset-(char*)message)));
-            cpcd->cbm_component =
+            cpcd->cbm_component = 
                 ompi_btl_openib_connect_base_get_cpc_byindex(u8);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: component %s",
                          i, j, cpcd->cbm_component->cbc_name));
-
+            
             unpack8(&offset, &cpcd->cbm_priority);
             unpack8(&offset, &cpcd->cbm_modex_message_len);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: priority %d, msg len %d (offset now %d)",
-                         i, j, cpcd->cbm_priority,
+                         i, j, cpcd->cbm_priority, 
                          cpcd->cbm_modex_message_len,
                          (int)(offset-(char*)message)));
             if (cpcd->cbm_modex_message_len > 0) {
@@ -228,7 +232,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
                     BTL_ERROR(("Failed to malloc"));
                     return NULL;
                 }
-                memcpy(cpcd->cbm_modex_message, offset,
+                memcpy(cpcd->cbm_modex_message, offset, 
                        cpcd->cbm_modex_message_len);
                 offset += cpcd->cbm_modex_message_len;
                 BTL_VERBOSE(("unpacked btl %d: cpc %d: blob unpacked %d %x (offset now %d)",
@@ -244,7 +248,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         module_proc->proc_endpoints = NULL;
     } else {
         module_proc->proc_endpoints = (mca_btl_base_endpoint_t**)
-            malloc(module_proc->proc_port_count *
+            malloc(module_proc->proc_port_count * 
                    sizeof(mca_btl_base_endpoint_t*));
     }
     if (NULL == module_proc->proc_endpoints) {

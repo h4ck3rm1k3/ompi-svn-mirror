@@ -48,7 +48,7 @@ developer's checkout, you have three main options:
 
      shell$ svn co http://svn.open-mpi.org/svn/ompi/trunk ompi
      shell$ cd ompi
-     shell$ ./autogen.pl
+     shell$ ./autogen.sh
      shell$ mkdir build
      shell$ cd build
      shell$ ./configure --with-platform=optimized ...
@@ -61,7 +61,7 @@ developer's checkout, you have three main options:
 
      shell$ svn co http://svn.open-mpi.org/svn/ompi/trunk ompi
      shell$ cd ompi
-     shell$ ./autogen.pl
+     shell$ ./autogen.sh
      shell$ mkdir build
      shell$ cd build
      shell$ ../configure ...
@@ -194,15 +194,15 @@ NOTE: On MacOS/X, the default "libtool" program is different than the
    m4, Autoconf and Automake build and install very quickly; Libtool will
    take a minute or two.
 
-5. You can now run OMPI's top-level "autogen.pl" script.  This script
+5. You can now run OMPI's top-level "autogen.sh" script.  This script
    will invoke the GNU Autoconf, Automake, and Libtool commands in the
    proper order and setup to run OMPI's top-level "configure" script.
 
-   Running autogen.pl may take several minutes, depending on your
+   Running autogen.sh may take several minutes, depending on your
    system.  It's not very exciting to watch.  :-)
 
    If you have a multi-processor system, enabling the multi-threaded
-   behavior in Automake 1.11 (or newer) can result in autogen.pl
+   behavior in Automake 1.11 (or newer) can result in autogen.sh
    running faster.  Do this by setting the AUTOMAKE_JOBS environment
    variable to the number of processors (threads) that you want it to
    use.  For example (you can again put this in your shell startup
@@ -213,12 +213,12 @@ NOTE: On MacOS/X, the default "libtool" program is different than the
        # For csh/tcsh:
        set AUTOMAKE_JOBS 4
 
-   5a. You generally need to run autogen.pl whenever the top-level
+   5a. You generally need to run autogen.sh whenever the top-level
        file "configure.ac" changes, or any files in the config/
        directory change (the config/ directory is where a lot of
        "include" files for OMPI's configure script live).
 
-   5b. You do *NOT* need to re-run autogen.pl if you modify a
+   5b. You do *NOT* need to re-run autogen.sh if you modify a
        Makefile.am.
 
 Use of Flex
@@ -230,9 +230,11 @@ supported: given the choice of making parsing code portable between
 all flavors of lex and doing more interesting work on Open MPI, we
 greatly prefer the latter.  
 
-Note that no testing has been performed to see what the minimum
-version of Flex is required by Open MPI.  We suggest that you use
-v2.5.35 at the earliest.
+Several POSIXly-oriented developers use the stable flex version
+v2.5.4a from July of 1997.  Others have upgraded to more recent
+versions; these also seem to work fine.  Note that no testing has been
+performed to see what the minimum version of Flex is required by Open
+MPI.  We suggest that you use v2.5.4a at the earliest.
 
 *** NOTE: Windows builds of Open MPI require Flex version 2.5.35.
 Specifically, we know that v2.5.35 works and 2.5.4a does not.  We have

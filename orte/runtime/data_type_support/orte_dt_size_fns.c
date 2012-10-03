@@ -1,14 +1,11 @@
 /*
  * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -46,7 +43,7 @@ int orte_dt_std_size(size_t *size, void *src, opal_data_type_t type)
         case ORTE_STD_CNTR:
             *size = sizeof(orte_std_cntr_t);
             break;
-
+            
         case ORTE_VPID:
             *size = sizeof(orte_vpid_t);
             break;
@@ -84,6 +81,10 @@ int orte_dt_std_size(size_t *size, void *src, opal_data_type_t type)
             *size = sizeof(orte_rml_tag_t);
             break;
 
+        case ORTE_GRPCOMM_MODE:
+            *size = sizeof(orte_grpcomm_mode_t);
+            break;
+            
         case ORTE_IOF_TAG:
             *size = sizeof(orte_iof_tag_t);
             break;
@@ -105,8 +106,7 @@ int orte_dt_size_job(size_t *size, orte_job_t *src, opal_data_type_t type)
 {
     size_t sz;
     int32_t i;
-    orte_app_context_t *app;
-    orte_proc_t *proc;
+    orte_app_context_t **apps;
     
     /* account for the object itself */
     *size = sizeof(orte_job_t);
@@ -114,11 +114,9 @@ int orte_dt_size_job(size_t *size, orte_job_t *src, opal_data_type_t type)
     /* if src is NULL, then that's all we wanted */
     if (NULL == src) return ORTE_SUCCESS;
 
-    for (i=0; i < src->apps->size; i++) {
-        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(src->apps, i))) {
-            continue;
-        }
-        opal_dss.size(&sz, app, ORTE_APP_CONTEXT);
+    apps = (orte_app_context_t**)src->apps->addr;
+    for (i=0; i < src->num_apps; i++) {
+        opal_dss.size(&sz, apps[i], ORTE_APP_CONTEXT);
         *size += sz;
     }
     
@@ -126,11 +124,10 @@ int orte_dt_size_job(size_t *size, orte_job_t *src, opal_data_type_t type)
     *size += sz;
     
     for (i=0; i < src->procs->size; i++) {
-        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(src->procs, i))) {
-            continue;
+        if (NULL != src->procs->addr[i]) {
+            orte_dt_size_proc(&sz, (orte_proc_t *) src->procs->addr[i], ORTE_PROC);
+            *size += sz;
         }
-        orte_dt_size_proc(&sz, proc, ORTE_PROC);
-        *size += sz;
     }
 
 #if OPAL_ENABLE_FT_CR == 1
@@ -187,6 +184,10 @@ int orte_dt_size_proc(size_t *size, orte_proc_t *src, opal_data_type_t type)
     
     /* if src is NULL, then that's all we wanted */
     if (NULL == src) return ORTE_SUCCESS;
+    
+    if (NULL != src->slot_list) {
+        *size += strlen(src->slot_list);
+    }
     
 #if OPAL_ENABLE_FT_CR == 1
     if (NULL != src->ckpt_snapshot_ref) {

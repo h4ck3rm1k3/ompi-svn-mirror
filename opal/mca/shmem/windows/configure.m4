@@ -20,12 +20,10 @@
 # $HEADER$
 #
 
-# MCA_opal_shmem_windows_CONFIG(action-if-can-compile,
-#                        [action-if-cant-compile])
+# MCA_shmem_windows_CONFIG(action-if-can-compile,
+#                          [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_opal_shmem_windows_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/shmem/windows/Makefile])
-
+AC_DEFUN([MCA_shmem_windows_CONFIG],[
     # do we have the windows shm stuff?
     AC_MSG_CHECKING([if want Windows shared memory support])
     AC_ARG_ENABLE(windows-shmem,

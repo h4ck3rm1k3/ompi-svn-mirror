@@ -10,9 +10,7 @@
 # $HEADER$
 #
 
-AC_DEFUN([MCA_opal_memchecker_valgrind_PRIORITY], [10])
-
-AC_DEFUN([MCA_opal_memchecker_valgrind_COMPILE_MODE], [
+AC_DEFUN([MCA_memchecker_valgrind_COMPILE_MODE], [
     AC_MSG_CHECKING([for MCA component $2:$3 compile mode])
     $4="static"
     AC_MSG_RESULT([$$4])
@@ -21,10 +19,8 @@ AC_DEFUN([MCA_opal_memchecker_valgrind_COMPILE_MODE], [
 
 # MCA_memchecker_valgrind_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_opal_memchecker_valgrind_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/memchecker/valgrind/Makefile])
-
-    OPAL_VAR_SCOPE_PUSH([opal_memchecker_valgrind_save_CPPFLAGS opal_memchecker_valgrind_happy opal_memchecker_valgrind_CPPFLAGS])
+AC_DEFUN([MCA_memchecker_valgrind_CONFIG],[
+    OMPI_VAR_SCOPE_PUSH([opal_memchecker_valgrind_save_CPPFLAGS opal_memchecker_valgrind_happy opal_memchecker_valgrind_CPPFLAGS])
 
     AC_ARG_WITH([valgrind],
         [AC_HELP_STRING([--with-valgrind(=DIR)],
@@ -59,14 +55,10 @@ AC_DEFUN([MCA_opal_memchecker_valgrind_CONFIG],[
                   AC_MSG_WARN([Cannot compile this component])])])
     CPPFLAGS="$opal_memchecker_valgrind_save_CPPFLAGS"
 
-    # If we specifically requested this component and can't build it, error
-    AS_IF([test "$with_valgrind" != "no" -a "$with_valgrind" != "" -a "$opal_memchecker_valgrind_happy" != "yes"],
-          [AC_MSG_ERROR([Cannot continue])])
-
     AS_IF([test "$opal_memchecker_valgrind_happy" = "yes"],
           [$1],[$2])
 
     AC_SUBST([opal_memchecker_valgrind_CPPFLAGS])
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])dnl

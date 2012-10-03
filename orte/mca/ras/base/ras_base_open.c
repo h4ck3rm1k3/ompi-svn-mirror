@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,7 +25,6 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/mca/event/event.h"
 
 #include "orte/mca/ras/base/ras_private.h"
 
@@ -64,7 +61,12 @@ int orte_ras_base_open(void)
 /*
  * Global variables
  */
+orte_ras_t orte_ras = {
+    orte_ras_base_allocate
+};
+
 orte_ras_base_t orte_ras_base;
+
 
 /**
  * Function for finding and opening either all MCA components, or the one
@@ -72,10 +74,28 @@ orte_ras_base_t orte_ras_base;
  */
 int orte_ras_base_open(void)
 {
+    int value;
+    bool btmp;
+    
     /* set default flags */
     orte_ras_base.active_module = NULL;
     orte_ras_base.allocation_read = false;
-    orte_ras_base.total_slots_alloc = 0;
+    
+    /* should we display the allocation after determining it? */
+    mca_base_param_reg_int_name("ras", "base_display_alloc",
+                                "Whether to display the allocation after it is determined",
+                                false, false, (int)false, &value);
+    orte_ras_base.display_alloc = OPAL_INT_TO_BOOL(value);
+
+    /* should we display a detailed (developer-quality) version of the allocation after determining it? */
+    mca_base_param_reg_int_name("ras", "base_display_devel_alloc",
+                                "Whether to display a developer-detail allocation after it is determined",
+                                false, false, (int)false, &value);
+    btmp = OPAL_INT_TO_BOOL(value);
+    if (btmp) {
+        orte_ras_base.display_alloc = true;
+        orte_devel_level_output = true;
+    }
 
     /* Debugging / verbose output.  Always have stream open, with
         verbose set by the mca open system... */

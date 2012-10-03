@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007-2009 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -39,16 +39,14 @@ headers = \
         daemon_init.h \
         error.h \
         few.h \
-        fd.h \
-        fd.c \
         if.h \
-        keyval_parse.h \
+	keyval_parse.h \
         malloc.h \
-        net.h \
+	net.h \
         numtostr.h \
         opal_environ.h \
         opal_getcwd.h \
-        opal_pty.h \
+	opal_pty.h \
         os_dirpath.h \
         os_path.h \
         output.h \
@@ -60,7 +58,8 @@ headers = \
         stacktrace.h \
         strncpy.h \
         sys_limits.h \
-        trace.h
+        trace.h \
+        fd.h
 
 libopalutil_la_SOURCES = \
         $(headers) \
@@ -74,13 +73,13 @@ libopalutil_la_SOURCES = \
         error.c \
         few.c \
         if.c \
-        keyval_parse.c \
+	keyval_parse.c \
         malloc.c \
-        net.c \
+	net.c \
         numtostr.c \
         opal_environ.c \
         opal_getcwd.c \
-        opal_pty.c \
+	opal_pty.c \
         os_dirpath.c \
         os_path.c \
         output.c \
@@ -92,15 +91,19 @@ libopalutil_la_SOURCES = \
         stacktrace.c \
         strncpy.c \
         sys_limits.c \
-        trace.c
+        trace.c \
+        fd.c
+
 libopalutil_la_LIBADD = \
-        keyval/libopalutilkeyval.la
+	keyval/libopalutilkeyval.la
 libopalutil_la_DEPENDENCIES = \
-        keyval/libopalutilkeyval.la
+	keyval/libopalutilkeyval.la
 
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-opaldir = $(includedir)/openmpi/$(subdir)
-opal_HEADERS = $(headers)
+ompidir = $(includedir)/openmpi/opal/util
+ompi_HEADERS = $(headers)
+else
+ompidir = $(includedir)
 endif

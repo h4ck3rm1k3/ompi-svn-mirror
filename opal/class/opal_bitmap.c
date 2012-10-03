@@ -10,7 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,7 +19,6 @@
 
 #include "opal_config.h"
 
-#include <stdio.h>
 #include <limits.h>
 
 #include "opal/constants.h"
@@ -50,7 +48,6 @@ opal_bitmap_destruct(opal_bitmap_t *bm)
 {
     if (NULL != bm->bitmap) {
         free(bm->bitmap);
-        bm->bitmap = NULL;
     }
 }
 
@@ -94,9 +91,6 @@ opal_bitmap_init(opal_bitmap_t *bm, int size)
     actual_size = size / SIZE_OF_CHAR;
     actual_size += (size % SIZE_OF_CHAR == 0) ? 0 : 1;
     bm->array_size = actual_size;
-    if( NULL != bm->bitmap ) {
-        free(bm->bitmap);
-    }
     bm->bitmap = (unsigned char *) malloc(actual_size);
     if (NULL == bm->bitmap) {
         return OPAL_ERR_OUT_OF_RESOURCE;
@@ -271,172 +265,4 @@ opal_bitmap_find_and_set_first_unset_bit(opal_bitmap_t *bm, int *position)
     
     (*position) += i * SIZE_OF_CHAR;
     return OPAL_SUCCESS;
-}
-
-int opal_bitmap_bitwise_and_inplace(opal_bitmap_t *dest, opal_bitmap_t *right)
-{
-    int i;
-
-    /*
-     * Sanity check
-     */
-    if( NULL == dest || NULL == right ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-    if( dest->array_size != right->array_size ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-
-    /*
-     * Bitwise AND
-     */
-    for(i = 0; i < dest->array_size; ++i) {
-        dest->bitmap[i] &= right->bitmap[i];
-    }
-
-    return OPAL_SUCCESS;
-}
-
-int opal_bitmap_bitwise_or_inplace(opal_bitmap_t *dest, opal_bitmap_t *right)
-{
-    int i;
-
-    /*
-     * Sanity check
-     */
-    if( NULL == dest || NULL == right ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-    if( dest->array_size != right->array_size ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-
-    /*
-     * Bitwise OR
-     */
-    for(i = 0; i < dest->array_size; ++i) {
-        dest->bitmap[i] |= right->bitmap[i];
-    }
-
-    return OPAL_SUCCESS;
-}
-
-int opal_bitmap_bitwise_xor_inplace(opal_bitmap_t *dest, opal_bitmap_t *right)
-{
-    int i;
-
-    /*
-     * Sanity check
-     */
-    if( NULL == dest || NULL == right ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-    if( dest->array_size != right->array_size ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-
-    /*
-     * Bitwise XOR
-     */
-    for(i = 0; i < dest->array_size; ++i) {
-        dest->bitmap[i] ^= right->bitmap[i];
-    }
-
-    return OPAL_SUCCESS;
-}
-
-bool opal_bitmap_are_different(opal_bitmap_t *left, opal_bitmap_t *right)
-{
-    int i;
-
-    /*
-     * Sanity check
-     */
-    if( NULL == left || NULL == right ) {
-        return OPAL_ERR_BAD_PARAM;
-    }
-
-    if( opal_bitmap_size(left) != opal_bitmap_size(right) ) {
-        return true;
-    }
-
-    /*
-     * Direct comparison
-     */
-    for(i = 0; i < left->array_size; ++i) {
-        if( left->bitmap[i] != right->bitmap[i] ) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-char * opal_bitmap_get_string(opal_bitmap_t *bitmap)
-{
-    int i;
-    char *tmp_str = NULL;
-    char *bitmap_str = NULL;
-    char cur_char = ' ';
-
-    if( NULL == bitmap) {
-        return NULL;
-    }
-
-    for( i = 0; i < (bitmap->array_size * SIZE_OF_CHAR); ++i) {
-        if( opal_bitmap_is_set_bit(bitmap, i) ) {
-            cur_char = 'X';
-        } else {
-            cur_char = '_';
-        }
-
-        if( NULL == bitmap_str ) {
-            asprintf(&tmp_str, "%c", cur_char);
-        } else {
-            asprintf(&tmp_str, "%s%c", bitmap_str, cur_char);
-        }
-
-        if( NULL != bitmap_str ) {
-            free(bitmap_str);
-            bitmap_str = NULL;
-        }
-        bitmap_str = strdup(tmp_str);
-        free(tmp_str);
-        tmp_str = NULL;
-    }
-
-    if( NULL != tmp_str ) {
-        free(tmp_str);
-        tmp_str = NULL;
-    }
-
-    return bitmap_str;
-}
-
-int opal_bitmap_num_unset_bits(opal_bitmap_t *bm, int len)
-{
-    return (len - opal_bitmap_num_set_bits(bm, len));
-}
-
-int opal_bitmap_num_set_bits(opal_bitmap_t *bm, int len)
-{
-    int i, cnt = 0;
-    int index, offset;
-
-#if OPAL_ENABLE_DEBUG
-    if ((len < 0) || NULL == bm || (len >= (bm->array_size * SIZE_OF_CHAR))) {
-        return 0;
-    }
-#endif
-
-    for(i = 0; i < len; ++i) {
-        index = i / SIZE_OF_CHAR; 
-        offset = i % SIZE_OF_CHAR;
-
-        if(0 != (bm->bitmap[index] & (1 << offset))) {
-            ++cnt;
-        }
-    }
-
-    return cnt;
 }

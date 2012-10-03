@@ -9,8 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  *
@@ -42,11 +42,11 @@
 #include <signal.h>
 
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/mca/base/base.h"
 #include "opal/util/cmd_line.h"
 #include "opal/util/output.h"
-#include "opal/util/show_help.h"
+#include "orte/util/show_help.h"
 #include "opal/util/daemon_init.h"
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_cr.h"
@@ -57,7 +57,6 @@
 #include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
-#include "orte/orted/orted.h"
 
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_globals.h"
@@ -122,27 +121,22 @@ int main(int argc, char *argv[])
     mca_base_cmd_line_setup(cmd_line);
     if (OPAL_SUCCESS != (ret = opal_cmd_line_parse(cmd_line, false,
                                                    argc, argv))) {
-        if (OPAL_ERR_SILENT != ret) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
-                    opal_strerror(ret));
-        }
-        return 1;
+        char *args = NULL;
+        args = opal_cmd_line_get_usage_msg(cmd_line);
+        orte_show_help("help-ompi-server.txt", "ompiserver:usage", false,
+                       argv[0], args);
+        free(args);
+        return ret;
     }
     
     /* check for help request */
     if (help) {
-        char *str, *args = NULL;
+        char *args = NULL;
         args = opal_cmd_line_get_usage_msg(cmd_line);
-        str = opal_show_help_string("help-ompi-server.txt", 
-                                    "ompiserver:usage", false,
-                                    argv[0], args);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
+        orte_show_help("help-ompi-server.txt", "ompiserver:usage", false,
+                       argv[0], args);
         free(args);
-        /* If we show the help message, that should be all we do */
-        return 0;
+        return 1;
     }
 
     /*
@@ -191,11 +185,11 @@ int main(int argc, char *argv[])
     tmp_env_var = NULL; /* Silence compiler warning */
 #endif
 
-    /* don't want session directories */
-    orte_create_session_dirs = false;
-
-    /* Perform the standard init, but flag that we are an HNP */
-    if (ORTE_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_HNP))) {
+    /* Perform the standard init, but flag that we are a tool
+     * so that we only open up the communications infrastructure. No
+     * session directories will be created.
+     */
+    if (ORTE_SUCCESS != (ret = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
         fprintf(stderr, "ompi-server: failed to initialize -- aborting\n");
         exit(1);
     }
@@ -233,22 +227,13 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
-    /* setup to listen for commands sent specifically to me */
-    ret = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD, ORTE_RML_TAG_DAEMON,
-                                  ORTE_RML_NON_PERSISTENT, orte_daemon_recv, NULL);
-    if (ret != ORTE_SUCCESS && ret != ORTE_ERR_NOT_IMPLEMENTED) {
-        ORTE_ERROR_LOG(ret);
-        orte_finalize();
-        exit(1);
-    }
-
     /* Set signal handlers to catch kill signals so we can properly clean up
      * after ourselves. 
      */
-    opal_event_set(opal_event_base, &term_handler, SIGTERM, OPAL_EV_SIGNAL,
+    opal_event_set(&term_handler, SIGTERM, OPAL_EV_SIGNAL,
                    shutdown_callback, NULL);
     opal_event_add(&term_handler, NULL);
-    opal_event_set(opal_event_base, &int_handler, SIGINT, OPAL_EV_SIGNAL,
+    opal_event_set(&int_handler, SIGINT, OPAL_EV_SIGNAL,
                    shutdown_callback, NULL);
     opal_event_add(&int_handler, NULL);
 
@@ -286,9 +271,7 @@ int main(int argc, char *argv[])
     }
 
     /* wait to hear we are done */
-    while (orte_event_base_active) {
-        opal_event_loop(orte_event_base, OPAL_EVLOOP_ONCE);
-    }
+    opal_event_dispatch();
 
     /* should never get here, but if we do... */
     

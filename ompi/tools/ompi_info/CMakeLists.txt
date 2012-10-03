@@ -24,3 +24,4 @@ TARGET_LINK_LIBRARIES (ompi_info libmpi libopen-rte libopen-pal Ws2_32.lib shlwa
 
 INSTALL(TARGETS ompi_info
   DESTINATION bin)
+INSTALL(FILES help-ompi_info.txt DESTINATION share/openmpi)

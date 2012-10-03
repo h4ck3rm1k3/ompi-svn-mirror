@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2012 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -6,8 +6,6 @@
 # 
 # $HEADER$
 #
-
-#PROJECT(CHELLO C CXX)
 
 SET(CHELLO_FILES
   chello.c

@@ -207,7 +207,7 @@ static inline bool opal_progress_spin(volatile bool* complete)
  * function.
  */
 OPAL_DECLSPEC extern 
-#if OPAL_ENABLE_MULTI_THREADS
+#if OPAL_HAVE_THREAD_SUPPORT
 volatile 
 #endif
 uint32_t opal_progress_recursion_depth_counter;

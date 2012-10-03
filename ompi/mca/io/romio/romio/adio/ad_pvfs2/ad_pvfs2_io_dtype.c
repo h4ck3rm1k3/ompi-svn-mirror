@@ -578,94 +578,84 @@ int convert_named(MPI_Datatype *mpi_dtype,
     fprintf(stderr, "NAMED");
 #endif
 
-    if (MPI_CHAR == *mpi_dtype)
+    switch (*mpi_dtype)
     {
+	case MPI_CHAR:
 	    ret = PVFS_Request_contiguous(1, PVFS_CHAR, pvfs_dtype);
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_CHAR\n");
 #endif
-    }
-    else if ( MPI_BYTE == *mpi_dtype )
-    {
-            ret = PVFS_Request_contiguous(1, PVFS_BYTE, pvfs_dtype);
+	    break;
+	case MPI_BYTE:
+	    ret = PVFS_Request_contiguous(1, PVFS_BYTE, pvfs_dtype);
 #ifdef DEBUG_DTYPE
-            fprintf(stderr, "-MPI_BYTE\n");
+	    fprintf(stderr, "-MPI_BYTE\n");
 #endif
-    }
-    else if ( MPI_SHORT == *mpi_dtype )
-    {
-            ret = PVFS_Request_contiguous(1, PVFS_SHORT, pvfs_dtype);
+	    break;
+	case MPI_SHORT:
+	    ret = PVFS_Request_contiguous(1, PVFS_SHORT, pvfs_dtype);
 #ifdef DEBUG_DTYPE
-            fprintf(stderr, "-MPI_SHORT\n");
+	    fprintf(stderr, "-MPI_SHORT\n");
 #endif
-    }
-    else if ( MPI_INT == *mpi_dtype )
-    {
-            ret = PVFS_Request_contiguous(1, PVFS_INT, pvfs_dtype);	  
+	    break;
+	case MPI_INT:
+	    ret = PVFS_Request_contiguous(1, PVFS_INT, pvfs_dtype);	  
 #ifdef DEBUG_DTYPE
-            fprintf(stderr, "-MPI_INT\n");
+	    fprintf(stderr, "-MPI_INT\n");
 #endif
-    }
-    else if ( MPI_LONG == *mpi_dtype )
-    {
-            ret = PVFS_Request_contiguous(1, PVFS_LONG, pvfs_dtype);	  
+	    break;
+	case MPI_LONG:
+	    ret = PVFS_Request_contiguous(1, PVFS_LONG, pvfs_dtype);	  
 #ifdef DEBUG_DTYPE
-            fprintf(stderr, "-MPI_LONG\n");
+	    fprintf(stderr, "-MPI_LONG\n");
 #endif
-    }
-    else if ( MPI_FLOAT == *mpi_dtype ) 
-    {
-	    ret  = PVFS_Request_contiguous(1, PVFS_FLOAT, pvfs_dtype);	  
+	    break;
+	case MPI_FLOAT:
+	    ret = PVFS_Request_contiguous(1, PVFS_FLOAT, pvfs_dtype);	  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_FLOAT\n");
 #endif
-    }
-    else if ( MPI_DOUBLE == *mpi_dtype ) 
-    {
+	    break;
+	case MPI_DOUBLE:
 	    ret = PVFS_Request_contiguous(1, PVFS_DOUBLE, pvfs_dtype);	  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_DOUBLE\n");
 #endif
-    }
-    else if ( MPI_UNSIGNED_CHAR == *mpi_dtype )
-    {
+	    break;
+	case MPI_UNSIGNED_CHAR:
 	    ret = PVFS_Request_contiguous(1, PVFS_UNSIGNED_CHAR, pvfs_dtype);  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_UNSIGNED_CHAR\n");
 #endif
-    }
-    else if ( MPI_UNSIGNED_SHORT == *mpi_dtype )
-    {
+	    break;
+	case MPI_UNSIGNED_SHORT:
 	    ret = PVFS_Request_contiguous(1, PVFS_UNSIGNED, pvfs_dtype); 
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_UNSIGNED_SHORT\n");
 #endif
-    }
-    else if ( MPI_UNSIGNED == *mpi_dtype )
-    {
+	    break;
+	case MPI_UNSIGNED:
 	    ret = PVFS_Request_contiguous(1, PVFS_UNSIGNED, pvfs_dtype);  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_SHORT\n");
 #endif
-    }
-    else if ( MPI_UNSIGNED_LONG == *mpi_dtype )
-    {
+	    break;
+	case MPI_UNSIGNED_LONG:
 	    ret = PVFS_Request_contiguous(1, PVFS_UNSIGNED_LONG, pvfs_dtype);  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_UNSIGNED_LONG\n");
 #endif
-    }
-    else if ( MPI_LONG_DOUBLE == *mpi_dtype )
-    {
+	    break;
+	case MPI_LONG_DOUBLE:
 	    ret = PVFS_Request_contiguous(1, PVFS_LONG_DOUBLE, pvfs_dtype);  
 #ifdef DEBUG_DTYPE
 	    fprintf(stderr, "-MPI_LONG_DOUBLE\n");
 #endif
-    }
-    else
-    {
+	    break;
+	default:
 	    fprintf(stderr, "convert_named: predefined type not found");
 	    return -1;
+	    break;
     }
     if (ret != 0)
 	fprintf(stderr, "convert_named: Datatype creation failed\n");

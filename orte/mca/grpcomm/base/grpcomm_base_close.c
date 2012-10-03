@@ -22,8 +22,6 @@
 
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "opal/mca/hwloc/hwloc.h"
-
 #include "orte/mca/grpcomm/base/base.h"
 
 
@@ -31,22 +29,15 @@ int orte_grpcomm_base_close(void)
 {
   /* If we have a selected component and module, then finalize it */
 
-  if (orte_grpcomm_base.selected) {
+  if (mca_grpcomm_base_selected) {
     orte_grpcomm.finalize();
   }
 
     /* Close all remaining available components (may be one if this is a
      OpenRTE program, or [possibly] multiple if this is ompi_info) */
 
-  mca_base_components_close(orte_grpcomm_base.output, 
-                            &orte_grpcomm_base.components_available, NULL);
-
-#if OPAL_HAVE_HWLOC
-  if (NULL != orte_grpcomm_base.working_cpuset) {
-      hwloc_bitmap_free(orte_grpcomm_base.working_cpuset);
-      orte_grpcomm_base.working_cpuset = NULL;
-  }
-#endif
+  mca_base_components_close(orte_grpcomm_base_output, 
+                            &mca_grpcomm_base_components_available, NULL);
 
   /* All done */
 

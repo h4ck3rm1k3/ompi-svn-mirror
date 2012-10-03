@@ -11,8 +11,6 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2012      Los Alamos National Security, LLC.
-#                         All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -28,27 +26,32 @@ headers += \
         runtime/runtime.h \
 	runtime/orte_locks.h \
         runtime/orte_globals.h \
-        runtime/orte_quit.h \
         runtime/runtime_internals.h \
-        runtime/data_type_support/orte_dt_support.h \
-	runtime/orte_wait.h \
-        runtime/orte_cr.h \
-        runtime/orte_data_server.h \
-        runtime/orte_info_support.h
+        runtime/data_type_support/orte_dt_support.h
 
 libopen_rte_la_SOURCES += \
         runtime/orte_finalize.c \
         runtime/orte_init.c \
         runtime/orte_locks.c \
         runtime/orte_globals.c \
-        runtime/orte_quit.c \
         runtime/data_type_support/orte_dt_compare_fns.c \
         runtime/data_type_support/orte_dt_copy_fns.c \
         runtime/data_type_support/orte_dt_print_fns.c \
+        runtime/data_type_support/orte_dt_release_fns.c \
+        runtime/data_type_support/orte_dt_size_fns.c \
         runtime/data_type_support/orte_dt_packing_fns.c \
         runtime/data_type_support/orte_dt_unpacking_fns.c \
-        runtime/orte_mca_params.c \
+        runtime/orte_mca_params.c
+
+if !ORTE_DISABLE_FULL_SUPPORT
+
+headers += \
+	runtime/orte_wait.h \
+        runtime/orte_cr.h \
+        runtime/orte_data_server.h
+
+libopen_rte_la_SOURCES += \
         runtime/orte_wait.c \
         runtime/orte_cr.c \
-        runtime/orte_data_server.c \
-        runtime/orte_info_support.c
+        runtime/orte_data_server.c
+endif

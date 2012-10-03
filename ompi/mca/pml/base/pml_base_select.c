@@ -10,8 +10,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -256,6 +254,10 @@ int mca_pml_base_select(bool enable_progress_threads,
                          "select: component %s selected",
                          mca_pml_base_selected_component.pmlm_version.mca_component_name );
 
+    if (opal_profile) {
+        opal_output(0, "pml:%s",  mca_pml_base_selected_component.pmlm_version.mca_component_name );
+    }
+    
     /* This base function closes, unloads, and removes from the
        available list all unselected components.  The available list will
        contain only the selected component. */

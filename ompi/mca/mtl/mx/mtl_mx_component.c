@@ -19,7 +19,7 @@
 
 #include "ompi_config.h"
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "ompi/mca/mtl/base/base.h"
 #include "ompi/mca/common/mx/common_mx.h"
@@ -111,7 +111,7 @@ ompi_mtl_mx_component_close(void)
     if( 0 == ompi_mtl_mx_component_initialized ) {
         int ret = ompi_common_mx_finalize();
         if(OMPI_SUCCESS != ret) { 
-            return OMPI_ERROR;
+            return NULL;
         }
      }
     return OMPI_SUCCESS;

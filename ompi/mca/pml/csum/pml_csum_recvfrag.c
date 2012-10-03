@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
@@ -12,10 +13,8 @@
  * Copyright (c) 2008      UT-Battelle, LLC. All rights reserved.
  * Copyright (c) 2006-2008 University of Houston.  All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,6 +27,7 @@
  */
 
 #include "ompi_config.h"
+#include "ompi/constants.h"
 
 #include "opal/class/opal_list.h"
 #include "opal/util/crc.h"
@@ -37,9 +37,9 @@
 
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
+#include "orte/mca/notifier/notifier.h"
 #include "orte/mca/errmgr/errmgr.h"
 
-#include "ompi/constants.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
@@ -91,8 +91,8 @@ static void dump_csum_error_data(mca_btl_base_segment_t* segments, size_t num_se
 
 /**
  * Append a unexpected descriptor to a queue. This function will allocate and
- * initialize the fragment (if necessary) and then will add it to the specified
- * queue. The allocated fragment is not returned to the caller.
+ * initialize the fragment (if necessary) and the will added to the specified
+ * queue. The frag will be updated to the allocated fragment if necessary.
  */
 static void
 append_frag_to_list(opal_list_t *queue, mca_btl_base_module_t *btl,
@@ -124,34 +124,31 @@ static int mca_pml_csum_recv_frag_match( mca_btl_base_module_t *btl,
                                         size_t num_segments,
                                         int type);
  
-static mca_pml_csum_recv_request_t*
-match_one(mca_btl_base_module_t *btl,
-          mca_pml_csum_match_hdr_t *hdr, mca_btl_base_segment_t* segments,
-          size_t num_segments, ompi_communicator_t *comm_ptr,
-          mca_pml_csum_comm_proc_t *proc,
-          mca_pml_csum_recv_frag_t* frag);
+static mca_pml_csum_recv_request_t *match_one(mca_btl_base_module_t *btl,
+         mca_pml_csum_match_hdr_t *hdr, mca_btl_base_segment_t* segments,
+         size_t num_segments, ompi_communicator_t *comm_ptr,
+         mca_pml_csum_comm_proc_t *proc,
+         mca_pml_csum_recv_frag_t* frag);
  
 void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl, 
                                           mca_btl_base_tag_t tag,
                                           mca_btl_base_descriptor_t* des,
-                                          void* cbdata )
-{
+                                          void* cbdata ) { 
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_match_hdr_t* hdr = (mca_pml_csum_match_hdr_t*)segments->seg_addr.pval;
     ompi_communicator_t *comm_ptr;
     mca_pml_csum_recv_request_t *match = NULL;
     mca_pml_csum_comm_t *comm;
     mca_pml_csum_comm_proc_t *proc;
+    mca_pml_csum_recv_frag_t* frag = NULL;
     size_t num_segments = des->des_dst_cnt;
     size_t bytes_received = 0;
     uint16_t csum_received, csum=0;
     uint32_t csum_data;
-
-    assert(num_segments <= MCA_BTL_DES_MAX_SEGMENTS);
     
     if( OPAL_UNLIKELY(segments->seg_len < OMPI_PML_CSUM_MATCH_HDR_LEN) ) {
         return;
-    }
+     }
     csum_hdr_ntoh(((mca_pml_csum_hdr_t*) hdr), MCA_PML_CSUM_HDR_TYPE_MATCH);
 
     csum_received = hdr->hdr_common.hdr_csum;
@@ -171,6 +168,10 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'match header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
@@ -186,7 +187,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
          * moved to the right communicator.
          */
         append_frag_to_list( &mca_pml_csum.non_existing_communicator_pending,
-                             btl, hdr, segments, num_segments, NULL );
+                             btl, hdr, segments, num_segments, frag );
         return;
     }
     comm = (mca_pml_csum_comm_t *)comm_ptr->c_pml_comm;
@@ -232,7 +233,7 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
     PERUSE_TRACE_MSG_EVENT(PERUSE_COMM_SEARCH_POSTED_Q_BEGIN, comm_ptr,
                             hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
     
-    match = match_one(btl, hdr, segments, num_segments, comm_ptr, proc, NULL);
+    match = match_one(btl, hdr, segments, num_segments, comm_ptr, proc, frag);
     
     /* The match is over. We generate the SEARCH_POSTED_Q_END here,
      * before going into the mca_pml_csum_check_cantmatch_for_match so
@@ -244,14 +245,14 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
     
     /* release matching lock before processing fragment */
     OPAL_THREAD_UNLOCK(&comm->matching_lock);
-
+    
     if(OPAL_LIKELY(match)) {
         bytes_received = segments->seg_len - OMPI_PML_CSUM_MATCH_HDR_LEN;
         match->req_recv.req_bytes_packed = bytes_received;
         
         MCA_PML_CSUM_RECV_REQUEST_MATCHED(match, hdr);
-        if(match->req_bytes_expected > 0) { 
-            struct iovec iov[MCA_BTL_DES_MAX_SEGMENTS];
+        if(bytes_received > 0) { 
+            struct iovec iov[2];
             uint32_t iov_count = 1;
             
             /*
@@ -298,6 +299,10 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
             if (csum_data != hdr->hdr_csum) {
                 opal_output(0, "%s:%s:%d: Invalid \'match data\' - received csum:0x%x  != computed csum:0x%x\n",
                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, hdr->hdr_csum, csum_data);
+                orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                                  "Checksum data violation: job %s file %s line %d",
+                                  (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                                  __FILE__, __LINE__);
                 dump_csum_error_data(segments, num_segments);
                 orte_errmgr.abort(-1,NULL);
             }
@@ -319,12 +324,15 @@ void mca_pml_csum_recv_frag_callback_match(mca_btl_base_module_t* btl,
 void mca_pml_csum_recv_frag_callback_rndv(mca_btl_base_module_t* btl, 
                                          mca_btl_base_tag_t tag,
                                          mca_btl_base_descriptor_t* des,
-                                         void* cbdata )
-{
+                                         void* cbdata ) { 
+    
+    
+    
+    
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
     uint16_t csum_received, csum;
-
+    
     if( OPAL_UNLIKELY(segments->seg_len < sizeof(mca_pml_csum_common_hdr_t)) ) {
         return;
     }
@@ -340,6 +348,10 @@ void mca_pml_csum_recv_frag_callback_rndv(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'rndv header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
@@ -352,14 +364,13 @@ void mca_pml_csum_recv_frag_callback_rndv(mca_btl_base_module_t* btl,
 void mca_pml_csum_recv_frag_callback_rget(mca_btl_base_module_t* btl, 
                                          mca_btl_base_tag_t tag,
                                          mca_btl_base_descriptor_t* des,
-                                         void* cbdata )
-{
+                                         void* cbdata ) { 
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
     
     if( OPAL_UNLIKELY(segments->seg_len < sizeof(mca_pml_csum_common_hdr_t)) ) {
         return;
-    }
+     }
     csum_hdr_ntoh(hdr, MCA_PML_CSUM_HDR_TYPE_RGET);
     mca_pml_csum_recv_frag_match(btl, &hdr->hdr_match, segments,
                                 des->des_dst_cnt, MCA_PML_CSUM_HDR_TYPE_RGET);
@@ -371,8 +382,7 @@ void mca_pml_csum_recv_frag_callback_rget(mca_btl_base_module_t* btl,
 void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl, 
                                         mca_btl_base_tag_t tag,
                                         mca_btl_base_descriptor_t* des,
-                                        void* cbdata )
-{
+                                        void* cbdata ) { 
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
     mca_pml_csum_send_request_t* sendreq;
@@ -396,6 +406,10 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
     if (csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'ACK header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
@@ -412,7 +426,7 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
                                          hdr->hdr_ack.hdr_send_offset,
                                          sendreq->req_send.req_bytes_packed -
                                          hdr->hdr_ack.hdr_send_offset);
-
+    
     if (sendreq->req_state != 0) {
         /* Typical receipt of an ACK message causes req_state to be
          * decremented. However, a send request that started as an
@@ -425,7 +439,7 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
          */
         OPAL_THREAD_ADD32(&sendreq->req_state, -1);
     }
-
+     
     if(send_request_pml_complete_check(sendreq) == false)
         mca_pml_csum_send_request_schedule(sendreq);
     
@@ -435,16 +449,16 @@ void mca_pml_csum_recv_frag_callback_ack(mca_btl_base_module_t* btl,
 void mca_pml_csum_recv_frag_callback_frag(mca_btl_base_module_t* btl, 
                                          mca_btl_base_tag_t tag,
                                          mca_btl_base_descriptor_t* des,
-                                         void* cbdata ) {
-    mca_btl_base_segment_t* segments = des->des_dst;
-    mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
-    mca_pml_csum_recv_request_t* recvreq;
-    uint16_t csum_received, csum;
-
-    if( OPAL_UNLIKELY(segments->seg_len < sizeof(mca_pml_csum_common_hdr_t)) ) {
-        return;
-    }
-    csum_hdr_ntoh(hdr, MCA_PML_CSUM_HDR_TYPE_FRAG);
+                                         void* cbdata ) { 
+     mca_btl_base_segment_t* segments = des->des_dst;
+     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
+     mca_pml_csum_recv_request_t* recvreq;
+     uint16_t csum_received, csum;
+     
+     if( OPAL_UNLIKELY(segments->seg_len < sizeof(mca_pml_csum_common_hdr_t)) ) {
+         return;
+     }
+     csum_hdr_ntoh(hdr, MCA_PML_CSUM_HDR_TYPE_FRAG);
 
     csum_received = hdr->hdr_common.hdr_csum;
     hdr->hdr_common.hdr_csum = 0;
@@ -456,21 +470,25 @@ void mca_pml_csum_recv_frag_callback_frag(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'frag header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
     
     recvreq = (mca_pml_csum_recv_request_t*)hdr->hdr_frag.hdr_dst_req.pval;
-    mca_pml_csum_recv_request_progress_frag(recvreq,btl,segments,des->des_dst_cnt);
-
-    return;
+     mca_pml_csum_recv_request_progress_frag(recvreq,btl,segments,des->des_dst_cnt);
+     
+     return;
 }
 
 
 void mca_pml_csum_recv_frag_callback_put(mca_btl_base_module_t* btl, 
                                         mca_btl_base_tag_t tag,
                                         mca_btl_base_descriptor_t* des,
-                                        void* cbdata ) {
+                                        void* cbdata ) { 
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
     mca_pml_csum_send_request_t* sendreq;
@@ -494,6 +512,10 @@ void mca_pml_csum_recv_frag_callback_put(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'PUT header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
@@ -508,7 +530,7 @@ void mca_pml_csum_recv_frag_callback_put(mca_btl_base_module_t* btl,
 void mca_pml_csum_recv_frag_callback_fin(mca_btl_base_module_t* btl, 
                                         mca_btl_base_tag_t tag,
                                         mca_btl_base_descriptor_t* des,
-                                        void* cbdata ) {
+                                        void* cbdata ) { 
     mca_btl_base_segment_t* segments = des->des_dst;
     mca_pml_csum_hdr_t* hdr = (mca_pml_csum_hdr_t*)segments->seg_addr.pval;
     mca_btl_base_descriptor_t* rdma;
@@ -532,6 +554,10 @@ void mca_pml_csum_recv_frag_callback_fin(mca_btl_base_module_t* btl,
     if(csum_received != csum) {
         opal_output(0, "%s:%s:%d: Invalid \'FIN header\' - received csum:0x%04x  != computed csum:0x%04x\n",
                     ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), __FILE__, __LINE__, csum_received, csum);
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "Checksum header violation: job %s file %s line %d",
+                          (NULL == orte_job_ident) ? "UNKNOWN" : orte_job_ident,
+                          __FILE__, __LINE__);
         dump_csum_error_data(segments, 1);
         orte_errmgr.abort(-1,NULL);
     }
@@ -615,12 +641,11 @@ static mca_pml_csum_recv_request_t *match_incomming(
     return NULL;
 }
 
-static mca_pml_csum_recv_request_t*
-match_one(mca_btl_base_module_t *btl,
-          mca_pml_csum_match_hdr_t *hdr, mca_btl_base_segment_t* segments,
-          size_t num_segments, ompi_communicator_t *comm_ptr,
-          mca_pml_csum_comm_proc_t *proc,
-          mca_pml_csum_recv_frag_t* frag)
+static mca_pml_csum_recv_request_t *match_one(mca_btl_base_module_t *btl,
+        mca_pml_csum_match_hdr_t *hdr, mca_btl_base_segment_t* segments,
+        size_t num_segments, ompi_communicator_t *comm_ptr,
+        mca_pml_csum_comm_proc_t *proc,
+        mca_pml_csum_recv_frag_t* frag)
 {
     mca_pml_csum_recv_request_t *match;
     mca_pml_csum_comm_t *comm = (mca_pml_csum_comm_t *)comm_ptr->c_pml_comm;
@@ -629,41 +654,48 @@ match_one(mca_btl_base_module_t *btl,
         match = match_incomming(hdr, comm, proc);
 
         /* if match found, process data */
-        if(OPAL_LIKELY(NULL != match)) {
-            match->req_recv.req_base.req_proc = proc->ompi_proc;
-
-            if(OPAL_UNLIKELY(MCA_PML_REQUEST_PROBE == match->req_recv.req_base.req_type)) {
-                /* complete the probe */
-                mca_pml_csum_recv_request_matched_probe(match, btl, segments,
-                                                       num_segments);
-                /* attempt to match actual request */
-                continue;
-            }
-
-            PERUSE_TRACE_COMM_EVENT(PERUSE_COMM_MSG_MATCH_POSTED_REQ,
-                                    &(match->req_recv.req_base), PERUSE_RECV);
-            return match;
+        if(OPAL_UNLIKELY(NULL == match)) {
+            /* if no match found, place on unexpected queue */
+            append_frag_to_list(&proc->unexpected_frags, btl, hdr, segments,
+                    num_segments, frag);
+            PERUSE_TRACE_MSG_EVENT(PERUSE_COMM_MSG_INSERT_IN_UNEX_Q, comm_ptr,
+                                hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
+            return NULL;
         }
 
-        /* if no match found, place on unexpected queue */
-        append_frag_to_list(&proc->unexpected_frags, btl, hdr, segments,
-                            num_segments, frag);
-        PERUSE_TRACE_MSG_EVENT(PERUSE_COMM_MSG_INSERT_IN_UNEX_Q, comm_ptr,
-                               hdr->hdr_src, hdr->hdr_tag, PERUSE_RECV);
-        return NULL;
+        match->req_recv.req_base.req_proc = proc->ompi_proc;
+
+        if(MCA_PML_REQUEST_PROBE == match->req_recv.req_base.req_type) {
+            /* complete the probe */
+            mca_pml_csum_recv_request_matched_probe(match, btl, segments,
+                                                   num_segments);
+            /* attempt to match actual request */
+            continue;
+        }
+
+        PERUSE_TRACE_COMM_EVENT(PERUSE_COMM_MSG_MATCH_POSTED_REQ,
+                                &(match->req_recv.req_base), PERUSE_RECV);
+        break;
     } while(true);
+
+    return match;
 }
 
-static mca_pml_csum_recv_frag_t* check_cantmatch_for_match(mca_pml_csum_comm_proc_t *proc)
+static mca_pml_csum_recv_frag_t *check_cantmatch_for_match(
+        mca_pml_csum_comm_proc_t *proc)
 {
+    /* local parameters */
     mca_pml_csum_recv_frag_t *frag;
 
     /* search the list for a fragment from the send with sequence
      * number next_msg_seq_expected
      */
-    for(frag = (mca_pml_csum_recv_frag_t*)opal_list_get_first(&proc->frags_cant_match);
-        frag != (mca_pml_csum_recv_frag_t*)opal_list_get_end(&proc->frags_cant_match);
-        frag = (mca_pml_csum_recv_frag_t*)opal_list_get_next(frag))
+    for(frag = (mca_pml_csum_recv_frag_t *) 
+            opal_list_get_first(&proc->frags_cant_match);
+        frag != (mca_pml_csum_recv_frag_t *)
+            opal_list_get_end(&proc->frags_cant_match);
+        frag = (mca_pml_csum_recv_frag_t *) 
+            opal_list_get_next(frag))
     {
         mca_pml_csum_match_hdr_t* hdr = &frag->hdr.hdr_match;
         /*
@@ -734,7 +766,7 @@ static int mca_pml_csum_recv_frag_match( mca_btl_base_module_t *btl,
          * moved to the right communicator.
          */
         append_frag_to_list( &mca_pml_csum.non_existing_communicator_pending,
-                             btl, hdr, segments, num_segments, NULL );
+                             btl, hdr, segments, num_segments, frag );
         return OMPI_SUCCESS;
     }
     comm = (mca_pml_csum_comm_t *)comm_ptr->c_pml_comm;

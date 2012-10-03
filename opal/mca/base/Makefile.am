@@ -9,7 +9,6 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -55,6 +54,8 @@ libmca_base_la_SOURCES = \
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-opaldir = $(includedir)/openmpi/$(subdir)
-opal_HEADERS = $(headers)
+ompidir = $(includedir)/openmpi/opal/mca/base
+ompi_HEADERS = $(headers)
+else
+ompidir = $(includedir)
 endif

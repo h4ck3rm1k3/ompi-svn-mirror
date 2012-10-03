@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -56,9 +56,6 @@
 
 #include "ompi/types.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
-
-#include "opal/mca/event/event.h"
-
 #include "orte/util/name_fns.h"
 #include "btl_sctp.h"
 #include "btl_sctp_endpoint.h" 
@@ -109,6 +106,8 @@ static void mca_btl_sctp_endpoint_construct(mca_btl_sctp_endpoint_t* endpoint)
     endpoint->endpoint_sd = -1;
     endpoint->endpoint_send_frag = 0;
     endpoint->endpoint_recv_frag = 0;
+    endpoint->endpoint_send_event.ev_flags = 0;
+    endpoint->endpoint_recv_event.ev_flags = 0;
     endpoint->endpoint_state = MCA_BTL_SCTP_CLOSED;
     endpoint->endpoint_retries = 0;
     endpoint->endpoint_nbo = false;
@@ -269,12 +268,12 @@ static inline void mca_btl_sctp_endpoint_event_init(mca_btl_base_endpoint_t* btl
         btl_endpoint->endpoint_cache_pos = btl_endpoint->endpoint_cache;
 #endif  /* MCA_BTL_SCTP_ENDPOINT_CACHE */
 
-        opal_event_set(opal_event_base, &btl_endpoint->endpoint_recv_event, 
+        opal_event_set( &btl_endpoint->endpoint_recv_event, 
                 btl_endpoint->endpoint_sd, 
                 OPAL_EV_READ|OPAL_EV_PERSIST, 
                 mca_btl_sctp_endpoint_recv_handler,
                 btl_endpoint );
-        opal_event_set(opal_event_base, &btl_endpoint->endpoint_send_event, 
+        opal_event_set( &btl_endpoint->endpoint_send_event, 
                 btl_endpoint->endpoint_sd, 
                OPAL_EV_WRITE|OPAL_EV_PERSIST, 
                 mca_btl_sctp_endpoint_send_handler,
@@ -293,12 +292,12 @@ static inline void mca_btl_sctp_endpoint_event_init(mca_btl_base_endpoint_t* btl
             btl_endpoint->endpoint_cache_pos = btl_endpoint->endpoint_cache;
 #endif  /* MCA_BTL_SCTP_ENDPOINT_CACHE */
 
-            opal_event_set(opal_event_base, &btl_endpoint->endpoint_recv_event, 
+            opal_event_set( &btl_endpoint->endpoint_recv_event, 
                             btl_endpoint->endpoint_sd, 
                             OPAL_EV_READ|OPAL_EV_PERSIST, 
                             mca_btl_sctp_recv_handler,
                             btl_endpoint );
-            opal_event_set(opal_event_base, &btl_endpoint->endpoint_send_event, 
+            opal_event_set( &btl_endpoint->endpoint_send_event, 
                             btl_endpoint->endpoint_sd, 
                             OPAL_EV_WRITE|OPAL_EV_PERSIST, 
                             mca_btl_sctp_endpoint_send_handler,
@@ -368,7 +367,7 @@ int mca_btl_sctp_endpoint_send(mca_btl_base_endpoint_t* btl_endpoint, mca_btl_sc
         int rc = OMPI_SUCCESS;
         
         /* What if there are multiple procs on this endpoint? Possible? */
-        orte_vpid_t vpid = btl_endpoint->endpoint_proc->proc_ompi->proc_name.vpid;
+        orte_vpid_t vpid = btl_endpoint->endpoint_proc->proc_name.vpid;
         OPAL_THREAD_LOCK(&btl_endpoint->endpoint_send_lock);
 
         if((mca_btl_sctp_proc_check_vpid(vpid, sender_proc_table)) == INVALID_ENTRY) {
@@ -545,7 +544,7 @@ static int mca_btl_sctp_endpoint_send_connect_ack(mca_btl_base_endpoint_t* btl_e
 {
     /* send process identifier to remote endpoint */
     mca_btl_sctp_proc_t* btl_proc = mca_btl_sctp_proc_local();
-    orte_process_name_t guid = btl_proc->proc_ompi->proc_name;
+    orte_process_name_t guid = btl_proc->proc_name;
 
     ORTE_PROCESS_NAME_HTON(guid);
     if(mca_btl_sctp_endpoint_send_blocking(btl_endpoint, &guid, sizeof(guid)) != 
@@ -838,7 +837,7 @@ static int mca_btl_sctp_endpoint_recv_connect_ack(mca_btl_base_endpoint_t* btl_e
     ORTE_PROCESS_NAME_NTOH(guid);
 
     /* compare this to the expected values */
-    if(memcmp(&btl_proc->proc_ompi->proc_name, &guid, sizeof(orte_process_name_t)) != 0) {
+    if(memcmp(&btl_proc->proc_name, &guid, sizeof(orte_process_name_t)) != 0) {
         BTL_ERROR(("received unexpected process identifier %s", 
                    ORTE_NAME_PRINT(&guid)));
         mca_btl_sctp_endpoint_close(btl_endpoint);
@@ -1200,7 +1199,7 @@ static void mca_btl_sctp_endpoint_send_handler(int sd, short flags, void* user)
         our_sctp_endpoint *current_our_endpoint = NULL;
         orte_vpid_t vpid;
     send_handler_1_to_many_different_endpoint: 
-        vpid = btl_endpoint->endpoint_proc->proc_ompi->proc_name.vpid;
+        vpid = btl_endpoint->endpoint_proc->proc_name.vpid;
         OPAL_THREAD_LOCK(&btl_endpoint->endpoint_send_lock);
         if((mca_btl_sctp_proc_check_vpid(vpid, sender_proc_table)) == VALID_ENTRY) {                 int btl_ownership;
 

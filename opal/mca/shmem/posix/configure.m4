@@ -20,12 +20,10 @@
 # $HEADER$
 #
 
-# MCA_opal_shmem_posix_CONFIG(action-if-can-compile,
+# MCA_shmem_posix_CONFIG(action-if-can-compile,
 #                        [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_opal_shmem_posix_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/shmem/posix/Makefile])
-
+AC_DEFUN([MCA_shmem_posix_CONFIG],[
     # do we have the posix shm stuff?
     AC_MSG_CHECKING([if want POSIX shared memory support])
     AC_ARG_ENABLE(posix-shmem,

@@ -7,8 +7,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.
- *                         All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -221,23 +219,6 @@ int orte_filem_base_none_wait_all(opal_list_t *request_list)
 {
     return ORTE_SUCCESS;
 }
-
-int orte_filem_base_none_preposition_files(orte_job_t *jdata,
-                                           orte_filem_completion_cbfunc_t cbfunc,
-                                           void *cbdata)
-{
-    if (NULL != cbfunc) {
-        cbfunc(ORTE_SUCCESS, cbdata);
-    }
-    return ORTE_SUCCESS;
-}
-
-int orte_filem_base_none_link_local_files(orte_job_t *jdata,
-                                          orte_app_context_t *app)
-{
-    return ORTE_SUCCESS;
-}
-
 
 /********************
  * Utility functions

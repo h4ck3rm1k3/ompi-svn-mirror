@@ -3,19 +3,18 @@
  * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2006-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2006      University of Houston. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -39,9 +38,10 @@
 #include <netdb.h>
 #endif
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/output.h"
 #include "opal/runtime/opal_progress.h"
+#include "opal/mca/maffinity/base/base.h"
 #include "opal/mca/base/base.h"
 #include "orte/util/show_help.h"
 #include "opal/sys/atomic.h"
@@ -49,6 +49,7 @@
 
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/grpcomm/grpcomm.h"
+#include "orte/mca/notifier/notifier.h"
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_globals.h"
 
@@ -57,7 +58,6 @@
 #include "ompi/errhandler/errcode.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/datatype/ompi_datatype.h"
-#include "ompi/message/message.h"
 #include "ompi/op/op.h"
 #include "ompi/file/file.h"
 #include "ompi/info/info.h"
@@ -77,14 +77,12 @@
 #include "ompi/runtime/params.h"
 #include "ompi/mca/dpm/base/base.h"
 #include "ompi/mca/pubsub/base/base.h"
-#include "ompi/mpiext/mpiext.h"
 
 #if OPAL_ENABLE_FT_CR == 1
 #include "ompi/mca/crcp/crcp.h"
 #include "ompi/mca/crcp/base/base.h"
 #endif
 #include "ompi/runtime/ompi_cr.h"
-
 
 int ompi_mpi_finalize(void)
 {
@@ -93,7 +91,6 @@ int ompi_mpi_finalize(void)
     opal_list_item_t *item;
     struct timeval ompistart, ompistop;
     bool timing = false;
-    orte_grpcomm_collective_t *coll;
 
     /* Be a bit social if an erroneous program calls MPI_FINALIZE in
        two different threads, otherwise we may deadlock in
@@ -114,12 +111,19 @@ int ompi_mpi_finalize(void)
         return MPI_ERR_OTHER;
     }
 
-    ompi_mpiext_fini();
-
     /* As finalize is the last legal MPI call, we are allowed to force the release
      * of the user buffer used for bsend, before going anywhere further.
      */
     (void)mca_pml_base_bsend_detach(NULL, NULL);
+
+    /* If desired, send a notify message */
+    if (ompi_notify_init_finalize) {
+        orte_notifier.log(ORTE_NOTIFIER_NOTICE,
+                          ORTE_SUCCESS,
+                          "MPI_FINALIZE:Starting on host %s, pid %d",
+                          orte_process_info.nodename,
+                          orte_process_info.pid);
+    }
 
     /* Per MPI-2:4.8, we have to free MPI_COMM_SELF before doing
        anything else in MPI_FINALIZE (to include setting up such that
@@ -136,13 +140,18 @@ int ompi_mpi_finalize(void)
 
     ompi_mpi_finalized = true;
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 0
-    opal_progress_set_event_flag(OPAL_EVLOOP_ONCE | OPAL_EVLOOP_NONBLOCK);
+#if OPAL_ENABLE_PROGRESS_THREADS == 0
+    opal_progress_set_event_flag(OPAL_EVLOOP_ONELOOP);
 #endif
 
     /* Redo ORTE calling opal_progress_event_users_increment() during
        MPI lifetime, to get better latency when not using TCP */
     opal_progress_event_users_increment();
+
+    /* If maffinity was setup, tear it down */
+    if (opal_maffinity_setup) {
+        opal_maffinity_base_close();
+    }
 
     /* check to see if we want timing information */
     mca_base_param_reg_int_name("ompi", "timing",
@@ -213,18 +222,10 @@ int ompi_mpi_finalize(void)
        MPI barrier doesn't ensure that all messages have been transmitted
        before exiting, so the possibility of a stranded message exists.
     */
-    coll = OBJ_NEW(orte_grpcomm_collective_t);
-    coll->id = orte_process_info.peer_fini_barrier;
-    if (ORTE_SUCCESS != (ret = orte_grpcomm.barrier(coll))) {
+    if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
         ORTE_ERROR_LOG(ret);
         return ret;
     }
-
-    /* wait for barrier to complete */
-    while (coll->active) {
-        opal_progress();  /* block in progress pending events */
-    }
-    OBJ_RELEASE(coll);
 
     /* check for timing request - get stop time and report elapsed
      time if so */
@@ -265,6 +266,8 @@ int ompi_mpi_finalize(void)
 
     /* Free communication objects */
 
+    /* free window resources */
+
     /* free file resources */
     if (OMPI_SUCCESS != (ret = ompi_file_finalize())) {
         return ret;
@@ -289,10 +292,6 @@ int ompi_mpi_finalize(void)
 
     /* free requests */
     if (OMPI_SUCCESS != (ret = ompi_request_finalize())) {
-        return ret;
-    }
-
-    if (OMPI_SUCCESS != (ret = ompi_message_finalize())) {
         return ret;
     }
 
@@ -411,15 +410,23 @@ int ompi_mpi_finalize(void)
     if (NULL != ompi_mpi_show_mca_params_file) {
         free(ompi_mpi_show_mca_params_file);
     }
-
+    
+    /* If desired, send a notify message */
+    if (ompi_notify_init_finalize) {
+        orte_notifier.log(ORTE_NOTIFIER_NOTICE,
+                          ORTE_SUCCESS,
+                          "MPI_FINALIZE:Finishing on host %s, pid %d",
+                          orte_process_info.nodename,
+                          orte_process_info.pid);
+    }
 
     /* Leave the RTE */
 
-    if (ORTE_SUCCESS != (ret = orte_finalize())) {
+    if (OMPI_SUCCESS != (ret = orte_finalize())) {
         return ret;
     }
 
-    if (OPAL_SUCCESS != (ret = opal_finalize_util())) {
+    if (OMPI_SUCCESS != (ret = opal_finalize_util())) {
         return ret;
     }
 

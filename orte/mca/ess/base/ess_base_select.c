@@ -2,14 +2,13 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,10 +23,6 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
-#if !ORTE_DISABLE_FULL_SUPPORT
-#include "orte/util/nidmap.h"
-#endif
-#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/ess/base/base.h"
 
@@ -46,8 +41,8 @@ orte_ess_base_select(void)
                                         &orte_ess_base_components_available,
                                         (mca_base_module_t **) &best_module,
                                         (mca_base_component_t **) &best_component) ) {
-        /* error message emitted by fn above */
-        return ORTE_ERR_SILENT;
+        /* This will only happen if no component was selected */
+        return ORTE_ERR_NOT_FOUND;
     }
 
     /* Save the winner */

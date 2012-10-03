@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,11 +28,6 @@
 
 #include "opal/class/opal_list.h"
 #include "opal/mca/mca.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
-#include "opal/mca/hwloc/hwloc.h"
-
-#include "orte/mca/odls/odls_types.h"
 
 #include "orte/mca/grpcomm/grpcomm.h"
 
@@ -54,49 +47,48 @@ ORTE_DECLSPEC    int orte_grpcomm_base_close(void);
 /*
  * globals that might be needed
  */
-typedef struct {
-    int output;
-    bool selected;
-    opal_list_t components_available;
-    orte_grpcomm_base_component_t selected_component;
-    orte_grpcomm_coll_id_t coll_id;
-    opal_list_t active_colls;
-#if OPAL_HAVE_HWLOC
-    hwloc_cpuset_t working_cpuset;
-#endif
-} orte_grpcomm_base_t;
 
-ORTE_DECLSPEC extern orte_grpcomm_base_t orte_grpcomm_base;
+ORTE_DECLSPEC extern int orte_grpcomm_base_output;
+ORTE_DECLSPEC extern bool mca_grpcomm_base_selected;
+ORTE_DECLSPEC extern opal_list_t mca_grpcomm_base_components_available;
+ORTE_DECLSPEC extern orte_grpcomm_base_component_t mca_grpcomm_base_selected_component;
+ORTE_DECLSPEC extern int orte_grpcomm_profile_fd;
 
-ORTE_DECLSPEC orte_grpcomm_collective_t* orte_grpcomm_base_setup_collective(orte_grpcomm_coll_id_t id);
-ORTE_DECLSPEC void orte_grpcomm_base_progress_collectives(void);
-ORTE_DECLSPEC orte_grpcomm_coll_id_t orte_grpcomm_base_get_coll_id(void);
-ORTE_DECLSPEC void orte_grpcomm_base_pack_collective(opal_buffer_t *relay,
-                                                     orte_jobid_t jobid,
-                                                     orte_grpcomm_collective_t *coll,
-                                                     orte_grpcomm_internal_stage_t stg);
-ORTE_DECLSPEC void orte_grpcomm_base_rollup_recv(int status, orte_process_name_t* sender,
-                                                 opal_buffer_t* buffer, orte_rml_tag_t tag,
-                                                 void* cbdata);
+#if !ORTE_DISABLE_FULL_SUPPORT
 
-/* modex support */
-ORTE_DECLSPEC   void orte_grpcomm_base_store_peer_modex(opal_buffer_t *rbuf, void *cbdata);
-ORTE_DECLSPEC   void orte_grpcomm_base_store_modex(opal_buffer_t *rbuf, void *cbdata);
-ORTE_DECLSPEC   int orte_grpcomm_base_modex(orte_grpcomm_collective_t *modex);
-ORTE_DECLSPEC   int orte_grpcomm_base_pack_modex_entries(opal_buffer_t *buf);
+/*
+ * Base functions
+ */
+ORTE_DECLSPEC   int orte_grpcomm_base_allgather_list(opal_list_t *names,
+                                                     opal_buffer_t *sbuf,
+                                                     opal_buffer_t *rbuf);
+ORTE_DECLSPEC   int orte_grpcomm_base_set_proc_attr(const char *attr_name,
+                                                    const void *data,
+                                                    size_t size);
+ORTE_DECLSPEC   int orte_grpcomm_base_get_proc_attr(const orte_process_name_t proc,
+                                                    const char * attribute_name, void **val, 
+                                                    size_t *size);
+ORTE_DECLSPEC   int orte_grpcomm_base_peer_modex(bool modex_db);
+ORTE_DECLSPEC   int orte_grpcomm_base_modex_unpack( opal_buffer_t* rbuf, bool modex_db);
+ORTE_DECLSPEC   int orte_grpcomm_base_full_modex(opal_list_t *procs, bool modex_db);
+ORTE_DECLSPEC   int orte_grpcomm_base_purge_proc_attrs(void);
+ORTE_DECLSPEC   int orte_grpcomm_base_modex_init(void);
+ORTE_DECLSPEC   void orte_grpcomm_base_modex_finalize(void);
+ORTE_DECLSPEC   int orte_grpcomm_base_pack_modex_entries(opal_buffer_t *buf, bool *modex_reqd);
 ORTE_DECLSPEC   int orte_grpcomm_base_update_modex_entries(orte_process_name_t *proc_name,
                                                            opal_buffer_t *rbuf);
+ORTE_DECLSPEC   int orte_grpcomm_base_load_modex_data(orte_process_name_t *proc, char *attribute_name,
+                                                      void *data, int num_bytes);
 
-/* comm support */
-ORTE_DECLSPEC int orte_grpcomm_base_comm_start(void);
-ORTE_DECLSPEC void orte_grpcomm_base_comm_stop(void);
-ORTE_DECLSPEC void orte_grpcomm_base_xcast_recv(int status, orte_process_name_t* sender,
-                                                opal_buffer_t* buffer, orte_rml_tag_t tag,
-                                                void* cbdata);
-ORTE_DECLSPEC int orte_grpcomm_base_pack_xcast(orte_jobid_t job,
-                                               opal_buffer_t *buffer,
-                                               opal_buffer_t *message,
-                                               orte_rml_tag_t tag);
+/* Tuned collectives */
+ORTE_DECLSPEC void orte_grpcomm_base_coll_recv(int status, orte_process_name_t* sender,
+                                               opal_buffer_t* buffer, orte_rml_tag_t tag,
+                                               void* cbdata);
+ORTE_DECLSPEC int orte_grpcomm_base_allgather(opal_buffer_t *sendbuf, opal_buffer_t *recvbuf, int32_t num_entries,
+                                              orte_jobid_t jobid, orte_vpid_t np, orte_vpid_t *vpids);
+
+
+#endif /* ORTE_DISABLE_FULL_SUPPORT */
 
 END_C_DECLS
 #endif

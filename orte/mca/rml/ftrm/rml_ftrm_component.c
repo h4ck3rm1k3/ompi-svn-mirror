@@ -64,6 +64,7 @@ orte_rml_module_t orte_rml_ftrm_module = {
     orte_rml_ftrm_get_contact_info,
     orte_rml_ftrm_set_contact_info,
 
+    orte_rml_ftrm_get_new_name,
     orte_rml_ftrm_ping,
 
     orte_rml_ftrm_send,
@@ -80,9 +81,7 @@ orte_rml_module_t orte_rml_ftrm_module = {
     orte_rml_ftrm_add_exception_handler,
     orte_rml_ftrm_del_exception_handler,
 
-    orte_rml_ftrm_ft_event,
-    
-    orte_rml_ftrm_purge
+    orte_rml_ftrm_ft_event
 };
 
 int rml_ftrm_output_handle;

@@ -9,13 +9,15 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
 # $HEADER$
 #
+
+EXTRA_DIST = base/.windows
 
 headers += \
         base/base.h
@@ -37,5 +39,7 @@ libmca_plm_la_SOURCES += \
 	base/plm_base_launch_support.c \
 	base/plm_base_jobid.c \
 	base/plm_base_proxy.c \
-	base/plm_base_orted_cmds.c
+	base/plm_base_orted_cmds.c \
+        base/plm_base_rsh_support.c \
+        base/plm_base_heartbeat.c
 endif

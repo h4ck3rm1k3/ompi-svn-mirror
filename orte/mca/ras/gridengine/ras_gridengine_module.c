@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved
+ * Copyright (c) 2006-2009 Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -104,6 +104,9 @@ static int orte_ras_gridengine_allocate(opal_list_t *nodelist)
                 /* just add the slots */
                 node->slots += (int)strtol(num, (char **)NULL, 10);
                 found = true;
+                opal_output(mca_ras_gridengine_component.verbose,
+                            "ras:gridengine: %s: PE_HOSTFILE increased to slots=%d",
+                            node->name, node->slots);
                 break;
             }
         }

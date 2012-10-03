@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -57,6 +55,44 @@ int orte_plm_base_open(void)
 #else
 
 
+static void slave_file_construct(orte_slave_files_t *ptr)
+{
+    ptr->node = NULL;
+    ptr->local = false;
+    ptr->prefix = NULL;
+    ptr->bootproxy = NULL;
+    ptr->positioned = false;
+    OBJ_CONSTRUCT(&ptr->apps, opal_pointer_array_t);
+    opal_pointer_array_init(&ptr->apps, 8, 1024, 8);
+    OBJ_CONSTRUCT(&ptr->files, opal_pointer_array_t);
+    opal_pointer_array_init(&ptr->files, 8, 1024, 8);
+}
+static void slave_file_destruct(orte_slave_files_t *ptr)
+{
+    int i;
+    char *cptr;
+    
+    if (NULL != ptr->node) free(ptr->node);
+    if (NULL != ptr->prefix) free(ptr->prefix);
+    if (NULL != ptr->bootproxy) free(ptr->bootproxy);
+    for (i=0; i < ptr->apps.size; i++) {
+        if (NULL != (cptr = (char*)opal_pointer_array_get_item(&ptr->apps, i))) {
+            free(cptr);
+        }
+    }
+    OBJ_DESTRUCT(&ptr->apps);
+    for (i=0; i < ptr->files.size; i++) {
+        if (NULL != (cptr = (char*)opal_pointer_array_get_item(&ptr->files, i))) {
+            free(cptr);
+        }
+    }
+    OBJ_DESTRUCT(&ptr->files);
+}
+OBJ_CLASS_INSTANCE(orte_slave_files_t,
+                   opal_list_item_t,
+                   slave_file_construct,
+                   slave_file_destruct);
+
 /*
  * Global public variables
  */
@@ -96,11 +132,25 @@ int orte_plm_base_open(void)
     /* init selected to be false */
     orte_plm_base.selected = false;
 
-    /* init the next jobid */
-    orte_plm_globals.next_jobid = 1;
+    /* initialize the condition variables for orted comm */
+    OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_cond, opal_condition_t);
     
-    /* default to assigning daemons to nodes at launch */
-    orte_plm_globals.daemon_nodes_assigned_at_launch = true;
+    /* initialize the condition variables for spawn */
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_cond, opal_condition_t);
+    OBJ_CONSTRUCT(&orte_plm_globals.spawn_in_progress_cond, opal_condition_t);
+    orte_plm_globals.spawn_complete = false;
+    orte_plm_globals.spawn_in_progress = false;
+    
+    /* init the next jobid */
+    orte_plm_globals.next_jobid = 0;
+    
+    /* init the rsh support */
+    orte_plm_globals.rsh_agent_argv = NULL;
+    orte_plm_globals.rsh_agent_path = NULL;
+    orte_plm_globals.local_slaves = 0;
+    OBJ_CONSTRUCT(&orte_plm_globals.slave_files, opal_list_t);
 
     /* Open up all the components that we can find */
 

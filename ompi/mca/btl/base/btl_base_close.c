@@ -22,7 +22,7 @@
 #include <stdio.h>
 
 #include "ompi/constants.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "ompi/mca/btl/base/base.h"
@@ -37,10 +37,9 @@ int mca_btl_base_close(void)
     } else if (--mca_btl_base_already_opened > 0) {
         return OMPI_SUCCESS;
     }
-#if 0
     /* disable event processing while cleaning up btls */
     opal_event_disable();
-#endif
+
     /* Finalize all the btl components and free their list items */
 
     for (item = opal_list_remove_first(&mca_btl_base_modules_initialized);
@@ -70,10 +69,9 @@ int mca_btl_base_close(void)
     if(NULL != mca_btl_base_exclude)
         free(mca_btl_base_exclude);
 
-#if 0
     /* restore event processing */
     opal_event_enable();
-#endif
+
     /* All done */
     return OMPI_SUCCESS;
 }

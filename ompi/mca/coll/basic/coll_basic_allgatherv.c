@@ -9,7 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -100,12 +99,12 @@ mca_coll_basic_allgatherv_intra(void *sbuf, int scount,
        return err;
     }
 
-    err = comm->c_coll.coll_bcast( rbuf, 1 ,newtype,0,comm,
-                                   comm->c_coll.coll_bcast_module);
+    comm->c_coll.coll_bcast( rbuf, 1 ,newtype,0,comm,
+            comm->c_coll.coll_bcast_module);
 
     ompi_datatype_destroy (&newtype);
 
-    return err;
+    return MPI_SUCCESS;
 }
 
 

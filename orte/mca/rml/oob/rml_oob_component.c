@@ -1,9 +1,8 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,8 +10,6 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -34,7 +31,6 @@
 #include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/backtrace/backtrace.h"
-#include "opal/mca/event/event.h"
 
 #include "orte/mca/rml/base/base.h"
 #include "orte/mca/rml/rml_types.h"
@@ -90,6 +86,7 @@ orte_rml_oob_module_t orte_rml_oob_module = {
         orte_rml_oob_get_uri,
         orte_rml_oob_set_uri,
 
+        orte_rml_oob_get_new_name,
         orte_rml_oob_ping,
 
         orte_rml_oob_send,
@@ -106,14 +103,10 @@ orte_rml_oob_module_t orte_rml_oob_module = {
         orte_rml_oob_add_exception,
         orte_rml_oob_del_exception,
 
-        orte_rml_oob_ft_event,
-        
-        orte_rml_oob_purge
+        orte_rml_oob_ft_event
     }
 };
 
-/* Local variables */
-static bool init_done = false;
 
 static int
 rml_oob_open(void)
@@ -144,16 +137,8 @@ rml_oob_close(void)
 static orte_rml_module_t*
 rml_oob_init(int* priority)
 {
-    if (init_done) {
-        *priority = 1;
-        return &orte_rml_oob_module.super;
-    }
-    
-    if (mca_oob_base_init() != ORTE_SUCCESS) {
-        *priority = -1;
+    if (mca_oob_base_init() != ORTE_SUCCESS)
         return NULL;
-    }
-
     *priority = 1;
     
     OBJ_CONSTRUCT(&orte_rml_oob_module.exceptions, opal_list_t);
@@ -163,19 +148,17 @@ rml_oob_init(int* priority)
     /* Set default timeout for queued messages to be 1/2 second */
     orte_rml_oob_module.timeout.tv_sec = 0;
     orte_rml_oob_module.timeout.tv_usec = 500000;
-    orte_rml_oob_module.timer_event =  (opal_event_t *) malloc(sizeof(opal_event_t));
+    orte_rml_oob_module.timer_event = (opal_event_t *) malloc(sizeof(opal_event_t));
     if (NULL == orte_rml_oob_module.timer_event) {
         return NULL;
     }
-    opal_event_evtimer_set(orte_event_base, orte_rml_oob_module.timer_event,
-                           rml_oob_queued_progress,
-                           NULL);
+    opal_evtimer_set(orte_rml_oob_module.timer_event, rml_oob_queued_progress,
+                     NULL);
 
     orte_rml_oob_module.active_oob = &mca_oob;
     orte_rml_oob_module.active_oob->oob_exception_callback = 
         orte_rml_oob_exception_callback;
-    
-    init_done = true;
+
     return &orte_rml_oob_module.super;
 }
 
@@ -419,8 +402,8 @@ rml_oob_queued_progress(int fd, short event, void *arg)
                 opal_list_append(&orte_rml_oob_module.queued_routing_messages,
                                  &qmsg->super);
                 if (1 == opal_list_get_size(&orte_rml_oob_module.queued_routing_messages)) {
-                    opal_event_evtimer_add(orte_rml_oob_module.timer_event,
-                                           &orte_rml_oob_module.timeout);
+                    opal_evtimer_add(orte_rml_oob_module.timer_event,
+                                     &orte_rml_oob_module.timeout);
                 }
                 OPAL_THREAD_UNLOCK(&orte_rml_oob_module.queued_lock);
             } else {
@@ -446,8 +429,6 @@ rml_oob_recv_route_send_callback(int status,
                                  orte_rml_tag_t tag,
                                  void* cbdata)
 {
-    /* NTH: free the iovec allocated by rml_oob_recv_route_callback */
-    free (iov);
 }
 
 
@@ -464,7 +445,6 @@ rml_oob_recv_route_callback(int status,
     int real_tag;
     int ret;
     orte_process_name_t next, origin;
-    struct iovec *new_iov;
 
     /* BWB -- propogate errors here... */
     assert(status >= 0);
@@ -482,7 +462,6 @@ rml_oob_recv_route_callback(int status,
                     hdr->tag);
         opal_backtrace_print(stderr);
         orte_errmgr.abort(ORTE_ERROR_DEFAULT_EXIT_CODE, NULL);
-        return;
     }
 
     if (OPAL_EQUAL == orte_util_compare_name_fields(ORTE_NS_CMP_ALL, &next, ORTE_PROC_MY_NAME)) {
@@ -511,20 +490,9 @@ rml_oob_recv_route_callback(int status,
 
     ORTE_RML_OOB_MSG_HEADER_HTON(*hdr);
 
-    /* NTH: fix potential race condition. oob may modify iov before
-       the oob send completes */
-    new_iov = (struct iovec*) calloc (count, sizeof (struct iovec));
-    if (NULL == new_iov) {
-	opal_output (0, "%s:route_callback malloc error!", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
-        opal_backtrace_print(stderr);
-        orte_errmgr.abort(ORTE_ERROR_DEFAULT_EXIT_CODE, NULL);    
-    }
-
-    memcpy (new_iov, iov, count * sizeof (struct iovec));
-
     ret = orte_rml_oob_module.active_oob->oob_send_nb(&next,
                                                       &origin,
-                                                      new_iov,
+                                                      iov,
                                                       count,
                                                       real_tag,
                                                       0,
@@ -548,8 +516,8 @@ rml_oob_recv_route_callback(int status,
             opal_list_append(&orte_rml_oob_module.queued_routing_messages,
                              &qmsg->super);
             if (1 == opal_list_get_size(&orte_rml_oob_module.queued_routing_messages)) {
-                opal_event_evtimer_add(orte_rml_oob_module.timer_event,
-                                       &orte_rml_oob_module.timeout);
+                opal_evtimer_add(orte_rml_oob_module.timer_event,
+                                 &orte_rml_oob_module.timeout);
             }
             OPAL_THREAD_UNLOCK(&orte_rml_oob_module.queued_lock);
         } else {

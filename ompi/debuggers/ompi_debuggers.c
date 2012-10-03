@@ -10,7 +10,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c)      2012 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -125,8 +127,8 @@ OMPI_DECLSPEC opal_datatype_t* opal_datatype_t_type_force_inclusion = NULL;
 OMPI_DECLSPEC ompi_datatype_t* ompi_datatype_t_type_force_inclusion = NULL;
 
 OMPI_DECLSPEC volatile int MPIR_debug_gate = 0;
-OMPI_DECLSPEC volatile int MPIR_being_debugged = 0;
-OMPI_DECLSPEC volatile int MPIR_debug_state = 0;
+ORTE_DECLSPEC volatile int MPIR_being_debugged;
+ORTE_DECLSPEC volatile int MPIR_debug_state;
 OMPI_DECLSPEC char *MPIR_debug_abort_string = "";
 
 /* Check for a file in few direct ways for portability */
@@ -168,14 +170,11 @@ static void check(char *dir, char *file, char **locations)
  */
 void ompi_wait_for_debugger(void)
 {
-    int i, debugger;
+    int i, debugger, rc;
     char *a, *b, **dirs, **tmp1 = NULL, **tmp2 = NULL;
-#if !ORTE_DISABLE_FULL_SUPPORT
     opal_buffer_t buf;
-    int rc;
-#endif
 
-    /* See lengthy comment in orte/tools/orterun/debuggers.c about
+    /* See lengthy comment in orte/tools/orterun/orterun.c about
        orte_in_parallel_debugger */
 #if ORTE_DISABLE_FULL_SUPPORT
     debugger = 0;
@@ -225,9 +224,7 @@ void ompi_wait_for_debugger(void)
     mpimsgq_dll_locations = tmp1;
     mpidbg_dll_locations = tmp2;
 
-#if !ORTE_DISABLE_FULL_SUPPORT
-    if (orte_standalone_operation) {
-#endif
+    if (ORTE_DISABLE_FULL_SUPPORT || orte_standalone_operation) {
         /* spin until debugger attaches and releases us */
         while (MPIR_debug_gate == 0) {
 #if defined(__WINDOWS__)
@@ -238,7 +235,6 @@ void ompi_wait_for_debugger(void)
             sleep(1);       /* seconds */
 #endif
         }
-#if !ORTE_DISABLE_FULL_SUPPORT
     } else {
     
         /* only the rank=0 proc waits for either a message from the
@@ -259,11 +255,10 @@ void ompi_wait_for_debugger(void)
             /* if it failed for some reason, then we are in trouble -
              * for now, just report the problem and give up waiting
              */
-            opal_output(0, "Debugger_attach[rank=%ld]: could not wait for debugger!",
-                        (long)ORTE_PROC_MY_NAME->vpid);
+            opal_output(0, "Debugger_attach[rank=%ld]: could not wait for debugger - error %s!",
+                        (long)ORTE_PROC_MY_NAME->vpid, ORTE_ERROR_NAME(rc));
         }
     }
-#endif
 }    
 
 /*

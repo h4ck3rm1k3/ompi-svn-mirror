@@ -11,7 +11,6 @@
 #                         All rights reserved.
 # Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -24,7 +23,6 @@ include $(top_srcdir)/Makefile.man-page-rules
 man_pages = opal-restart.1
 EXTRA_DIST = $(man_pages:.1=.1in) CMakeLists.txt
 
-if WANT_FT_CR
 if OMPI_INSTALL_BINARIES
 
 bin_PROGRAMS = opal-restart
@@ -42,8 +40,6 @@ endif # OMPI_INSTALL_BINARIES
 
 opal_restart_SOURCES = opal-restart.c
 opal_restart_LDADD = $(top_builddir)/opal/libopen-pal.la
-
-endif # WANT_FT_CR
 
 distclean-local:
 	rm -f $(man_pages)

@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+# Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -11,7 +11,8 @@
 #                         All rights reserved.
 # Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2010      IBM Corporation.  All rights reserved.
-# Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
+# Copyright (c) 2012      Los Alamos National Security, LLC.
+#                         All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -22,11 +23,9 @@
 amca_paramdir = $(AMCA_PARAM_SETS_DIR)
 dist_amca_param_DATA = amca-param-sets/example.conf
 
-if WANT_FT_CR
-dist_amca_param_DATA += \
-	amca-param-sets/ft-enable-cr \
-	amca-param-sets/ft-enable-cr-recovery
-endif # WANT_FT_CR
+if WANT_FT
+dist_amca_param_DATA += amca-param-sets/ft-enable-cr
+endif
 
 EXTRA_DIST = \
 	dist/make_dist_tarball \
@@ -43,11 +42,8 @@ EXTRA_DIST = \
         platform/ornl/ornl_configure.pgi \
         platform/ornl/ornl_configure_self_contained \
         platform/lanl/macosx-dynamic \
-        platform/lanl/macosx-dynamic.conf \
-        platform/lanl/cray_xe6/debug-nopanasas \
-        platform/lanl/cray_xe6/debug-nopanasas.conf \
-        platform/lanl/cray_xe6/optimized-nopanasas \
-        platform/lanl/cray_xe6/optimized-nopanasas.conf \
+        platform/lanl/macosx-dynamic-optimized \
+        platform/lanl/macosx-static-leopard \
         platform/lanl/rr-class/cross-debug-slave \
         platform/lanl/rr-class/cross-debug-slave.conf \
         platform/lanl/rr-class/cross-optimized-slave \
@@ -88,8 +84,6 @@ EXTRA_DIST = \
         platform/lanl/tlcc2/optimized-nopanasas.conf \
         platform/lanl/tlcc2/optimized-panasas \
         platform/lanl/tlcc2/optimized-panasas.conf \
-	platform/snl/portals4-m5 \
-	platform/snl/portals4-orte \
         platform/win32/CMakeModules/check_bool.cmake \
         platform/win32/CMakeModules/check_c_inline.cmake \
         platform/win32/CMakeModules/check_c_type_exists.cmake \
@@ -97,6 +91,14 @@ EXTRA_DIST = \
         platform/win32/CMakeModules/ompi_base_checks.cmake \
         platform/win32/CMakeModules/ompi_define.cmake \
         platform/win32/CMakeModules/ompi_ext_config.cmake \
+        platform/win32/CMakeModules/f77_check.cmake \
+        platform/win32/CMakeModules/f77_check_real16_c_equiv.cmake \
+        platform/win32/CMakeModules/f77_check_type.cmake \
+        platform/win32/CMakeModules/f77_find_ext_symbol_convention.cmake \
+        platform/win32/CMakeModules/f77_get_alignment.cmake \
+        platform/win32/CMakeModules/f77_get_fortran_handle_max.cmake \
+        platform/win32/CMakeModules/f77_get_sizeof.cmake \
+        platform/win32/CMakeModules/f77_get_value_true.cmake \
         platform/win32/CMakeModules/find_ccp.cmake \
         platform/win32/CMakeModules/find_flex.cmake \
         platform/win32/CMakeModules/find_libltdl.cmake \
@@ -109,41 +111,21 @@ EXTRA_DIST = \
         platform/win32/CMakeModules/ompi_check_MinGW.cmake \
         platform/win32/CMakeModules/ompi_configure.cmake \
         platform/win32/CMakeModules/ompi_find_type.cmake \
-        platform/win32/CMakeModules/opal_event_config.cmake \
-        platform/win32/CMakeModules/opal_get_version.cmake \
+        platform/win32/CMakeModules/ompi_get_version.cmake \
         platform/win32/CMakeModules/opal_functions.cmake \
+        platform/win32/CMakeModules/setup_f77.cmake \
         platform/win32/ConfigFiles/revision.in \
-        platform/win32/CMakeModules/fortran_get_value_true.cmake \
-        platform/win32/CMakeModules/fortran_check.cmake \
-        platform/win32/CMakeModules/fortran_get_alignment.cmake \
-        platform/win32/CMakeModules/fortran_check_type.cmake \
-        platform/win32/CMakeModules/fortran_find_ext_symbol_convention.cmake \
-        platform/win32/CMakeModules/fortran_get_fortran_handle_max.cmake \
-        platform/win32/CMakeModules/fortran_get_sizeof.cmake \
-        platform/win32/CMakeModules/setup_fortran.cmake \
-        platform/win32/CMakeModules/fortran_check_real16_c_equiv.cmake \
-        platform/win32/CMakeModules/opal_hwloc_config.cmake \
-        platform/win32/include/hwloc/autogen/config.h \
-        platform/win32/include/private/autogen/config.h \
-        platform/win32/examples/CMakeLists.txt \
-        platform/win32/examples/chello/CMakeLists.txt \
-        platform/win32/examples/chello/chello.vcxproj \
-        platform/win32/examples/chello/chello.c \
 	platform/cisco/macosx-dynamic \
 	platform/cisco/macosx-dynamic.conf \
-	platform/cisco/linux \
-	platform/cisco/linux.conf \
-	platform/ibm/debug-ppc32-gcc \
-	platform/ibm/debug-ppc64-gcc \
-	platform/ibm/optimized-ppc32-gcc \
-	platform/ibm/optimized-ppc64-gcc \
-	platform/greenplum/bend/mac \
-	platform/greenplum/bend/mac.conf \
-	platform/greenplum/bend/linux \
-	platform/greenplum/bend/linux.conf \
-	platform/hadoop/linux \
-	platform/hadoop/linux.conf \
-	platform/hadoop/mac \
-	platform/hadoop/mac.conf
+	platform/cisco/macosx-dynamic-optimized \
+	platform/cisco/macosx-dynamic-optimized.conf \
+	platform/cisco/ebuild/hlfr \
+	platform/cisco/ebuild/hlfr.conf \
+	platform/cisco/ebuild/native \
+	platform/cisco/ebuild/native.conf \
+        platform/ibm/debug-ppc32-gcc \
+        platform/ibm/debug-ppc64-gcc \
+        platform/ibm/optimized-ppc32-gcc \
+        platform/ibm/optimized-ppc64-gcc
 
 dist_pkgdata_DATA = openmpi-valgrind.supp

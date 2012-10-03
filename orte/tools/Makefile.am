@@ -1,6 +1,6 @@
 # -*- makefile -*-
 #
-# Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+# Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
 #                         University Research and Technology
 #                         Corporation.  All rights reserved.
 # Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -11,9 +11,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
-#                         reserved. 
- # $COPYRIGHT$
+# $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
@@ -26,34 +24,26 @@ EXTRA_DIST += tools/CMakeLists.txt
 # orte/Makefile.am
 
 SUBDIRS += \
+	tools/orte-bootproxy \
 	tools/orte-checkpoint \
 	tools/orte-clean \
+	tools/orte-iof \
 	tools/orte-ps \
 	tools/orte-restart \
 	tools/orted \
 	tools/orterun \
 	tools/wrappers \
-        tools/orte-top \
-        tools/orte-info \
-        tools/orte-migrate
-
-#if ORTE_WANT_HADOOP_SUPPORT
-SUBDIRS += \
-	tools/allocators \
-	tools/mrplus
-#endif
+        tools/orte-top
 
 DIST_SUBDIRS += \
+	tools/orte-bootproxy \
 	tools/orte-checkpoint \
 	tools/orte-clean \
+	tools/orte-iof \
 	tools/orte-ps \
 	tools/orte-restart \
 	tools/orted \
 	tools/orterun \
 	tools/wrappers \
-        tools/orte-top \
-        tools/orte-info \
-        tools/orte-migrate \
-	tools/mrplus \
-        tools/allocators
+        tools/orte-top
 

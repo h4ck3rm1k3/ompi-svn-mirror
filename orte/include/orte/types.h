@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -52,10 +52,6 @@ typedef uint16_t orte_node_rank_t;
 #define ORTE_LOCAL_RANK_INVALID UINT16_MAX
 #define ORTE_NODE_RANK_INVALID  UINT16_MAX
 
-/* index for app_contexts */
-typedef uint32_t orte_app_idx_t;
-#define ORTE_APP_IDX        OPAL_UINT32
-#define ORTE_APP_IDX_MAX    UINT32_MAX
 
 /*
  * general typedefs & structures
@@ -96,21 +92,19 @@ do {                                    \
 
 #define ORTE_NAME_ARGS(n) \
     (unsigned long) ((NULL == n) ? (unsigned long)ORTE_JOBID_INVALID : (unsigned long)(n)->jobid), \
-    (unsigned long) ((NULL == n) ? (unsigned long)ORTE_VPID_INVALID : (unsigned long)(n)->vpid) \
+    (unsigned long) ((NULL == n) ? (unsigned long)ORTE_VPID_INVALID : (unsigned long)(n)->vpid)
 
 /*
  * define invalid values
  */
-#define ORTE_JOBID_INVALID          (ORTE_JOBID_MAX + 2)
-#define ORTE_VPID_INVALID           (ORTE_VPID_MAX + 2)
-#define ORTE_LOCAL_JOBID_INVALID    (ORTE_JOBID_INVALID & 0x0000FFFF)
+#define ORTE_JOBID_INVALID      (ORTE_JOBID_MAX + 2)
+#define ORTE_VPID_INVALID       (ORTE_VPID_MAX + 2)
 
 /*
  * define wildcard values
  */
-#define ORTE_JOBID_WILDCARD         (ORTE_JOBID_MAX + 1)
-#define ORTE_VPID_WILDCARD          (ORTE_VPID_MAX + 1)
-#define ORTE_LOCAL_JOBID_WILDCARD   (ORTE_JOBID_WILDCARD & 0x0000FFFF)
+#define ORTE_JOBID_WILDCARD      (ORTE_JOBID_MAX + 1)
+#define ORTE_VPID_WILDCARD       (ORTE_VPID_MAX + 1)
 
 /*
  * define the process name structure
@@ -143,32 +137,32 @@ typedef void* orte_iov_base_ptr_t;
 
 #if !ORTE_DISABLE_FULL_SUPPORT
     /* State-related types */
-#define    ORTE_NODE_STATE          (OPAL_DSS_ID_DYNAMIC + 6)  /**< node status flag */
-#define    ORTE_PROC_STATE          (OPAL_DSS_ID_DYNAMIC + 7)  /**< process/resource status */
-#define    ORTE_JOB_STATE           (OPAL_DSS_ID_DYNAMIC + 8)  /**< job status flag */
-#define    ORTE_EXIT_CODE           (OPAL_DSS_ID_DYNAMIC + 9)  /**< process exit code */
+#define    ORTE_NODE_STATE          (OPAL_DSS_ID_DYNAMIC + 5)  /**< node status flag */
+#define    ORTE_PROC_STATE          (OPAL_DSS_ID_DYNAMIC + 6)  /**< process/resource status */
+#define    ORTE_JOB_STATE           (OPAL_DSS_ID_DYNAMIC + 7)  /**< job status flag */
+#define    ORTE_EXIT_CODE           (OPAL_DSS_ID_DYNAMIC + 8)  /**< process exit code */
     /* Data-passing types */
-#define    ORTE_VALUE               (OPAL_DSS_ID_DYNAMIC + 10)  /**< registry return value */
+#define    ORTE_VALUE               (OPAL_DSS_ID_DYNAMIC + 9)  /**< registry return value */
     /* Resource types */
-#define    ORTE_APP_CONTEXT         (OPAL_DSS_ID_DYNAMIC + 11) /**< argv and enviro arrays */
-#define    ORTE_NODE_DESC           (OPAL_DSS_ID_DYNAMIC + 12) /**< describes capabilities of nodes */
-#define    ORTE_SLOT_DESC           (OPAL_DSS_ID_DYNAMIC + 13) /**< describes slot allocations/reservations */
-#define    ORTE_JOB                 (OPAL_DSS_ID_DYNAMIC + 14) /**< job information */
-#define    ORTE_NODE                (OPAL_DSS_ID_DYNAMIC + 15) /**< node information */
-#define    ORTE_PROC                (OPAL_DSS_ID_DYNAMIC + 16) /**< process information */
-#define    ORTE_JOB_MAP             (OPAL_DSS_ID_DYNAMIC + 17) /**< map of process locations */
+#define    ORTE_APP_CONTEXT         (OPAL_DSS_ID_DYNAMIC + 10) /**< argv and enviro arrays */
+#define    ORTE_NODE_DESC           (OPAL_DSS_ID_DYNAMIC + 11) /**< describes capabilities of nodes */
+#define    ORTE_SLOT_DESC           (OPAL_DSS_ID_DYNAMIC + 12) /**< describes slot allocations/reservations */
+#define    ORTE_JOB                 (OPAL_DSS_ID_DYNAMIC + 13) /**< job information */
+#define    ORTE_NODE                (OPAL_DSS_ID_DYNAMIC + 14) /**< node information */
+#define    ORTE_PROC                (OPAL_DSS_ID_DYNAMIC + 15) /**< process information */
+#define    ORTE_JOB_MAP             (OPAL_DSS_ID_DYNAMIC + 16) /**< map of process locations */
 
 /* RML types */
-#define    ORTE_RML_TAG             (OPAL_DSS_ID_DYNAMIC + 18) /**< tag for sending/receiving messages */
+#define    ORTE_RML_TAG             (OPAL_DSS_ID_DYNAMIC + 17) /**< tag for sending/receiving messages */
+
 /* DAEMON command type */
-#define    ORTE_DAEMON_CMD          (OPAL_DSS_ID_DYNAMIC + 19) /**< command flag for communicating with the daemon */
+#define    ORTE_DAEMON_CMD          (OPAL_DSS_ID_DYNAMIC + 18) /**< command flag for communicating with the daemon */
+
+/* GRPCOMM types */
+#define    ORTE_GRPCOMM_MODE        (OPAL_DSS_ID_DYNAMIC + 19) 
 
 /* IOF types */
 #define    ORTE_IOF_TAG             (OPAL_DSS_ID_DYNAMIC + 20)
-
-
-/* provide a boundary for others to use */
-#define    ORTE_DSS_ID_DYNAMIC      (OPAL_DSS_ID_DYNAMIC + 50)
 
 #endif /* !ORTE_DISABLE_FULL_SUPPORT */
 

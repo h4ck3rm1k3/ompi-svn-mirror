@@ -45,8 +45,6 @@ The value provided was:
 
 Valid values are:
 
-  silent:     do not print a warning, and continue the job (possibly
-              with lower-than-expected performance)
   warn:       print a warning, but continue the job
   error:      print a warning and abort the job
 
@@ -61,25 +59,3 @@ message will only be reported at most once per process.
   File:       %s:%d
   Message:    %s
   Severity:   %s
-#
-[invalid binding_policy]
-The specified %s policy is not recognized:
-
-  Policy: %s
-
-Please check for a typo or ensure that the option is a supported
-one.
-#
-[logical-cpu-not-found]
-A specified logical processor does not exist in this topology:
-
-  Cpu set given:  %s
-#
-[redefining-policy]
-Conflicting directives for binding policy are causing the policy
-to be redefined:
-
-  New policy:   %s
-  Prior policy:  %s
-
-Please check that only one policy is defined.

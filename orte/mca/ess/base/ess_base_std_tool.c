@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -30,7 +28,8 @@
 #include <unistd.h>
 #endif
 
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
+#include "orte/util/show_help.h"
 #include "opal/runtime/opal.h"
 #include "opal/runtime/opal_cr.h"
 

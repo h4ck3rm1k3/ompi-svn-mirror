@@ -3,9 +3,6 @@
  *                         All rights reserved. 
  * Copyright (c) 2004-2008 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
- *                         of Tennessee Research Foundation.  All rights
- *                         reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -39,8 +36,6 @@
 
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
-
-#include "orte/mca/grpcomm/grpcomm_types.h"
 
 #include "orte/mca/routed/routed_types.h"
 
@@ -185,28 +180,31 @@ typedef bool (*orte_routed_module_route_is_defined_fn_t)(const orte_process_name
  * Get wireup data for daemons
  *
  * Add whatever routing data
- * this module requires to allow inter-process messaging.
+ * this module requires to allow inter-process messaging. Only callable by HNP.
  */
 typedef int (*orte_routed_module_get_wireup_info_fn_t)(opal_buffer_t *buf);
 
 /*
- * Update the module's routing plan
+ * Update the module's routing tree for this process
  *
- * Called only by a daemon and the HNP, this function creates a plan
- * for routing messages within ORTE, especially for routing collectives
- * used during wireup
+ * Called only by a daemon and the HNP, this function creates a list
+ * of "leaves" for this process and identifies the vpid of the parent
+ * sitting above this process in the tree.
+ *
+ * @retval ORTE_SUCCESS The operation completed successfully
+ * @retval ORTE_ERROR_xxx   The specifed error occurred
  */
-typedef void (*orte_routed_module_update_routing_plan_fn_t)(void);
+typedef int (*orte_routed_module_update_routing_tree_fn_t)(void);
 
 /*
- * Get the routing list for the specified collective
+ * Get the routing tree for this process
  *
- * Fills the target list with names for the given collective so that
- * the grpcomm framework will know who to send the collective to
- * next
+ * Fills the provided list with the direct children of this process
+ * in the routing tree, and returns the vpid of the parent. Only valid
+ * when called by a daemon or the HNP. Passing a NULL pointer will result
+ * in onlly the parent vpid being returned.
  */
-typedef void (*orte_routed_module_get_routing_list_fn_t)(orte_grpcomm_coll_t type,
-                                                         orte_grpcomm_collective_t *coll);
+typedef orte_vpid_t (*orte_routed_module_get_routing_tree_fn_t)(opal_list_t *children);
 
 /*
  * Set lifeline process
@@ -216,13 +214,6 @@ typedef void (*orte_routed_module_get_routing_list_fn_t)(orte_grpcomm_coll_t typ
  * in termination of the process and job.
  */
 typedef int (*orte_routed_module_set_lifeline_fn_t)(orte_process_name_t *proc);
-
-/*
- * Get the number of routes supported by this process
- *
- * Returns the size of the routing tree using an O(1) function
- */
-typedef size_t (*orte_routed_module_num_routes_fn_t)(void);
 
 /**
  * Handle fault tolerance updates
@@ -257,10 +248,9 @@ struct orte_routed_module_t {
     orte_routed_module_route_is_defined_fn_t        route_is_defined;
     orte_routed_module_set_lifeline_fn_t            set_lifeline;
     /* fns for daemons */
-    orte_routed_module_update_routing_plan_fn_t     update_routing_plan;
-    orte_routed_module_get_routing_list_fn_t        get_routing_list;
+    orte_routed_module_update_routing_tree_fn_t     update_routing_tree;
+    orte_routed_module_get_routing_tree_fn_t        get_routing_tree;
     orte_routed_module_get_wireup_info_fn_t         get_wireup_info;
-    orte_routed_module_num_routes_fn_t              num_routes;
     /* FT Notification */
     orte_routed_module_ft_event_fn_t                ft_event;
 };

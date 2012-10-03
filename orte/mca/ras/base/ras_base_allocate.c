@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -31,11 +29,10 @@
 #include "opal/mca/base/base.h"
 #include "opal/class/opal_list.h"
 #include "opal/util/output.h"
-#include "opal/dss/dss.h"
 
 #include "orte/util/show_help.h"
+#include "opal/dss/dss.h"
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/rmaps/base/base.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/orte_wait.h"
@@ -43,16 +40,14 @@
 #include "orte/util/dash_host/dash_host.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/comm/comm.h"
-#include "orte/mca/state/state.h"
-#include "orte/runtime/orte_quit.h"
 
 #include "orte/mca/ras/base/ras_private.h"
 
-/* function to display allocation */
-void orte_ras_base_display_alloc(void)
+/* static function to display allocation */
+static void display_alloc(void)
 {
     char *tmp=NULL, *tmp2, *tmp3, *pfx=NULL;
-    int i, istart;
+    int i;
     orte_node_t *alloc;
     
     if (orte_xml_output) {
@@ -61,12 +56,7 @@ void orte_ras_base_display_alloc(void)
     } else {
         asprintf(&tmp, "\n======================   ALLOCATED NODES   ======================\n");
     }
-    if (orte_hnp_is_allocated) {
-            istart = 0;
-    } else {
-        istart = 1;
-    }
-    for (i=istart; i < orte_node_pool->size; i++) {
+    for (i=0; i < orte_node_pool->size; i++) {
         if (NULL == (alloc = (orte_node_t*)opal_pointer_array_get_item(orte_node_pool, i))) {
             continue;
         }
@@ -93,24 +83,20 @@ void orte_ras_base_display_alloc(void)
  * Function for selecting one component from all those that are
  * available.
  */
-void orte_ras_base_allocate(int fd, short args, void *cbdata)
+int orte_ras_base_allocate(orte_job_t *jdata)
 {
     int rc;
-    orte_job_t *jdata;
     opal_list_t nodes;
     orte_node_t *node;
     orte_std_cntr_t i;
+    bool override_oversubscribed;
     orte_app_context_t *app;
-    orte_state_caddy_t *caddy = (orte_state_caddy_t*)cbdata;
     bool default_hostfile_used;
 
     OPAL_OUTPUT_VERBOSE((5, orte_ras_base.ras_output,
                          "%s ras:base:allocate",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     
-    /* convenience */
-    jdata = caddy->jdata;
-
     /* if we already did this, don't do it again - the pool of
      * global resources is set. 
      */
@@ -119,10 +105,16 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
         OPAL_OUTPUT_VERBOSE((5, orte_ras_base.ras_output,
                              "%s ras:base:allocate allocation already read",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-        goto next_state;
+        
+        /* loop through the global node pool and set the
+         * number of allocated slots to the difference
+         * between slots and slots_in_use. Note that
+         * oversubscription will still allow procs to
+         * be mapped up to slots_max
+         */
+        return ORTE_SUCCESS;
     }
-    orte_ras_base.allocation_read = true;
-
+    
     /* Otherwise, we have to create
      * the initial set of resources that will delineate all
      * further operations serviced by this HNP. This list will
@@ -132,6 +124,11 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
      * no job launched by this HNP will be able to utilize it.
      */
     
+    /* note that the allocation has been read so we don't
+     * come in here again!
+     */
+    orte_ras_base.allocation_read = true;
+
     /* construct a list to hold the results */
     OBJ_CONSTRUCT(&nodes, opal_list_t);
 
@@ -150,28 +147,20 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
             }
             ORTE_ERROR_LOG(rc);
             OBJ_DESTRUCT(&nodes);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
-            return;
+            return rc;
         }
     } 
     /* If something came back, save it and we are done */
     if (!opal_list_is_empty(&nodes)) {
         /* store the results in the global resource pool - this removes the
-         * list items
-         */
+        * list items
+        */
         if (ORTE_SUCCESS != (rc = orte_ras_base_node_insert(&nodes, jdata))) {
             ORTE_ERROR_LOG(rc);
             OBJ_DESTRUCT(&nodes);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
-            return;
+            return rc;
         }
         OBJ_DESTRUCT(&nodes);
-        /* default to no-oversubscribe-allowed for managed systems */
-        if (!(ORTE_MAPPING_SUBSCRIBE_GIVEN & ORTE_GET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping))) {
-            ORTE_SET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping, ORTE_MAPPING_NO_OVERSUBSCRIBE);
-        }
         /* flag that the allocation is managed */
         orte_managed_allocation = true;
         goto DISPLAY;
@@ -181,10 +170,12 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
          */
         OBJ_DESTRUCT(&nodes);
         orte_show_help("help-ras-base.txt", "ras-base:no-allocation", true);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-        OBJ_RELEASE(caddy);
-        return;
+        ORTE_UPDATE_EXIT_STATUS(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        orte_trigger_event(&orte_exit);
+        return ORTE_ERROR;
     }
+    
+    
     
     OPAL_OUTPUT_VERBOSE((5, orte_ras_base.ras_output,
                          "%s ras:base:allocate nothing found in module - proceeding to hostfile",
@@ -225,32 +216,22 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
             
             /* hostfile was specified - parse it and add it to the list */
             if (ORTE_SUCCESS != (rc = orte_util_add_hostfile_nodes(&nodes,
+                                                                   &override_oversubscribed,
                                                                    app->hostfile))) {
                 ORTE_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&nodes);
-                /* set an error event */
-                ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-                OBJ_RELEASE(caddy);
-                return;
+                return rc;
             }
-        } else if (!orte_soft_locations && NULL != app->dash_host) {
-            /* if we are using soft locations, then any dash-host would
-             * just include desired nodes and not required. We don't want
-             * to pick them up here as this would mean the request was
-             * always satisfied - instead, we want to allow the request
-             * to fail later on and use whatever nodes are actually
-             * available
-             */
+        } else if (NULL != app->dash_host) {
             OPAL_OUTPUT_VERBOSE((5, orte_ras_base.ras_output,
                                  "%s ras:base:allocate adding dash_hosts",
                                  ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
             if (ORTE_SUCCESS != (rc = orte_util_add_dash_host_nodes(&nodes,
+                                                                    &override_oversubscribed,
                                                                     app->dash_host))) {
                 ORTE_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&nodes);
-                ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-                OBJ_RELEASE(caddy);
-                return;
+                return rc;
             }
         } else if (!default_hostfile_used) {
             if (NULL != orte_default_hostfile) {
@@ -261,19 +242,23 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
         
                 /* a default hostfile was provided - parse it */
                 if (ORTE_SUCCESS != (rc = orte_util_add_hostfile_nodes(&nodes,
+                                                                       &override_oversubscribed,
                                                                        orte_default_hostfile))) {
                     ORTE_ERROR_LOG(rc);
                     OBJ_DESTRUCT(&nodes);
-                    ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-                    OBJ_RELEASE(caddy);
-                    return;
+                    return rc;
                 }
             }
             /* only look at it once */
             default_hostfile_used = true;
         }
+        /* update the jdata object with override_oversubscribed flag, but don't
+         * overwrite a prior setting to true
+         */
+        if (!jdata->oversubscribe_override) {
+            jdata->oversubscribe_override = override_oversubscribed;
+        }
     }
-
     /* if something was found in the hostfile(s), we use that as our global
      * pool - set it and we are done
      */
@@ -283,17 +268,16 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
          */
         if (ORTE_SUCCESS != (rc = orte_ras_base_node_insert(&nodes, jdata))) {
             ORTE_ERROR_LOG(rc);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
-            return;
+            OBJ_DESTRUCT(&nodes);
+            return rc;
         }
         /* cleanup */
         OBJ_DESTRUCT(&nodes);
         goto DISPLAY;
     }
-    
+
     OPAL_OUTPUT_VERBOSE((5, orte_ras_base.ras_output,
-                         "%s ras:base:allocate nothing found in hostfiles - checking for rankfile",
+                         "%s ras:base:allocate nothing found in hostfiles or dash-host - checking for rankfile",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     
     /* Our next option is to look for a rankfile - if one was provided, we
@@ -302,12 +286,11 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
     if (NULL != orte_rankfile) {
         /* check the rankfile for node information */
         if (ORTE_SUCCESS != (rc = orte_util_add_hostfile_nodes(&nodes,
+                                                               &override_oversubscribed,
                                                                orte_rankfile))) {
             ORTE_ERROR_LOG(rc);
             OBJ_DESTRUCT(&nodes);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
-            return ;
+            return rc;
         }
     }
     /* if something was found in rankfile, we use that as our global
@@ -319,14 +302,9 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
          */
         if (ORTE_SUCCESS != (rc = orte_ras_base_node_insert(&nodes, jdata))) {
             ORTE_ERROR_LOG(rc);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
-            return;
         }
-        /* rankfile is considered equivalent to an RM allocation */
-        if (!(ORTE_MAPPING_SUBSCRIBE_GIVEN & ORTE_GET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping))) {
-            ORTE_SET_MAPPING_DIRECTIVE(orte_rmaps_base.mapping, ORTE_MAPPING_NO_OVERSUBSCRIBE);
-        }
+        /* update the jdata object with override_oversubscribed flag */
+        jdata->oversubscribe_override = false;
         /* cleanup */
         OBJ_DESTRUCT(&nodes);
         goto DISPLAY;
@@ -337,7 +315,7 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
                          "%s ras:base:allocate nothing found in rankfile - inserting current node",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     
- addlocal:
+addlocal:
     /* if nothing was found by any of the above methods, then we have no
      * earthly idea what to do - so just add the local host
      */
@@ -345,9 +323,7 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
     if (NULL == node) {
         ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
         OBJ_DESTRUCT(&nodes);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-        OBJ_RELEASE(caddy);
-        return;
+        return ORTE_ERR_OUT_OF_RESOURCE;
     }
     /* use the same name we got in orte_process_info so we avoid confusion in
      * the session directories
@@ -357,6 +333,8 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
     node->slots_inuse = 0;
     node->slots_max = 0;
     node->slots = 1;
+    /* indicate that we don't know anything about over_subscribing */
+    jdata->oversubscribe_override = true;
     opal_list_append(&nodes, &node->super);
     
     /* store the results in the global resource pool - this removes the
@@ -365,42 +343,30 @@ void orte_ras_base_allocate(int fd, short args, void *cbdata)
     if (ORTE_SUCCESS != (rc = orte_ras_base_node_insert(&nodes, jdata))) {
         ORTE_ERROR_LOG(rc);
         OBJ_DESTRUCT(&nodes);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-        OBJ_RELEASE(caddy);
-        return;
+        return rc;
     }
     OBJ_DESTRUCT(&nodes);
 
- DISPLAY:
-    /* shall we display the results? */
-    if (4 < opal_output_get_verbosity(orte_ras_base.ras_output)) {
-        orte_ras_base_display_alloc();
-    }
-
- next_state:
+DISPLAY:
     /* are we to report this event? */
     if (orte_report_events) {
         if (ORTE_SUCCESS != (rc = orte_util_comm_report_event(ORTE_COMM_EVENT_ALLOCATE))) {
             ORTE_ERROR_LOG(rc);
-            ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
-            OBJ_RELEASE(caddy);
         }
     }
+    /* shall we display the results? */
+    if (orte_ras_base.display_alloc) {
+        display_alloc();
+    }
     
-    /* set total slots alloc */
-    jdata->total_slots_alloc = orte_ras_base.total_slots_alloc;
-
-    /* set the job state to the next position */
-    ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_ALLOCATION_COMPLETE);
-
-    /* cleanup */
-    OBJ_RELEASE(caddy);
+    return rc;
 }
 
 int orte_ras_base_add_hosts(orte_job_t *jdata)
 {
     int rc;
     opal_list_t nodes;
+    bool override_oversubscribed;
     int i;
     orte_app_context_t *app;
 
@@ -432,6 +398,7 @@ int orte_ras_base_add_hosts(orte_job_t *jdata)
             
             /* hostfile was specified - parse it and add it to the list */
             if (ORTE_SUCCESS != (rc = orte_util_add_hostfile_nodes(&nodes,
+                                                                   &override_oversubscribed,
                                                                    app->add_hostfile))) {
                 ORTE_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&nodes);
@@ -455,6 +422,7 @@ int orte_ras_base_add_hosts(orte_job_t *jdata)
         }
         if (NULL != app->add_host) {
             if (ORTE_SUCCESS != (rc = orte_util_add_dash_host_nodes(&nodes,
+                                                                    &override_oversubscribed,
                                                                     app->add_host))) {
                 ORTE_ERROR_LOG(rc);
                 OBJ_DESTRUCT(&nodes);
@@ -471,13 +439,15 @@ int orte_ras_base_add_hosts(orte_job_t *jdata)
         if (ORTE_SUCCESS != (rc = orte_ras_base_node_insert(&nodes, jdata))) {
             ORTE_ERROR_LOG(rc);
         }
+        /* update the jdata object with override_oversubscribed flag */
+        jdata->oversubscribe_override = override_oversubscribed;
         /* cleanup */
         OBJ_DESTRUCT(&nodes);
     }
     
     /* shall we display the results? */
-    if (0 < opal_output_get_verbosity(orte_ras_base.ras_output)) {
-        orte_ras_base_display_alloc();
+    if (orte_ras_base.display_alloc) {
+        display_alloc();
     }
     
     return ORTE_SUCCESS;

@@ -13,7 +13,7 @@ dnl                         All rights reserved.
 dnl Copyright (c) 2006      Los Alamos National Security, LLC.  All rights
 dnl                         reserved. 
 dnl Copyright (c) 2007-2009 Sun Microsystems, Inc.  All rights reserved.
-dnl Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -29,12 +29,12 @@ AC_DEFUN([OMPI_SETUP_CXX_BANNER],[
 # This macro is necessary because PROG_CXX* is REQUIREd by multiple
 # places in SETUP_CXX.
 AC_DEFUN([OMPI_PROG_CXX],[
-    OPAL_VAR_SCOPE_PUSH([ompi_cxxflags_save])
+    OMPI_VAR_SCOPE_PUSH([ompi_cxxflags_save])
     ompi_cxxflags_save="$CXXFLAGS"
     AC_PROG_CXX
     AC_PROG_CXXCPP
     CXXFLAGS="$ompi_cxxflags_save"
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # OMPI_SETUP_CXX()
@@ -57,8 +57,8 @@ AC_DEFUN([OMPI_SETUP_CXX],[
 
     _OMPI_CXX_CHECK_2D_CONST_CAST
 
-    AM_CONDITIONAL(BUILD_MPI_CXX_BINDINGS, [test "$WANT_MPI_CXX_SUPPORT" = 1])
-    AC_DEFINE_UNQUOTED(OMPI_BUILD_CXX_BINDINGS, $WANT_MPI_CXX_SUPPORT,
+    AM_CONDITIONAL(WANT_MPI_CXX_BINDINGS, [test "$WANT_MPI_CXX_SUPPORT" = 1])
+    AC_DEFINE_UNQUOTED(OMPI_WANT_CXX_BINDINGS, $WANT_MPI_CXX_SUPPORT,
         [Whether we want MPI C++ support or not])
 ])
 
@@ -66,7 +66,7 @@ AC_DEFUN([OMPI_SETUP_CXX],[
 # --------------------------
 # Setup the CXX compiler
 AC_DEFUN([_OMPI_SETUP_CXX_COMPILER],[
-    OPAL_VAR_SCOPE_PUSH(ompi_cxx_compiler_works)
+    OMPI_VAR_SCOPE_PUSH(ompi_cxx_compiler_works)
 
     # There's a few cases here:
     #
@@ -89,7 +89,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER],[
     AS_IF([test "x$CXX" = "x"], [CXX=none])
     set dummy $CXX
     ompi_cxx_argv0=[$]2
-    OPAL_WHICH([$ompi_cxx_argv0], [OMPI_CXX_ABSOLUTE])
+    OMPI_WHICH([$ompi_cxx_argv0], [OMPI_CXX_ABSOLUTE])
     AS_IF([test "x$OMPI_CXX_ABSOLUTE" = "x"], [OMPI_CXX_ABSOLUTE=none])
 
     AC_DEFINE_UNQUOTED(OMPI_CXX, "$CXX", [OMPI underlying C++ compiler])
@@ -137,7 +137,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER],[
 
     AS_IF([test "$WANT_MPI_CXX_SUPPORT" = "1"],
           [OMPI_CXX_COMPILER_VENDOR([ompi_cxx_vendor])])
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # _OMPI_SETUP_CXX_COMPILER_BACKEND()
@@ -160,7 +160,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER_BACKEND],[
     # Do we want debugging?
     if test "$WANT_DEBUG" = "1" -a "$enable_debug_symbols" != "no" ; then
         CXXFLAGS="$CXXFLAGS -g"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         AC_MSG_WARN([-g has been added to CXXFLAGS (--enable-debug)])
     fi
 
@@ -177,23 +177,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER_BACKEND],[
         AC_CACHE_CHECK([if $CXX supports -Wno-long-double],
                    [ompi_cv_cxx_wno_long_double],
                    [AC_TRY_COMPILE([], [], 
-                                   [dnl Alright, the -Wno-long-double did not produce any errors...
-                                    dnl Well well, try to extract a warning regarding unrecognized or ignored options
-                                    AC_TRY_COMPILE([], [long double test;], 
-                                                   [
-                                                       ompi_cv_cxx_wno_long_double="yes"
-                                                       if test -s conftest.err ; then
-                                                           dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                                                           for i in invalid ignor unrecognized ; do
-                                                               $GREP -iq $i conftest.err
-                                                               if test "$?" = "0" ; then
-                                                                   ompi_cv_cxx_wno_long_double="no",
-                                                                   break;
-                                                               fi
-                                                           done
-                                                       fi
-                                                   ],
-                                                   [ompi_cv_cxx_wno_long_double="no"])],
+                                   [ompi_cv_cxx_wno_long_double="yes"],
                                    [ompi_cv_cxx_wno_long_double="no"])])
         CXXFLAGS="$CXXFLAGS_orig"
         AC_LANG_POP(C++)
@@ -202,7 +186,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER_BACKEND],[
         fi
 
         CXXFLAGS="$CXXFLAGS $add"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CXXFLAGS (--enable-picky)])
         fi
@@ -223,7 +207,7 @@ AC_DEFUN([_OMPI_SETUP_CXX_COMPILER_BACKEND],[
             add=" -finline-functions"
         fi
         CXXFLAGS="$CXXFLAGS_orig$add"
-        OPAL_UNIQ(CXXFLAGS)
+        OMPI_UNIQ(CXXFLAGS)
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CXXFLAGS])
         fi
@@ -345,6 +329,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_EXCEPTIONS_BACKEND],[
             LDFLAGS="$LDFLAGS $OMPI_CXX_EXCEPTIONS_LDFLAGS"
 
             WRAPPER_EXTRA_CFLAGS="$OMPI_CXX_EXCEPTIONS_CXXFLAGS ${WRAPPER_EXTRA_CFLAGS}"
+            WRAPPER_EXTRA_FFLAGS="$OMPI_CXX_EXCEPTIONS_CXXFLAGS ${WRAPPER_EXTRA_FFLAGS}"
             WRAPPER_EXTRA_FCFLAGS="$OMPI_CXX_EXCEPTIONS_CXXFLAGS ${WRAPPER_EXTRA_FCFLAGS}"
             WRAPPER_EXTRA_CXXFLAGS="$OMPI_CXX_EXCEPTIONS_CXXFLAGS ${WRAPPER_EXTRA_CXXFLAGS}"
         fi
@@ -355,7 +340,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_EXCEPTIONS_BACKEND],[
 # -----------------------
 # Check for __builtin_* stuff
 AC_DEFUN([_OMPI_CXX_CHECK_BUILTIN],[
-    OPAL_VAR_SCOPE_PUSH([have_cxx_builtin_expect have_cxx_builtin_prefetch])
+    OMPI_VAR_SCOPE_PUSH([have_cxx_builtin_expect have_cxx_builtin_prefetch])
     have_cxx_builtin_expect=0
     have_cxx_builtin_prefetch=0
 
@@ -369,7 +354,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_BUILTIN],[
                        [$have_cxx_builtin_prefetch],
                        [Whether C++ compiler supports __builtin_prefetch])
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # _OMPI_CXX_CHECK_BUILTIN_BACKEND
@@ -387,9 +372,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_BUILTIN_BACKEND],[
           [ompi_cv_cxx_supports___builtin_expect="yes"],
           [ompi_cv_cxx_supports___builtin_expect="no"])])
     if test "$ompi_cv_cxx_supports___builtin_expect" = "yes" ; then
-        have_cxx_builtin_expect=1
-    else
-        have_cxx_builtin_expect=0
+        have_builtin_expect=1
     fi
     AC_LANG_POP(C++)
 
@@ -403,9 +386,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_BUILTIN_BACKEND],[
           [ompi_cv_cxx_supports___builtin_prefetch="yes"],
           [ompi_cv_cxx_supports___builtin_prefetch="no"])])
     if test "$ompi_cv_cxx_supports___builtin_prefetch" = "yes" ; then
-        have_cxx_builtin_prefetch=1
-    else
-        have_cxx_builtin_prefetch=0
+        have_builtin_prefetch=1
     fi
     AC_LANG_POP(C++)
 ])
@@ -415,7 +396,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_BUILTIN_BACKEND],[
 # -----------------------------
 # Check for compiler support of 2D const casts
 AC_DEFUN([_OMPI_CXX_CHECK_2D_CONST_CAST],[
-    OPAL_VAR_SCOPE_PUSH([use_2d_const_cast])
+    OMPI_VAR_SCOPE_PUSH([use_2d_const_cast])
     use_2d_const_cast=0
 
     AS_IF([test "$WANT_MPI_CXX_SUPPORT" = "1"],
@@ -425,7 +406,7 @@ AC_DEFUN([_OMPI_CXX_CHECK_2D_CONST_CAST],[
                        [$use_2d_const_cast],
                        [Whether a const_cast on a 2-d array will work with the C++ compiler])
 
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 ])
 
 # _OMPI_CXX_CHECK_2D_CONST_CAST_BACKEND

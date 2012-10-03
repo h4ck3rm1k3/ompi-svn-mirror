@@ -7,9 +7,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2010      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2009      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -461,7 +461,7 @@ ompi_osc_rdma_module_test(ompi_win_t *win,
     ompi_group_t *group;
     ompi_osc_rdma_module_t *module = GET_MODULE(win);
 
-#if !OMPI_ENABLE_PROGRESS_THREADS
+#if !OPAL_ENABLE_PROGRESS_THREADS
     opal_progress();
 #endif
 
@@ -523,16 +523,6 @@ ompi_osc_rdma_module_lock(int lock_type,
                                lock_type);
 
     module->m_eager_send_active = false;
-
-    if (ompi_comm_rank(module->m_comm) == target) {
-        /* If we're trying to lock locally, have to wait to actually
-           acquire the lock */
-        OPAL_THREAD_LOCK(&module->m_lock);
-        while (module->m_lock_received_ack == 0) {
-            opal_condition_wait(&module->m_cond, &module->m_lock);
-        }
-        OPAL_THREAD_UNLOCK(&module->m_lock);
-    }
 
     /* return */
     return OMPI_SUCCESS;

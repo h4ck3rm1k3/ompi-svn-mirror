@@ -88,16 +88,12 @@ static int orte_ras_slurm_allocate(opal_list_t *nodes)
     }
     regexp = strdup(slurm_node_str);
     
-    tasks_per_node = getenv("SLURM_JOB_CPUS_PER_NODE");
+    tasks_per_node = getenv("SLURM_TASKS_PER_NODE");
     if (NULL == tasks_per_node) {
-        /* try an older variation */
-        tasks_per_node = getenv("SLURM_TASKS_PER_NODE");
-        if (NULL == tasks_per_node) {
-            /* couldn't find any version - abort */
-            orte_show_help("help-ras-slurm.txt", "slurm-env-var-not-found", 1,
-                           "SLURM_TASKS_PER_NODE");
-            return ORTE_ERR_NOT_FOUND;
-        }
+        /* couldn't find any version - abort */
+        orte_show_help("help-ras-slurm.txt", "slurm-env-var-not-found", 1,
+                       "SLURM_TASKS_PER_NODE");
+        return ORTE_ERR_NOT_FOUND;
     }
     node_tasks = strdup(tasks_per_node);
 
@@ -129,8 +125,6 @@ static int orte_ras_slurm_allocate(opal_list_t *nodes)
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         return ret;
     }
-    /* record the number of allocated nodes */
-    orte_num_allocated_nodes = opal_list_get_size(nodes);
 
     /* All done */
 

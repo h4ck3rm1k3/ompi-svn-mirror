@@ -10,6 +10,7 @@ dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2011      Oracle and/or its affiliates. All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -66,7 +67,7 @@ elif test "$enable_mpi_threads" = "yes" -a "$enable_opal_multi_threads" = "undef
    OPAL_ENABLE_MULTI_THREADS=1
    enable_opal_multi_threads="yes"
    AC_DEFINE_UNQUOTED([OPAL_ENABLE_MULTI_THREADS], [$OPAL_ENABLE_MULTI_THREADS],
-                      [Whether we should enable thread support within the OPAL code base])
+                      [Whether we should enable OPAL support for threads])
     ompi_want_mpi_threads=1
     OMPI_ENABLE_THREAD_MULTIPLE=1
     AC_MSG_RESULT([Enabled - OPAL thread support automatically enabled])

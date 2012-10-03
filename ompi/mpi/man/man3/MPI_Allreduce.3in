@@ -1,4 +1,3 @@
-.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
 .\" Copyright 2007-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Allreduce 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
@@ -31,28 +30,14 @@ void MPI::Comm::Allreduce(const void* \fIsendbuf\fP, void* \fIrecvbuf\fP,
 	MPI::Op& \fIop\fP) const=0
 
 .fi
-.SH Java Syntax
-.nf
-import mpi.*;
-void MPI.COMM_WORLD.Allreduce(Object \fIsendbuf\fP, int \fIsendoffset\fP,
-                              Object \fIrecvbuf\fP, int \fIrecvoffset\fP,
-                              int \fIcount\fP, MPI.Datatype \fIsendtype\fP,
-                              MPI.Op \fIop\fP)
-.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
 sendbuf
 Starting address of send buffer (choice).
 .TP 1i
-sendoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
-.TP 1i
 count
 Number of elements in send buffer (integer).
-.TP 1i
-recvoffset    
-Number of elements to skip at beginning of buffer (integer, Java-only).
 .TP 1i
 datatype
 Datatype of elements of send buffer (handle).
@@ -150,7 +135,7 @@ to something else, for example,
 then no error may be indicated.
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler

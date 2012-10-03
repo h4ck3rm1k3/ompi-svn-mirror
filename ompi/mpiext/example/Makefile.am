@@ -1,5 +1,7 @@
 #
-# Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
+#                         University Research and Technology
+#                         Corporation.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -7,14 +9,21 @@
 # $HEADER$
 #
 
-# This Makefile is not traversed during a normal "make all" in an OMPI
-# build.  It *is* traversed during "make dist", however.  So you can
-# put EXTRA_DIST targets in here.
-#
-# You can also use this as a convenience for building this MPI
-# extension (i.e., "make all" in this directory to invoke "make all"
-# in all the subdirectories).
+headers = \
+	mpiext_example_c.h
 
-SUBDIRS = c mpif-h use-mpi use-mpi-f08
+sources = \
+	c/progress.c
 
-EXTRA_DIST = README.txt
+lib = libext_mpiext_example.la
+lib_sources = $(sources)
+
+extcomponentdir = $(pkglibdir)
+
+noinst_LTLIBRARIES = $(lib)
+libext_mpiext_example_la_SOURCES = $(lib_sources)
+libext_mpiext_example_la_LDFLAGS = -module -avoid-version
+
+ompidir = $(includedir)/openmpi/ompi/mpiext/example
+ompi_HEADERS = \
+        $(headers)

@@ -11,7 +11,7 @@ dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2006 The Regents of the University of California.
 dnl                         All rights reserved.
 dnl Copyright (c) 2007-2009 Sun Microsystems, Inc.  All rights reserved.
-dnl Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
+dnl Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -19,11 +19,11 @@ dnl
 dnl $HEADER$
 dnl
 
-# OPAL_SETUP_CC()
+# OMPI_SETUP_CC()
 # ---------------
 # Do everything required to setup the C compiler.  Safe to AC_REQUIRE
 # this macro.
-AC_DEFUN([OPAL_SETUP_CC],[
+AC_DEFUN([OMPI_SETUP_CC],[
     # AM_PROG_CC_C_O AC_REQUIREs AC_PROG_CC, so we have to be a little
     # careful about ordering here, and AC_REQUIRE these things so that
     # they get stamped out in the right order.
@@ -87,10 +87,10 @@ AC_DEFUN([OPAL_SETUP_CC],[
             WRAPPER_EXTRA_CFLAGS="${WRAPPER_EXTRA_CFLAGS} $OMPI_COVERAGE_FLAGS"
             WRAPPER_EXTRA_LDFLAGS="${WRAPPER_EXTRA_LDFLAGS} $OMPI_COVERAGE_FLAGS"
 
-            OPAL_UNIQ(CFLAGS)
-            OPAL_UNIQ(LDFLAGS)
-            OPAL_UNIQ(WRAPPER_EXTRA_CFLAGS)
-            OPAL_UNIQ(WRAPPER_EXTRA_LDFLAGS)
+            OMPI_UNIQ(CFLAGS)
+            OMPI_UNIQ(LDFLAGS)
+            OMPI_UNIQ(WRAPPER_EXTRA_CFLAGS)
+            OMPI_UNIQ(WRAPPER_EXTRA_LDFLAGS)
             AC_MSG_WARN([$OMPI_COVERAGE_FLAGS has been added to CFLAGS (--enable-coverage)])
 
             WANT_DEBUG=1
@@ -108,7 +108,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
             CFLAGS="$CFLAGS -g"
         fi
 
-        OPAL_UNIQ(CFLAGS)
+        OMPI_UNIQ(CFLAGS)
         AC_MSG_WARN([-g has been added to CFLAGS (--enable-debug)])
     fi
 
@@ -133,24 +133,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         AC_CACHE_CHECK([if $CC supports -Wno-long-double],
                    [ompi_cv_cc_wno_long_double],
                    [AC_TRY_COMPILE([], [], 
-                                   [
-                                    dnl Alright, the -Wno-long-double did not produce any errors...
-                                    dnl Well well, try to extract a warning regarding unrecognized or ignored options
-                                    AC_TRY_COMPILE([], [long double test;], 
-                                                   [
-                                                       ompi_cv_cc_wno_long_double="yes"
-                                                       if test -s conftest.err ; then
-                                                           dnl Yes, it should be "ignor", in order to catch ignoring and ignore
-                                                           for i in invalid ignor unrecognized ; do
-                                                               $GREP -iq $i conftest.err
-                                                               if test "$?" = "0" ; then
-                                                                   ompi_cv_cc_wno_long_double="no"
-                                                                   break;
-                                                               fi
-                                                           done
-                                                       fi
-                                                   ],
-                                                   [ompi_cv_cc_wno_long_double="no"])],
+                                   [ompi_cv_cc_wno_long_double="yes"],
                                    [ompi_cv_cc_wno_long_double="no"])])
 
         CFLAGS="$CFLAGS_orig"
@@ -161,7 +144,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         add="$add -Werror-implicit-function-declaration "
 
         CFLAGS="$CFLAGS $add"
-        OPAL_UNIQ(CFLAGS)
+        OMPI_UNIQ(CFLAGS)
         AC_MSG_WARN([$add has been added to CFLAGS (--enable-picky)])
         unset add
     fi
@@ -196,7 +179,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         fi
         CFLAGS="$CFLAGS_orig$add"
 
-        OPAL_UNIQ(CFLAGS)
+        OMPI_UNIQ(CFLAGS)
         AC_MSG_WARN([$add has been added to CFLAGS])
         unset add
     fi
@@ -225,7 +208,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         fi
 
         CFLAGS="${CFLAGS_orig}${add}"
-        OPAL_UNIQ([CFLAGS])
+        OMPI_UNIQ([CFLAGS])
         if test "$add" != "" ; then
             AC_MSG_WARN([$add has been added to CFLAGS])
         fi
@@ -246,7 +229,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         have_cc_builtin_expect=0
     fi
     AC_DEFINE_UNQUOTED([OPAL_C_HAVE_BUILTIN_EXPECT], [$have_cc_builtin_expect],
-        [Whether C compiler supports __builtin_expect])
+          [Whether C compiler supports __builtin_expect])
 
     # see if the C compiler supports __builtin_prefetch
     AC_CACHE_CHECK([if $CC supports __builtin_prefetch],
@@ -262,23 +245,7 @@ AC_DEFUN([OPAL_SETUP_CC],[
         have_cc_builtin_prefetch=0
     fi
     AC_DEFINE_UNQUOTED([OPAL_C_HAVE_BUILTIN_PREFETCH], [$have_cc_builtin_prefetch],
-        [Whether C compiler supports __builtin_prefetch])
-
-    # see if the C compiler supports __builtin_clz
-    AC_CACHE_CHECK([if $CC supports __builtin_clz],
-        [ompi_cv_cc_supports___builtin_clz],
-        [AC_TRY_LINK([],
-            [int value = 0xffff; /* we know we have 16 bits set */
-             if ((8*sizeof(int)-16) != __builtin_clz(value)) return 0;],
-            [ompi_cv_cc_supports___builtin_clz="yes"],
-            [ompi_cv_cc_supports___builtin_clz="no"])])
-    if test "$ompi_cv_cc_supports___builtin_clz" = "yes" ; then
-        have_cc_builtin_clz=1
-    else
-        have_cc_builtin_clz=0
-    fi
-    AC_DEFINE_UNQUOTED([OPAL_C_HAVE_BUILTIN_CLZ], [$have_cc_builtin_clz],
-        [Whether C compiler supports __builtin_clz])
+          [Whether C compiler supports __builtin_prefetch])
 
     # Preload the optflags for the case where the user didn't specify
     # any.  If we're using GNU compilers, use -O3 (since it GNU
@@ -328,6 +295,6 @@ AC_DEFUN([_OMPI_PROG_CC],[
     AC_DEFINE_UNQUOTED(OPAL_CC, "$CC", [OMPI underlying C compiler])
     set dummy $CC
     ompi_cc_argv0=[$]2
-    OPAL_WHICH([$ompi_cc_argv0], [OPAL_CC_ABSOLUTE])
+    OMPI_WHICH([$ompi_cc_argv0], [OPAL_CC_ABSOLUTE])
     AC_SUBST(OPAL_CC_ABSOLUTE)
 ])

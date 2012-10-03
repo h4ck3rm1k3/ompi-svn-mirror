@@ -33,6 +33,7 @@ EXTRA_DIST += \
         test/mpi/abort.c \
         test/mpi/accept.c \
         test/mpi/bad_exit.c \
+        test/mpi/cell_spawn.c \
         test/mpi/concurrent_spawn.c \
         test/mpi/connect.c \
         test/mpi/crisscross.c \
@@ -48,10 +49,8 @@ EXTRA_DIST += \
         test/mpi/pubsub.c \
         test/mpi/sendrecv_blaster.c \
         test/mpi/simple_spawn.c \
+        test/mpi/slave_spawn.c \
         test/mpi/slave.c \
         test/mpi/spawn_multiple.c \
         test/mpi/ziatest.c \
-        test/mpi/ziaprobe.c \
-        test/mpi/singleton_client_server.c \
-	test/mpi/spawn_tree.c
-
+        test/mpi/ziaprobe.c

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,9 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007-2011 University of Houston. All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc. All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,7 +24,6 @@
 #include <stdio.h>
 
 #include "ompi/constants.h"
-#include "opal/mca/hwloc/base/base.h"
 
 #include "opal/dss/dss.h"
 #include "orte/util/name_fns.h"
@@ -222,7 +220,7 @@ int ompi_comm_set ( ompi_communicator_t **ncomm,
         }
     }
       
-    *ncomm = newcomm;
+   *ncomm = newcomm;
     return (OMPI_SUCCESS);
 }
 
@@ -252,7 +250,7 @@ int ompi_comm_group ( ompi_communicator_t* comm, ompi_group_t **group )
 ** Counterpart to MPI_Comm_create. To be used within OMPI.
 */
 int ompi_comm_create ( ompi_communicator_t *comm, ompi_group_t *group, 
-                       ompi_communicator_t **newcomm )
+                      ompi_communicator_t **newcomm )
 {
     ompi_communicator_t *newcomp = NULL;
     int rsize , lsize;
@@ -356,12 +354,12 @@ int ompi_comm_create ( ompi_communicator_t *comm, ompi_group_t *group,
 
     /* Activate the communicator and init coll-component */
     rc = ompi_comm_activate( &newcomp, /* new communicator */ 
-                             comm, 
-                             NULL, 
-                             NULL, 
-                             NULL,
-                             mode, 
-                             -1 );  
+	                     comm, 
+	                     NULL, 
+	                     NULL, 
+			     NULL,
+	                     mode, 
+	                     -1 );  
     if ( OMPI_SUCCESS != rc ) {
         goto exit;
     }
@@ -397,7 +395,7 @@ int ompi_comm_create ( ompi_communicator_t *comm, ompi_group_t *group,
 ** Counterpart to MPI_Comm_split. To be used within OMPI (e.g. MPI_Cart_sub).
 */
 int ompi_comm_split ( ompi_communicator_t* comm, int color, int key, 
-                      ompi_communicator_t **newcomm, bool pass_on_topo )
+                     ompi_communicator_t **newcomm, bool pass_on_topo )
 {
     int myinfo[2];
     int size, my_size;
@@ -557,7 +555,7 @@ int ompi_comm_split ( ompi_communicator_t* comm, int color, int key,
                          NULL,               /* topo component */
                          NULL,               /* local group */
                          NULL                /* remote group */
-                         );
+    );
 
     if ( NULL == newcomm ) {
         rc =  MPI_ERR_INTERN;
@@ -588,18 +586,18 @@ int ompi_comm_split ( ompi_communicator_t* comm, int color, int key,
      * be freed anyway.
      */
     if ( MPI_UNDEFINED == color ) {
-        newcomp->c_local_group->grp_my_rank = MPI_UNDEFINED;
+	newcomp->c_local_group->grp_my_rank = MPI_UNDEFINED;
     }
 
 
     /* Activate the communicator and init coll-component */
     rc = ompi_comm_activate( &newcomp, /* new communicator */ 
-                             comm, 
-                             NULL,
-                             NULL, 
-                             NULL, 
-                             mode, 
-                             -1 );  
+			     comm, 
+			     NULL,
+			     NULL, 
+			     NULL, 
+			     mode, 
+			     -1 );  
     if ( OMPI_SUCCESS != rc ) {
         goto exit;
     }
@@ -615,7 +613,7 @@ int ompi_comm_split ( ompi_communicator_t* comm, int color, int key,
         free ( rresults );
     }
     if ( NULL != rsorted ) {
-        free ( rsorted );
+      free ( rsorted );
     }
     if ( NULL != lranks   ) {
         free ( lranks );
@@ -633,260 +631,6 @@ int ompi_comm_split ( ompi_communicator_t* comm, int color, int key,
     *newcomm = newcomp;
     return ( rc );
 }
-
-
-/**********************************************************************/
-/**********************************************************************/
-/**********************************************************************/
-int
-ompi_comm_split_type(ompi_communicator_t *comm, 
-                     int split_type, int key,
-                     ompi_info_t *info,
-                     ompi_communicator_t** newcomm)
-{
-    int myinfo[2];
-    int size, my_size;
-    int my_rsize;
-    int mode;
-    int rsize;
-    int i, loc;
-    int inter;
-    int *results=NULL, *sorted=NULL; 
-    int *rresults=NULL, *rsorted=NULL; 
-    int rc=OMPI_SUCCESS;
-    ompi_communicator_t *newcomp = NULL;
-    int *lranks=NULL, *rranks=NULL;
-    
-    ompi_comm_allgatherfct *allgatherfct=NULL;
-
-    /* Step 1: determine all the information for the local group */
-    /* --------------------------------------------------------- */
-
-    /* sort according to participation and rank. Gather information from everyone */
-    myinfo[0] = (split_type == MPI_COMM_TYPE_SHARED) ? 1 : 0;
-    myinfo[1] = key;
-
-    size     = ompi_comm_size ( comm );
-    inter    = OMPI_COMM_IS_INTER(comm);
-    if ( inter ) {
-        allgatherfct = (ompi_comm_allgatherfct *)ompi_comm_allgather_emulate_intra;
-    } else {
-        allgatherfct = (ompi_comm_allgatherfct *)comm->c_coll.coll_allgather;
-    }
-
-    results  = (int*) malloc ( 2 * size * sizeof(int));
-    if ( NULL == results ) {
-        return OMPI_ERR_OUT_OF_RESOURCE;
-    }
-
-    rc = allgatherfct( myinfo, 2, MPI_INT, results, 2, MPI_INT, comm, comm->c_coll.coll_allgather_module );
-    if ( OMPI_SUCCESS != rc ) {
-        goto exit;
-    }
-        
-    /* how many are participating and on my node? */
-    for ( my_size = 0, i=0; i < size; i++) {
-        if ( results[(2*i)+0] == 1) {
-            if (OPAL_PROC_ON_LOCAL_NODE(ompi_group_peer_lookup(comm->c_local_group, i)->proc_flags)) {
-                my_size++;
-            }
-        }
-    }
-
-    sorted = (int *) malloc ( sizeof( int ) * my_size * 2);
-    if ( NULL == sorted) {
-        rc =  OMPI_ERR_OUT_OF_RESOURCE;
-        goto exit;
-    }
-    
-    /* ok we can now fill this info */
-    for( loc = 0, i = 0; i < size; i++ ) {
-        if ( results[(2*i)+0] == 1) {
-            if (OPAL_PROC_ON_LOCAL_NODE(ompi_group_peer_lookup(comm->c_local_group, i)->proc_flags)) {
-                sorted[(2*loc)+0] = i;                 /* copy org rank */
-                sorted[(2*loc)+1] = results[(2*i)+1];  /* copy key */
-                loc++;
-            }
-        }
-    }
-    
-    /* the new array needs to be sorted so that it is in 'key' order */
-    /* if two keys are equal then it is sorted in original rank order! */
-    if(my_size>1){
-        qsort ((int*)sorted, my_size, sizeof(int)*2, rankkeycompare);
-    }
-
-    /* put group elements in a list */
-    lranks = (int *) malloc ( my_size * sizeof(int));
-    if ( NULL == lranks ) {
-        rc = OMPI_ERR_OUT_OF_RESOURCE;
-        goto exit;
-    }
-    for (i = 0; i < my_size; i++) {
-        lranks[i] = sorted[i*2];
-    }  
-            
-    /* Step 2: determine all the information for the remote group */
-    /* --------------------------------------------------------- */
-    if ( inter ) {
-        rsize    = comm->c_remote_group->grp_proc_count;
-        rresults = (int *) malloc ( rsize * 2 * sizeof(int));
-        if ( NULL == rresults ) {
-            rc = OMPI_ERR_OUT_OF_RESOURCE;
-            goto exit;
-        }
-
-        /* this is an allgather on an inter-communicator */
-        rc = comm->c_coll.coll_allgather( myinfo, 2, MPI_INT, rresults, 2, 
-                                          MPI_INT, comm,
-                                          comm->c_coll.coll_allgather_module);
-        if ( OMPI_SUCCESS != rc ) {
-            goto exit;
-        }
-
-        /* how many are participating and on my node? */
-        for ( my_rsize = 0, i=0; i < rsize; i++) {
-            if ( rresults[(2*i)+0] == 1) {
-                if (OPAL_PROC_ON_LOCAL_NODE(ompi_group_peer_lookup(comm->c_remote_group, i)->proc_flags)) {
-                    my_rsize++;
-                }
-            }
-        }
-        rsorted = (int *) malloc ( sizeof( int ) * my_rsize * 2);
-        if ( NULL == rsorted) {
-            rc = OMPI_ERR_OUT_OF_RESOURCE;
-            goto exit;
-        }
-        
-        /* ok we can now fill this info */
-        for( loc = 0, i = 0; i < rsize; i++ ) {
-            if ( rresults[(2*i)+0] == 1) {
-                if (OPAL_PROC_ON_LOCAL_NODE(ompi_group_peer_lookup(comm->c_remote_group, i)->proc_flags)) {
-                    rsorted[(2*loc)+0] = i;                  /* org rank */
-                    rsorted[(2*loc)+1] = rresults[(2*i)+1];  /* key */
-                    loc++;
-                }
-            }
-        }
-        
-        /* the new array needs to be sorted so that it is in 'key' order */
-        /* if two keys are equal then it is sorted in original rank order! */
-        if(my_rsize>1) {
-            qsort ((int*)rsorted, my_rsize, sizeof(int)*2, rankkeycompare);
-        }
-
-        /* put group elements in a list */
-        rranks = (int *) malloc ( my_rsize * sizeof(int));
-        if ( NULL ==  rranks) {
-            rc = OMPI_ERR_OUT_OF_RESOURCE;
-            goto exit;
-        }
- 
-        for (i = 0; i < my_rsize; i++) {
-            rranks[i] = rsorted[i*2];
-        }  
-        mode = OMPI_COMM_CID_INTER;
-    } else {
-        my_rsize  = 0;
-        rranks = NULL;
-        mode      = OMPI_COMM_CID_INTRA;
-    }
-    
-    
-    /* Step 3: set up the communicator                           */
-    /* --------------------------------------------------------- */
-    /* Create the communicator finally */
-
-    rc = ompi_comm_set ( &newcomp,           /* new comm */
-                         comm,               /* old comm */
-                         my_size,            /* local_size */
-                         lranks,             /* local_ranks */
-                         my_rsize,           /* remote_size */
-                         rranks,             /* remote_ranks */
-                         NULL,               /* attrs */
-                         comm->error_handler,/* error handler */
-                         NULL,               /* topo component */
-                         NULL,               /* local group */
-                         NULL                /* remote group */
-                         );
-
-    if ( NULL == newcomm ) {
-        rc =  MPI_ERR_INTERN;
-        goto exit;
-    }
-    if ( OMPI_SUCCESS != rc  ) {
-        goto exit;
-    }
-
-    /* Determine context id. It is identical to f_2_c_handle */
-    rc = ompi_comm_nextcid ( newcomp,  /* new communicator */ 
-                             comm,     /* old comm */
-                             NULL,     /* bridge comm */
-                             NULL,     /* local leader */
-                             NULL,     /* remote_leader */
-                             mode,     /* mode */
-                             -1 );     /* send first, doesn't matter */
-    if ( OMPI_SUCCESS != rc ) {
-        goto exit;
-    }
-
-    /* Set name for debugging purposes */
-    snprintf(newcomp->c_name, MPI_MAX_OBJECT_NAME, "MPI COMMUNICATOR %d SPLIT_TYPE FROM %d", 
-             newcomp->c_contextid, comm->c_contextid );
-
-    /* set the rank to MPI_UNDEFINED. This prevents in comm_activate
-     * the collective module selection for a communicator that will
-     * be freed anyway.
-     */
-    if ( MPI_UNDEFINED == split_type ) {
-        newcomp->c_local_group->grp_my_rank = MPI_UNDEFINED;
-    }
-
-
-    /* Activate the communicator and init coll-component */
-    rc = ompi_comm_activate( &newcomp, /* new communicator */ 
-                             comm, 
-                             NULL,
-                             NULL, 
-                             NULL, 
-                             mode, 
-                             -1 );  
-    if ( OMPI_SUCCESS != rc ) {
-        goto exit;
-    }
-
- exit:
-    if ( NULL != results ) {
-        free ( results );
-    }
-    if ( NULL != sorted  ) {
-        free ( sorted );
-    }
-    if ( NULL != rresults) {
-        free ( rresults );
-    }
-    if ( NULL != rsorted ) {
-        free ( rsorted );
-    }
-    if ( NULL != lranks   ) {
-        free ( lranks );
-    }
-    if ( NULL != rranks  ) {
-        free ( rranks );
-    }
-
-    /* Step 4: if we are not part of the comm, free the struct   */
-    /* --------------------------------------------------------- */
-    if ( NULL != newcomp && MPI_UNDEFINED == split_type ) {
-        ompi_comm_free ( &newcomp );
-    }
-
-    *newcomm = newcomp;
-    return ( rc );
-}
-
-
-
 /**********************************************************************/
 /**********************************************************************/
 /**********************************************************************/
@@ -919,7 +663,7 @@ int ompi_comm_dup ( ompi_communicator_t * comm, ompi_communicator_t **newcomm )
                           /* topo component */
                           comp->c_local_group,                    /* local group */
                           comp ->c_remote_group );                /* remote group */
-    if ( NULL == newcomp ) {
+    if ( NULL == newcomm ) {
         rc =  MPI_ERR_INTERN;
         return rc;
     }
@@ -945,12 +689,12 @@ int ompi_comm_dup ( ompi_communicator_t * comm, ompi_communicator_t **newcomm )
 
     /* activate communicator and init coll-module */
     rc = ompi_comm_activate( &newcomp, /* new communicator */ 
-                             comp,
-                             NULL, 
-                             NULL, 
-                             NULL, 
-                             mode, 
-                             -1 );  
+			     comp,
+	                     NULL, 
+	                     NULL, 
+	                     NULL, 
+	                     mode, 
+	                     -1 );  
     if ( OMPI_SUCCESS != rc ) {
         return rc;
     }
@@ -964,10 +708,15 @@ int ompi_comm_dup ( ompi_communicator_t * comm, ompi_communicator_t **newcomm )
 int ompi_comm_compare(ompi_communicator_t *comm1, ompi_communicator_t *comm2, int *result) {
     /* local variables */
     ompi_communicator_t *comp1, *comp2;
+    ompi_group_t *group1, *group2;
     int size1, size2, rsize1, rsize2;
     int lresult, rresult=MPI_CONGRUENT;
-    int cmp_result;
-
+    int sameranks=1;
+    int sameorder=1;
+    int i, j;
+    int found = 0;
+    ompi_proc_t * proc1, * proc2;
+    
     comp1 = (ompi_communicator_t *) comm1;
     comp2 = (ompi_communicator_t *) comm2;
 
@@ -993,36 +742,82 @@ int ompi_comm_compare(ompi_communicator_t *comm1, ompi_communicator_t *comm2, in
     }
         
     /* Compare local groups */
-    ompi_group_compare((ompi_group_t *)comp1->c_local_group,
-                       (ompi_group_t *)comp2->c_local_group,
-                       &cmp_result);
-
-    /* MPI_IDENT resulting from the group comparison is
-     * MPI_CONGRUENT for communicators.
-     * All others results are the same.
-     */
-    if( MPI_IDENT == cmp_result ) {
-        lresult = MPI_CONGRUENT;
-    } else {
-        lresult = cmp_result;
+    /* we need to check whether the communicators contain
+       the same processes and in the same order */
+    group1 = (ompi_group_t *)comp1->c_local_group;
+    group2 = (ompi_group_t *)comp2->c_local_group;
+    for ( i = 0; i < size1; i++ ) {
+        proc1 = ompi_group_peer_lookup(group1,i);
+        proc2 = ompi_group_peer_lookup(group2,i);
+        if ( proc1 != proc2) {
+            sameorder = 0;
+            break;
+        }
     }
+    
+    for ( i = 0; i < size1; i++ ) {
+        found = 0;
+        for ( j = 0; j < size2; j++ ) {
+            proc1 = ompi_group_peer_lookup(group1,i);
+            proc2 = ompi_group_peer_lookup(group2,j);
+            if ( proc1 == proc2) {
+                found = 1;
+                break;
+            }
+        }
+        if ( !found  ) {
+            sameranks = 0;
+            break;
+        }
+    }
+    
+    if ( sameranks && sameorder )
+        lresult = MPI_CONGRUENT;
+    else if ( sameranks && !sameorder )
+        lresult = MPI_SIMILAR;
+    else
+        lresult = MPI_UNEQUAL;
 
 
     if ( rsize1 > 0 ) {        
         /* Compare remote groups for inter-communicators */
-        ompi_group_compare((ompi_group_t *)comp1->c_remote_group,
-                           (ompi_group_t *)comp2->c_remote_group,
-                           &cmp_result);
+        /* we need to check whether the communicators contain
+           the same processes and in the same order */
+        sameranks = sameorder = 1;
 
-        /* MPI_IDENT resulting from the group comparison is
-         * MPI_CONGRUENT for communicators.
-         * All others results are the same.
-         */
-        if( MPI_IDENT == cmp_result ) {
-            rresult = MPI_CONGRUENT;
-        } else {
-            rresult = cmp_result;
+        group1 = (ompi_group_t *)comp1->c_remote_group;
+        group2 = (ompi_group_t *)comp2->c_remote_group;
+        for ( i = 0; i < rsize1; i++ ) {
+            proc1 = ompi_group_peer_lookup(group1,i);
+            proc2 = ompi_group_peer_lookup(group2,i);
+            if ( proc1 != proc2) {
+                sameorder = 0;
+                break;
+            }
         }
+
+        for ( i = 0; i < rsize1; i++ ) {
+            found = 0;
+            for ( j = 0; j < rsize2; j++ ) {
+                proc1 = ompi_group_peer_lookup(group1,i);
+                proc2 = ompi_group_peer_lookup(group2,j);
+                if ( proc1 == proc2) {
+                    found = 1;
+                    break;
+                }
+            }
+            if ( !found  ) {
+                sameranks = 0;
+                break;
+            }
+        }
+        
+        if ( sameranks && sameorder )
+            rresult = MPI_CONGRUENT;
+        else if ( sameranks && !sameorder )
+            rresult = MPI_SIMILAR;
+        else
+            rresult = MPI_UNEQUAL;
     }
 
     /* determine final results */
@@ -1033,13 +828,11 @@ int ompi_comm_compare(ompi_communicator_t *comm1, ompi_communicator_t *comm2, in
         if ( MPI_SIMILAR == lresult || MPI_CONGRUENT == lresult ) {
             *result = MPI_SIMILAR;
         }
-        else {
+        else 
             *result = MPI_UNEQUAL;
-        }
     }
-    else if ( MPI_UNEQUAL == rresult ) {
+    else if ( MPI_UNEQUAL == rresult ) 
         *result = MPI_UNEQUAL;
-    }
 
     return OMPI_SUCCESS;
 }
@@ -1122,7 +915,7 @@ static int ompi_comm_allgather_emulate_intra( void *inbuf, int incount,
 
     /* Step 2: the inter-bcast step */
     rc = MCA_PML_CALL(irecv (outbuf, size*outcount, outtype, 0, 
-                             OMPI_COMM_ALLGATHER_TAG, comm, &sendreq));
+                            OMPI_COMM_ALLGATHER_TAG, comm, &sendreq));
     if ( OMPI_SUCCESS != rc ) {
         goto exit;
     }
@@ -1130,8 +923,8 @@ static int ompi_comm_allgather_emulate_intra( void *inbuf, int incount,
     if ( 0 == rank ) {
         for ( i=0; i < rsize; i++ ){
             rc = MCA_PML_CALL(send (tmpbuf, rsize*outcount, outtype, i, 
-                                    OMPI_COMM_ALLGATHER_TAG, 
-                                    MCA_PML_BASE_SEND_STANDARD, comm));
+                                   OMPI_COMM_ALLGATHER_TAG, 
+                                   MCA_PML_BASE_SEND_STANDARD, comm));
             if ( OMPI_SUCCESS != rc ) {
                 goto exit;       
             }
@@ -1169,20 +962,20 @@ int ompi_comm_free ( ompi_communicator_t **comm )
        communicator destructor for 2 reasons:
 
        1. The destructor will only NOT be called immediately during
-       ompi_comm_free() if the reference count is still greater
-       than zero at that point, meaning that there are ongoing
-       communications.  However, pending communications will never
-       need attributes, so it's safe to release them directly here.
+          ompi_comm_free() if the reference count is still greater
+          than zero at that point, meaning that there are ongoing
+          communications.  However, pending communications will never
+          need attributes, so it's safe to release them directly here.
 
        2. Releasing attributes in ompi_comm_free() enables us to check
-       the return status of the attribute delete functions.  At
-       least one interpretation of the MPI standard (i.e., the one
-       of the Intel test suite) is that if any of the attribute
-       deletion functions fail, then MPI_COMM_FREE /
-       MPI_COMM_DISCONNECT should also fail.  We can't do that if
-       we delay releasing the attributes -- we need to release the
-       attributes right away so that we can report the error right
-       away. */
+          the return status of the attribute delete functions.  At
+          least one interpretation of the MPI standard (i.e., the one
+          of the Intel test suite) is that if any of the attribute
+          deletion functions fail, then MPI_COMM_FREE /
+          MPI_COMM_DISCONNECT should also fail.  We can't do that if
+          we delay releasing the attributes -- we need to release the
+          attributes right away so that we can report the error right
+          away. */
     if ( OMPI_COMM_IS_INTER(*comm) ) {
         ompi_comm_free (&(*comm)->c_local_comm);
     }
@@ -1244,7 +1037,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
                                      ompi_communicator_t *bridge_comm, 
                                      int local_leader,
                                      int remote_leader,
-                                     int tag,
+                                     orte_rml_tag_t tag,
                                      int rsize)
 {
 
@@ -1266,7 +1059,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
     if (local_rank == local_leader) {
         sbuf = OBJ_NEW(opal_buffer_t);
         if (NULL == sbuf) {
-            rc = OMPI_ERROR;
+            rc = ORTE_ERROR;
             goto err_exit;
         } 
         if(OMPI_GROUP_IS_DENSE(local_comm->c_local_group)) {
@@ -1284,7 +1077,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
         if ( OMPI_SUCCESS != rc ) {
             goto err_exit;
         }
-        if (OPAL_SUCCESS != (rc = opal_dss.unload(sbuf, &sendbuf, &size_len))) {
+        if (ORTE_SUCCESS != (rc = opal_dss.unload(sbuf, &sendbuf, &size_len))) {
             goto err_exit;
         }
     
@@ -1325,7 +1118,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
     if ( local_rank == local_leader ) {
         /* local leader exchange name lists */
         rc = MCA_PML_CALL(irecv (recvbuf, rlen, MPI_BYTE, remote_leader, tag,
-                                 bridge_comm, &req ));
+                                bridge_comm, &req ));
         if ( OMPI_SUCCESS != rc ) {
             goto err_exit;
         }
@@ -1352,7 +1145,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
 
     rbuf = OBJ_NEW(opal_buffer_t);
     if (NULL == rbuf) {
-        rc = OMPI_ERROR;
+        rc = ORTE_ERROR;
         goto err_exit;
     }
     
@@ -1369,7 +1162,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
  err_exit:
     /* rprocs isn't freed unless we have an error, 
        since it is used in the communicator */
-    if ( OMPI_SUCCESS != rc ) {
+    if ( OMPI_SUCCESS !=rc ) {
         opal_output(0, "%d: Error in ompi_get_rprocs\n", local_rank);
         if ( NULL != rprocs ) {
             free ( rprocs );
@@ -1397,7 +1190,7 @@ ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
  * in intercomm_create
  */
 int ompi_comm_overlapping_groups (int size, ompi_proc_t **lprocs,
-                                  int rsize, ompi_proc_t ** rprocs)
+                  int rsize, ompi_proc_t ** rprocs)
 
 {
     int rc=OMPI_SUCCESS;
@@ -1642,9 +1435,8 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
     else {
         proc_list = (ompi_proc_t **) calloc (old_comm->c_local_group->grp_proc_count, 
                                              sizeof (ompi_proc_t *));
-        for(i=0 ; i<old_comm->c_local_group->grp_proc_count ; i++) {
+        for(i=0 ; i<old_comm->c_local_group->grp_proc_count ; i++)
             proc_list[i] = ompi_group_peer_lookup(old_comm->c_local_group,i);
-        }
         
         memcpy (topo_procs, 
                 proc_list,
@@ -1707,7 +1499,7 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
          * it as they deem fit */
 
         new_comm->c_topo_comm->mtc_periods_or_edges = (int *)
-            malloc (sizeof(int) * dims_or_index[ndims_or_nnodes-1]);
+                malloc (sizeof(int) * dims_or_index[ndims_or_nnodes-1]);
         if (NULL == new_comm->c_topo_comm->mtc_periods_or_edges) {
             ompi_comm_free (&new_comm);
             *comm_topo = new_comm;
@@ -1738,7 +1530,7 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
                               NULL,     /* local leader */
                               NULL,     /* remote_leader */
                               OMPI_COMM_CID_INTRA,   /* mode */
-                              -1 );     /* send first, doesn't matter */
+                             -1 );     /* send first, doesn't matter */
     if (OMPI_SUCCESS != ret) {
         /* something wrong happened during setting the communicator */
         ompi_comm_free (&new_comm);
@@ -1772,13 +1564,13 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
                               NULL,     /* local leader */
                               NULL,     /* remote_leader */
                               OMPI_COMM_CID_INTRA,   /* mode */
-                              -1 );     /* send first, doesn't matter */
+                             -1 );     /* send first, doesn't matter */
 
 
     if (OMPI_SUCCESS != ret) {
-        /* something wrong happened during setting the communicator */
-        *comm_topo = new_comm;
-        return ret;
+	/* something wrong happened during setting the communicator */
+	*comm_topo = new_comm;
+	return ret;
     }
     
     /* if the returned rank is -1, then this process is not in the 
@@ -1846,11 +1638,11 @@ static int ompi_comm_fill_rest (ompi_communicator_t *comm,
     /* determine the cube dimensions */
     comm->c_cube_dim = opal_cube_dim(comm->c_local_group->grp_proc_count);
 
-    return OMPI_SUCCESS;
+   return OMPI_SUCCESS;
 }
 
 static int ompi_comm_copy_topo (ompi_communicator_t *oldcomm, 
-                                ompi_communicator_t *newcomm) 
+                                 ompi_communicator_t *newcomm) 
 {
     mca_topo_base_comm_t *oldt = oldcomm->c_topo_comm;
     mca_topo_base_comm_t *newt = newcomm->c_topo_comm;
@@ -1914,3 +1706,4 @@ static int ompi_comm_copy_topo (ompi_communicator_t *oldcomm,
 
     return OMPI_SUCCESS;
 }
+

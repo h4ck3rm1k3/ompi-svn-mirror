@@ -89,8 +89,7 @@ static int orte_create_dir(char *directory)
 
     /* Sanity check before creating the directory with the proper mode,
      * Make sure it doesn't exist already */
-    if( ORTE_ERR_NOT_FOUND !=
-        (ret = opal_os_dirpath_access(directory, my_mode)) ) {
+    if( ORTE_ERR_NOT_FOUND != (ret = opal_os_dirpath_access(directory, my_mode)) ) {
         /* Failure because opal_os_dirpath_access() indicated that either:
          * - The directory exists and we can access it (no need to create it again), 
          *    return OPAL_SUCCESS, or
@@ -130,7 +129,6 @@ orte_session_dir_get_name(char **fulldirpath,
         *vpidstr = NULL;
     bool prefix_provided = false;
     int exit_status = ORTE_SUCCESS;
-    size_t len;
 #ifndef __WINDOWS__
     int uid;
 	struct passwd *pwdent;
@@ -291,13 +289,11 @@ orte_session_dir_get_name(char **fulldirpath,
     else if (NULL != orte_process_info.tmpdir_base) { /* stored value */
         prefix = strdup(orte_process_info.tmpdir_base);
     }
+    else if( NULL != getenv("OMPI_PREFIX_ENV") ) { /* OMPI Environment var */
+        prefix = strdup(getenv("OMPI_PREFIX_ENV"));
+    }
     else { /* General Environment var */
         prefix = strdup(opal_tmp_directory());
-    }
-    len = strlen(prefix);
-    /* check for a trailing path separator */
-    if (OPAL_PATH_SEP[0] == prefix[len-1]) {
-        prefix[len-1] = '\0';
     }
     
     /* BEFORE doing anything else, check to see if this prefix is
@@ -437,14 +433,11 @@ int orte_session_dir(bool create,
     /* 
      * Update some of the global structures if they are empty
      */
-    if (NULL == orte_process_info.tmpdir_base) {
+    if (NULL == orte_process_info.tmpdir_base)
         orte_process_info.tmpdir_base = strdup(local_prefix);
-    }
     
-    if (NULL == orte_process_info.top_session_dir &&
-        NULL != frontend) {
+    if (NULL == orte_process_info.top_session_dir)
         orte_process_info.top_session_dir = strdup(frontend);
-    }
 
     /*
      * Set the process session directory
@@ -494,15 +487,10 @@ int orte_session_dir(bool create,
     }
     
 cleanup:
-    if (NULL != local_prefix) {
-        free(local_prefix);
-    }
-    if(NULL != fulldirpath) {
+    if(NULL != fulldirpath)
         free(fulldirpath);
-    }
-    if(NULL != frontend) {
+    if(NULL != frontend)
         free(frontend);
-    }
     
     return rc;
 }
@@ -517,11 +505,6 @@ orte_session_dir_cleanup(orte_jobid_t jobid)
     char *tmp;
     char *job_session_dir=NULL;
 
-    if (!orte_create_session_dirs) {
-        /* didn't create them */
-        return ORTE_SUCCESS;
-    }
-    
     /* need to setup the top_session_dir with the prefix */
     tmp = opal_os_path(false,
                        orte_process_info.tmpdir_base,
@@ -587,11 +570,6 @@ orte_session_dir_finalize(orte_process_name_t *proc)
     char *tmp;
     char *job_session_dir, *vpid, *proc_session_dir;
 
-    if (!orte_create_session_dirs) {
-        /* didn't create them */
-        return ORTE_SUCCESS;
-    }
-    
     /* need to setup the top_session_dir with the prefix */
     tmp = opal_os_path(false,
                        orte_process_info.tmpdir_base,

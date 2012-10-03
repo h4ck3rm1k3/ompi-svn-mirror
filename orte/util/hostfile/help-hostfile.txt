@@ -87,11 +87,13 @@ A relative host was improperly specified - the value provided was.
 
 hostfile entry: %s
 
-You may have forgotten to preface a node with 'N' or 'n', or used the 'e' or 'E' to indicate
-empty nodes. Please see the orte_hosts man page for further information.
+You may have forgotten to preface a node with 'N' or 'n', or used the
+'e' or 'E' to indicate empty nodes. Please see the orte_hosts man page
+for further information.
 #
 [hostfile:not-enough-empty]
-The requested number of empty hosts was not available - the system was short by %d hosts.
+The requested number of empty hosts was not available - the system was
+short by %d hosts.
 
 Please recheck your allocation - further information is available on the
 orte_hosts man page.
@@ -110,7 +112,6 @@ Open RTE detected a bad parameter in the hostfile:
     %s
 The cores parameter is less than 0:
     cores=%d
-
 #
 [hostfile:extra-node-not-found]
 A hostfile was provided that contains at least one node not
@@ -124,4 +125,3 @@ nodes that are in the allocation can be used in the hostfile. You
 may find relative node syntax to be a useful alternative to
 specifying absolute node names see the orte_hosts man page for
 further information.
-

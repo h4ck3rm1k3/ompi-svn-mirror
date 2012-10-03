@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -9,8 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2012 Los Alamos National Security, LLC.
+ * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -28,6 +28,7 @@
 #include "opal/util/trace.h"
 #include "opal/util/output.h"
 #include "opal/util/malloc.h"
+#include "opal/util/if.h"
 #include "opal/util/net.h"
 #include "opal/util/keyval_parse.h"
 #include "opal/util/show_help.h"
@@ -35,19 +36,17 @@
 #include "opal/mca/base/base.h"
 #include "opal/runtime/opal.h"
 #include "opal/constants.h"
-#include "opal/mca/if/base/base.h"
 #include "opal/mca/installdirs/base/base.h"
 #include "opal/mca/memcpy/base/base.h"
 #include "opal/mca/memory/base/base.h"
 #include "opal/mca/backtrace/base/base.h"
 #include "opal/mca/timer/base/base.h"
 #include "opal/mca/hwloc/base/base.h"
-#include "opal/mca/event/base/base.h"
+#include "opal/mca/paffinity/base/base.h"
+#include "opal/event/event.h"
 #include "opal/runtime/opal_progress.h"
+#include "opal/mca/carto/base/base.h"
 #include "opal/mca/shmem/base/base.h"
-#if OPAL_ENABLE_FT_CR    == 1
-#include "opal/mca/compress/base/base.h"
-#endif
 
 #include "opal/runtime/opal_cr.h"
 #include "opal/mca/crs/base/base.h"
@@ -68,8 +67,9 @@ opal_finalize_util(void)
     /* Clear out all the registered MCA params */
     mca_base_param_finalize();
 
-    /* close interfaces code. */
-    opal_if_base_close();
+    /* close interfaces code.  This is lazy opened, but protected from
+       close when not opened internally */
+    opal_iffinalize();
 
     opal_net_finalize();
 
@@ -116,13 +116,9 @@ opal_finalize(void)
     /* close the checkpoint and restart service */
     opal_cr_finalize();
 
-#if OPAL_ENABLE_FT_CR    == 1
-    opal_compress_base_close();
-#endif
-    
     opal_progress_finalize();
 
-    opal_event_base_close();
+    opal_event_fini();
 
     /* close high resolution timers */
     opal_timer_base_close();
@@ -139,11 +135,17 @@ opal_finalize(void)
     /* finalize the memory manager / tracker */
     opal_mem_hooks_finalize();
 
+    /* close the carto framework */
+    opal_carto_base_close();
+
     /* close the shmem framework */
     opal_shmem_base_close();
     
     /* close the hwloc framework */
     opal_hwloc_base_close();
+
+    /* close the processor affinity base */
+    opal_paffinity_base_close();
 
     /* close the memcpy base */
     opal_memcpy_base_close();

@@ -1,7 +1,5 @@
 /*
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -45,6 +43,7 @@
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/grpcomm/grpcomm.h"
 #include "orte/util/show_help.h"
+#include "orte/mca/notifier/notifier.h"
 
 #include "ompi/runtime/ompi_cr.h"
 
@@ -396,7 +395,6 @@ void mca_pml_bfo_recv_frag_callback_rndvrestartnotify(mca_btl_base_module_t* btl
         (hdr->hdr_match.hdr_seq != (uint16_t)recvreq->req_msgseq)) {
         orte_proc.jobid = hdr->hdr_restart.hdr_jobid;
         orte_proc.vpid = hdr->hdr_restart.hdr_vpid;
-
         ompi_proc = ompi_proc_find(&orte_proc);
         opal_output_verbose(20, mca_pml_bfo_output,
                             "RNDVRESTARTNOTIFY: received: does not match request, sending NACK back "
@@ -410,7 +408,7 @@ void mca_pml_bfo_recv_frag_callback_rndvrestartnotify(mca_btl_base_module_t* btl
                             hdr->hdr_restart.hdr_restartseq,
                             recvreq->remote_req_send.pval, (void *)recvreq,
                             recvreq->req_recv.req_base.req_ompi.req_status.MPI_SOURCE,
-                            hdr->hdr_restart.hdr_jobid, hdr->hdr_restart.hdr_vpid, 
+                            hdr->hdr_restart.hdr_jobid, hdr->hdr_restart.hdr_vpid,
                             ompi_proc->proc_hostname);
         mca_pml_bfo_recv_request_rndvrestartnack(des, ompi_proc, false);
         return;
@@ -1412,7 +1410,15 @@ void mca_pml_bfo_map_out_btl(struct mca_btl_base_module_t* btl,
     if (true == remove) {
         mca_bml.bml_del_proc_btl(errproc, btl);
 
-         opal_output_verbose(10, mca_pml_bfo_output,
+        orte_notifier.log(ORTE_NOTIFIER_CRIT, 1,
+                          "BTL %s error: rank=%d mapping out %s "
+                          "to rank=%d on node=%s",
+                          btl->btl_component->btl_version.mca_component_name,
+                          ORTE_PROC_MY_NAME->vpid,
+                          btlname, errproc->proc_name.vpid,
+                          errproc->proc_hostname);
+
+        opal_output_verbose(10, mca_pml_bfo_output,
                             "BTL %s error: rank=%d mapping out %s "
                             "to rank=%d on node=%s \n",
                             btl->btl_component->btl_version.mca_component_name,
@@ -1950,8 +1956,8 @@ void mca_pml_bfo_update_eager_bml_btl_recv_ctl(mca_bml_base_btl_t** bml_btl,
     if ((*bml_btl)->btl != btl) {
         mca_pml_bfo_common_hdr_t * common = des->des_src->seg_addr.pval;
         mca_pml_bfo_ack_hdr_t* ack;  /* ACK header */
-        mca_pml_bfo_recv_request_t* recvreq = NULL;
-        char *type = NULL;
+        mca_pml_bfo_recv_request_t* recvreq;
+        char *type;
 
         switch (common->hdr_type) {
         case MCA_PML_BFO_HDR_TYPE_ACK:

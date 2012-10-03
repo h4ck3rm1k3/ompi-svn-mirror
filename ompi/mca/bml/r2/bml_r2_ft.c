@@ -1,15 +1,15 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -25,16 +25,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "opal/runtime/opal_progress.h"
-
-#include "orte/mca/grpcomm/grpcomm.h"
-#include "orte/util/proc_info.h"
-
 #include "ompi/runtime/ompi_cr.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/bml/base/bml_base_btl.h" 
 #include "ompi/mca/pml/base/base.h"
+#include "orte/mca/grpcomm/grpcomm.h"
 #include "ompi/proc/proc.h"
 
 #include "bml_r2.h"
@@ -42,7 +38,6 @@
 
 int mca_bml_r2_ft_event(int state)
 {
-#if !ORTE_DISABLE_FULL_SUPPORT
     static bool first_continue_pass = false;
     ompi_proc_t** procs = NULL;
     size_t num_procs;
@@ -51,7 +46,6 @@ int mca_bml_r2_ft_event(int state)
     int loc_state;
     int param_type = -1;
     char *param_list = NULL;
-    orte_grpcomm_collective_t coll;
 
     if(OPAL_CRS_CHECKPOINT == state) {
         /* Do nothing for now */
@@ -60,7 +54,7 @@ int mca_bml_r2_ft_event(int state)
         first_continue_pass = !first_continue_pass;
 
         /* Since nothing in Checkpoint, we are fine here (unless required by BTL) */
-        if( orte_cr_continue_like_restart && !first_continue_pass) {
+        if( ompi_cr_continue_like_restart && !first_continue_pass) {
             procs = ompi_proc_all(&num_procs);
             if(NULL == procs) {
                 return OMPI_ERR_OUT_OF_RESOURCE;
@@ -142,7 +136,7 @@ int mca_bml_r2_ft_event(int state)
     }
     else if(OPAL_CRS_CONTINUE == state) {
         /* Matches OPAL_CRS_RESTART_PRE */
-        if( orte_cr_continue_like_restart && first_continue_pass) {
+        if( ompi_cr_continue_like_restart && first_continue_pass) {
             if( OMPI_SUCCESS != (ret = mca_bml_r2_finalize()) ) {
                 opal_output(0, "bml:r2: ft_event(Restart): Failed to finalize BML framework\n");
                 return ret;
@@ -153,20 +147,19 @@ int mca_bml_r2_ft_event(int state)
             }
         }
         /* Matches OPAL_CRS_RESTART */
-        else if( orte_cr_continue_like_restart && !first_continue_pass ) {
+        else if( ompi_cr_continue_like_restart && !first_continue_pass ) {
             /*
              * Barrier to make all processes have been successfully restarted before
              * we try to remove some restart only files.
              */
-            OBJ_CONSTRUCT(&coll, orte_grpcomm_collective_t);
-            coll.id = orte_process_info.peer_init_barrier;
-            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(&coll))) {
+            if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
                 opal_output(0, "bml:r2: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
                 return ret;
             }
-            while (coll.active) {
-                opal_progress();
-            }
+
+            opal_output_verbose(10, ompi_cr_output,
+                                "bml:r2: ft_event(Restart): Cleanup restart files\n");
+            opal_crs_base_cleanup_flush();
 
             /*
              * Re-open the BTL framework to get the full list of components.
@@ -181,7 +174,7 @@ int mca_bml_r2_ft_event(int state)
              * This will cause the BTL components to discover the available
              * network options on this machine, and post proper modex informaiton.
              */
-            if( OMPI_SUCCESS != (ret = mca_btl_base_select(OMPI_ENABLE_PROGRESS_THREADS,
+            if( OMPI_SUCCESS != (ret = mca_btl_base_select(OPAL_ENABLE_PROGRESS_THREADS,
                                                            OMPI_ENABLE_THREAD_MULTIPLE) ) ) {
                 opal_output(0, "bml:r2: ft_event(Restart): Failed to select in BTL framework\n");
                 return ret;
@@ -236,15 +229,14 @@ int mca_bml_r2_ft_event(int state)
          * Barrier to make all processes have been successfully restarted before
          * we try to remove some restart only files.
          */
-        OBJ_CONSTRUCT(&coll, orte_grpcomm_collective_t);
-        coll.id = orte_process_info.peer_init_barrier;
-        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier(&coll))) {
+        if (OMPI_SUCCESS != (ret = orte_grpcomm.barrier())) {
             opal_output(0, "bml:r2: ft_event(Restart): Failed in orte_grpcomm.barrier (%d)", ret);
             return ret;
         }
-        while (coll.active) {
-            opal_progress();
-        }
+
+        opal_output_verbose(10, ompi_cr_output,
+                            "bml:r2: ft_event(Restart): Cleanup restart files\n");
+        opal_crs_base_cleanup_flush();
 
         /*
          * Re-open the BTL framework to get the full list of components.
@@ -282,7 +274,7 @@ int mca_bml_r2_ft_event(int state)
          * This will cause the BTL components to discover the available
          * network options on this machine, and post proper modex informaiton.
          */
-        if( OMPI_SUCCESS != (ret = mca_btl_base_select(OMPI_ENABLE_PROGRESS_THREADS,
+        if( OMPI_SUCCESS != (ret = mca_btl_base_select(OPAL_ENABLE_PROGRESS_THREADS,
                                                        OMPI_ENABLE_THREAD_MULTIPLE) ) ) {
             opal_output(0, "bml:r2: ft_event(Restart): Failed to select in BTL framework\n");
             return ret;
@@ -313,7 +305,6 @@ int mca_bml_r2_ft_event(int state)
     else {
         ;
     }
-#endif
-
+    
     return OMPI_SUCCESS;
 }

@@ -22,7 +22,7 @@ set srcdir="$1"
 set builddir="`pwd`"
 set distdir="$builddir/$2"
 set OMPI_VERSION="$3"
-set OMPI_REPO_REV="$4"
+set OMPI_SVN_VERSION="$4"
 
 if ("$distdir" == "") then
     echo "Must supply relative distdir as argv[2] -- aborting"
@@ -36,9 +36,9 @@ endif
 # our tree's revision number, but only if we are in the source tree.
 # Otherwise, use what configure told us, at the cost of allowing one
 # or two corner cases in (but otherwise VPATH builds won't work)
-set repo_rev=$OMPI_REPO_REV
+set svn_r=$OMPI_SVN_VERSION
 if (-d .svn) then
-    set repo_rev="r`svnversion .`"
+    set svn_r="r`svnversion .`"
 endif
 
 set start=`date`
@@ -53,12 +53,6 @@ EOF
 
 umask 022
 
-# Some shell startup files alias cp, mv, and rm to have "-i"
-# (interactive).  Unalias here, just so that we don't use that option.
-unalias cp
-unalias rm
-unalias mv
-
 if (! -d "$distdir") then
     echo "*** ERROR: dist dir does not exist"
     echo "*** ERROR:   $distdir"
@@ -71,16 +65,16 @@ endif
 # solve a whole host of problems with VPATH (since srcdir may be
 # relative or absolute)
 #
-set cur_repo_rev="`grep '^repo_rev' ${distdir}/VERSION | cut -d= -f2`"
-if ("$cur_repo_rev" == "-1") then
-    sed -e 's/^repo_rev=.*/repo_rev='$repo_rev'/' "${distdir}/VERSION" > "${distdir}/version.new"
-    cp -f "${distdir}/version.new" "${distdir}/VERSION"
+set cur_svn_r="`grep '^svn_r' ${distdir}/VERSION | cut -d= -f2`"
+if ("$cur_svn_r" == "-1") then
+    sed -e 's/^svn_r=.*/svn_r='$svn_r'/' "${distdir}/VERSION" > "${distdir}/version.new"
+    cp "${distdir}/version.new" "${distdir}/VERSION"
     rm -f "${distdir}/version.new"
     # need to reset the timestamp to not annoy AM dependencies
     touch -r "${srcdir}/VERSION" "${distdir}/VERSION"
-    echo "*** Updated VERSION file with repo rev number"
+    echo "*** Updated VERSION file with SVN r number"
 else
-    echo "*** Did NOT update VERSION file with repo rev number"
+    echo "*** Did NOT update VERSION file with SVN r number"
 endif
 
 # Copy configure.params and autogen.subdirs files into distribution.
@@ -146,7 +140,7 @@ else
                 echo " - WARNING: Got bad config.sub from ftp.gnu.org (not executable)"
             else
                 echo " - Got good config.guess and config.sub from ftp.gnu.org"
-                cp -f config.sub config.guess ..
+                cp config.sub config.guess ..
                 set happy=1
             endif
         endif

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University.
+ * Copyright (c) 2004-2009 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -28,9 +28,9 @@
 #include "orte_config.h"
 
 #include "opal/mca/mca.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 
-#include "orte/mca/sstore/sstore.h"
+#include "orte/mca/filem/filem.h"
 #include "orte/mca/snapc/snapc.h"
 
 BEGIN_C_DECLS
@@ -40,15 +40,15 @@ BEGIN_C_DECLS
  */
 typedef uint8_t orte_snapc_full_cmd_flag_t;
 #define ORTE_SNAPC_FULL_CMD  OPAL_UINT8
-#define ORTE_SNAPC_FULL_UPDATE_JOB_STATE_CMD          1
-#define ORTE_SNAPC_FULL_UPDATE_JOB_STATE_QUICK_CMD    2
-#define ORTE_SNAPC_FULL_UPDATE_ORTED_STATE_CMD        3
-#define ORTE_SNAPC_FULL_UPDATE_ORTED_STATE_QUICK_CMD  4
-#define ORTE_SNAPC_FULL_VPID_ASSOC_CMD                5
-#define ORTE_SNAPC_FULL_ESTABLISH_DIR_CMD             6
-#define ORTE_SNAPC_FULL_RESTART_PROC_INFO             7
-#define ORTE_SNAPC_FULL_REQUEST_OP_CMD                8
-#define ORTE_SNAPC_FULL_MAX                           9
+#define ORTE_SNAPC_FULL_UPDATE_JOB_STATE_CMD         1
+#define ORTE_SNAPC_FULL_UPDATE_JOB_STATE_QUICK_CMD   2
+#define ORTE_SNAPC_FULL_UPDATE_ORTED_STATE_CMD       3
+#define ORTE_SNAPC_FULL_UPDATE_ORTED_STATE_QUICK_CMD 4
+#define ORTE_SNAPC_FULL_VPID_ASSOC_CMD               5
+#define ORTE_SNAPC_FULL_ESTABLISH_DIR_CMD            6
+#define ORTE_SNAPC_FULL_START_CKPT_CMD               7
+#define ORTE_SNAPC_FULL_END_CKPT_CMD                 8
+#define ORTE_SNAPC_FULL_MAX                          9
 
     /*
      * Local Component structures
@@ -71,6 +71,15 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
 
         /** State of the checkpoint */
         int state;
+
+        /** OPAL CRS Component */
+        char * opal_crs;
+
+        /** Checkpoint Options */
+        opal_crs_base_ckpt_options_t *options;
+
+        /** FileM request */
+        orte_filem_base_request_t *filem_request;
     };
     typedef struct orte_snapc_full_orted_snapshot_t orte_snapc_full_orted_snapshot_t;
     OBJ_CLASS_DECLARATION(orte_snapc_full_orted_snapshot_t);
@@ -87,27 +96,23 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
         char * comm_pipe_w;
         int    comm_pipe_r_fd;
         int    comm_pipe_w_fd;
-        int    unique_pipe_id;
 
         /* An opal event handle for the read pipe */
-        opal_event_t comm_pipe_r_eh;
+        struct opal_event comm_pipe_r_eh;
         bool is_eh_active;
 
         /** Process pid */
         pid_t process_pid;
 
-        /** Is this process a migration target */
-        bool migrating;
-
-        /** Finished flag */
-        bool finished;
+        /** Options */
+        opal_crs_base_ckpt_options_t *options;
     };
     typedef struct orte_snapc_full_app_snapshot_t orte_snapc_full_app_snapshot_t;
     OBJ_CLASS_DECLARATION(orte_snapc_full_app_snapshot_t);
 
+    extern bool orte_snapc_full_skip_filem;
     extern bool orte_snapc_full_skip_app;
     extern bool orte_snapc_full_timing_enabled;
-    extern int orte_snapc_full_progress_meter;
     extern int orte_snapc_full_max_wait_time;
 
     int orte_snapc_full_component_query(mca_base_module_t **module, int *priority);
@@ -125,7 +130,6 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
 
     int orte_snapc_full_start_ckpt(orte_snapc_base_quiesce_t *datum);
     int orte_snapc_full_end_ckpt(orte_snapc_base_quiesce_t *datum);
-    int orte_snapc_full_request_op(orte_snapc_base_request_op_t *datum);
 
     /*
      * Global Coordinator Functionality
@@ -141,8 +145,6 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
                                         char **agent_ckpt);
     int global_coord_start_ckpt(orte_snapc_base_quiesce_t *datum);
     int global_coord_end_ckpt(orte_snapc_base_quiesce_t *datum);
-    int global_coord_restart_proc_info(pid_t  local_pid,
-                                       char * local_hostname);
 
     /*
      * Local Coordinator Functionality
@@ -153,7 +155,8 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
     int local_coord_release_job(orte_jobid_t jobid);
     int local_coord_job_state_update(orte_jobid_t jobid,
                                      int    job_ckpt_state,
-                                     orte_sstore_base_handle_t ss_handle,
+                                     char **job_ckpt_ref,
+                                     char **job_ckpt_loc,
                                      opal_crs_base_ckpt_options_t *options);
 
     /*
@@ -162,7 +165,8 @@ typedef uint8_t orte_snapc_full_cmd_flag_t;
     int app_coord_init(void);
     int app_coord_finalize(void);
     int app_coord_ft_event(int state);
-    int app_coord_request_op(orte_snapc_base_request_op_t *datum);
+    int app_coord_start_ckpt(orte_snapc_base_quiesce_t *datum);
+    int app_coord_end_ckpt(orte_snapc_base_quiesce_t *datum);
 
 END_C_DECLS
 

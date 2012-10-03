@@ -9,15 +9,12 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
 # $HEADER$
 #
-
-EXTRA_DIST = .windows
 
 sources = \
     rcache_vma.c \
@@ -30,7 +27,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_ompi_rcache_vma_DSO
+if OMPI_BUILD_rcache_vma_DSO
 lib =
 lib_sources =
 component = mca_rcache_vma.la

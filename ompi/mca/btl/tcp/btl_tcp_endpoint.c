@@ -48,8 +48,6 @@
 #include <time.h>
 #endif  /* HAVE_TIME_H */
 
-#include "opal/mca/event/event.h"
-
 #include "ompi/types.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 #include "opal/util/net.h"
@@ -73,6 +71,8 @@ static void mca_btl_tcp_endpoint_construct(mca_btl_tcp_endpoint_t* endpoint)
     endpoint->endpoint_sd = -1;
     endpoint->endpoint_send_frag = 0;
     endpoint->endpoint_recv_frag = 0;
+    endpoint->endpoint_send_event.ev_flags = 0;
+    endpoint->endpoint_recv_event.ev_flags = 0;
     endpoint->endpoint_state = MCA_BTL_TCP_CLOSED;
     endpoint->endpoint_retries = 0;
     endpoint->endpoint_nbo = false;
@@ -210,7 +210,7 @@ static inline void mca_btl_tcp_endpoint_event_init(mca_btl_base_endpoint_t* btl_
     btl_endpoint->endpoint_cache_pos = btl_endpoint->endpoint_cache;
 #endif  /* MCA_BTL_TCP_ENDPOINT_CACHE */
 
-    opal_event_set(opal_event_base, &btl_endpoint->endpoint_recv_event, 
+    opal_event_set( &btl_endpoint->endpoint_recv_event, 
                     btl_endpoint->endpoint_sd, 
                     OPAL_EV_READ|OPAL_EV_PERSIST, 
                     mca_btl_tcp_endpoint_recv_handler,
@@ -221,7 +221,7 @@ static inline void mca_btl_tcp_endpoint_event_init(mca_btl_base_endpoint_t* btl_
      * will be fired only once, and when the endpoint is marked as 
      * CONNECTED the event should be recreated with the correct flags.
      */
-    opal_event_set(opal_event_base, &btl_endpoint->endpoint_send_event, 
+    opal_event_set( &btl_endpoint->endpoint_send_event, 
                     btl_endpoint->endpoint_sd, 
                     OPAL_EV_WRITE, 
                     mca_btl_tcp_endpoint_send_handler,
@@ -416,7 +416,7 @@ static void mca_btl_tcp_endpoint_connected(mca_btl_base_endpoint_t* btl_endpoint
     btl_endpoint->endpoint_retries = 0;
 
     /* Create the send event in a persistent manner. */
-    opal_event_set(opal_event_base, &btl_endpoint->endpoint_send_event, 
+    opal_event_set( &btl_endpoint->endpoint_send_event, 
                     btl_endpoint->endpoint_sd, 
                     OPAL_EV_WRITE | OPAL_EV_PERSIST,
                     mca_btl_tcp_endpoint_send_handler,
@@ -569,10 +569,9 @@ static int mca_btl_tcp_endpoint_start_connect(mca_btl_base_endpoint_t* btl_endpo
     mca_btl_tcp_proc_tosocks(btl_endpoint->endpoint_addr, &endpoint_addr);
 
     opal_output_verbose(20, mca_btl_base_output, 
-                        "btl: tcp: attempting to connect() to %s address %s on port %d",
-                        ORTE_NAME_PRINT(&btl_endpoint->endpoint_proc->proc_ompi->proc_name),
+                        "btl: tcp: attempting to connect() to address %s on port %d",
                         opal_net_get_hostname((struct sockaddr*) &endpoint_addr),
-                        ntohs(btl_endpoint->endpoint_addr->addr_port));
+                        btl_endpoint->endpoint_addr->addr_port);
 
     if(connect(btl_endpoint->endpoint_sd, (struct sockaddr*)&endpoint_addr, addrlen) < 0) {
         /* non-blocking so wait for completion */

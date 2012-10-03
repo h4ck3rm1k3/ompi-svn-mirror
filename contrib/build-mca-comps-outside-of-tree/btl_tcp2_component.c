@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2009      Oak Ridge National Laboratory
  * $COPYRIGHT$
@@ -49,12 +49,11 @@
 #include <limits.h>
 
 #include "ompi/constants.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/if.h"
 #include "opal/util/output.h"
 #include "opal/util/argv.h"
 #include "opal/util/net.h"
-#include "opal/util/opal_sos.h"
 
 #include "orte/types.h"
 #include "orte/util/show_help.h"
@@ -611,7 +610,7 @@ static int mca_btl_tcp2_component_create_instances(void)
             /* check to see if this interface exists in the exclude list */
             argv = exclude;
             while(argv && *argv) {
-                if(strncmp(*argv,if_name,strlen(*argv)) == 0)
+                if(strcmp(*argv,if_name) == 0)
                     break;
                 argv++;
             }
@@ -794,7 +793,7 @@ static int mca_btl_tcp2_component_create_listen(uint16_t af_family)
 
     /* register listen port */
     if (AF_INET == af_family) {
-        opal_event_set(opal_event_base, &mca_btl_tcp2_component.tcp_recv_event,
+        opal_event_set( &mca_btl_tcp2_component.tcp_recv_event,
                         mca_btl_tcp2_component.tcp_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp2_component_accept_handler,
@@ -803,7 +802,7 @@ static int mca_btl_tcp2_component_create_listen(uint16_t af_family)
     }
 #if OPAL_WANT_IPV6
     if (AF_INET6 == af_family) {
-        opal_event_set(opal_event_base, &mca_btl_tcp2_component.tcp6_recv_event,
+        opal_event_set( &mca_btl_tcp2_component.tcp6_recv_event,
                         mca_btl_tcp2_component.tcp6_listen_sd,
                         OPAL_EV_READ|OPAL_EV_PERSIST,
                         mca_btl_tcp2_component_accept_handler,
@@ -960,8 +959,7 @@ mca_btl_base_module_t** mca_btl_tcp2_component_init(int *num_btl_modules,
     }
 #if OPAL_WANT_IPV6
     if((ret = mca_btl_tcp2_component_create_listen(AF_INET6)) != OMPI_SUCCESS) {
-        if (!(OMPI_ERR_IN_ERRNO == OPAL_SOS_GET_ERROR_CODE(ret) &&
-              EAFNOSUPPORT == opal_socket_errno)) {
+        if (!(OMPI_ERR_IN_ERRNO == ret && EAFNOSUPPORT == opal_socket_errno)) {
             opal_output (0, "mca_btl_tcp2_component: IPv6 listening socket failed\n");
             return 0;
         }
@@ -1026,7 +1024,7 @@ static void mca_btl_tcp2_component_accept_handler( int incoming_sd,
         /* wait for receipt of peers process identifier to complete this connection */
          
         event = OBJ_NEW(mca_btl_tcp2_event_t);
-        opal_event_set(opal_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_tcp2_component_recv_handler, event);
+        opal_event_set(&event->event, sd, OPAL_EV_READ, mca_btl_tcp2_component_recv_handler, event);
         opal_event_add(&event->event, 0);
     }
 }

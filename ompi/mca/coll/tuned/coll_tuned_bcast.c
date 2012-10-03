@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -36,20 +36,24 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
                                      struct ompi_datatype_t* datatype, 
                                      int root,
                                      struct ompi_communicator_t* comm,
-                                     mca_coll_base_module_t *module,
+				     mca_coll_base_module_t *module,
                                      uint32_t count_by_segment,
                                      ompi_coll_tree_t* tree )
 {
-    int err = 0, line, i, rank, size, segindex, req_index;
+    int err = 0, line, i;
+    int rank, size;
+    int segindex;
     int num_segments; /* Number of segments */
     int sendcount;    /* number of elements sent in this segment */ 
-    size_t realsegsize, type_size;
+    size_t realsegsize;
     char *tmpbuf;
+    size_t type_size;
     ptrdiff_t extent, lb;
     ompi_request_t *recv_reqs[2] = {MPI_REQUEST_NULL, MPI_REQUEST_NULL};
 #if !defined(COLL_TUNED_BCAST_USE_BLOCKING)
     ompi_request_t **send_reqs = NULL;
 #endif
+    int req_index;
 
     size = ompi_comm_size(comm);
     rank = ompi_comm_rank(comm);
@@ -58,14 +62,14 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
     ompi_datatype_get_extent (datatype, &lb, &extent);
     ompi_datatype_type_size( datatype, &type_size );
     num_segments = (original_count + count_by_segment - 1) / count_by_segment;
-    realsegsize = (ptrdiff_t)count_by_segment * extent;
+    realsegsize = count_by_segment * extent;
     
     /* Set the buffer pointers */
     tmpbuf = (char *) buffer;
 
 #if !defined(COLL_TUNED_BCAST_USE_BLOCKING)
     if( tree->tree_nextsize != 0 ) {
-        send_reqs = (ompi_request_t**)malloc( (ptrdiff_t)tree->tree_nextsize * 
+        send_reqs = (ompi_request_t**)malloc( tree->tree_nextsize * 
                                               sizeof(ompi_request_t*) );
     }
 #endif
@@ -75,7 +79,7 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
         /* 
            For each segment:
            - send segment to all children.
-           The last segment may have less elements than other segments.
+             The last segment may have less elements than other segments.
         */
         sendcount = count_by_segment;
         for( segindex = 0; segindex < num_segments; segindex++ ) {
@@ -117,13 +121,13 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
            Create the pipeline. 
            1) Post the first receive
            2) For segments 1 .. num_segments
-           - post new receive
-           - wait on the previous receive to complete
-           - send this data to children
+              - post new receive
+              - wait on the previous receive to complete
+              - send this data to children
            3) Wait on the last segment
            4) Compute number of elements in last segment.
            5) Send the last segment to children
-        */
+         */
         req_index = 0;
         err = MCA_PML_CALL(irecv(tmpbuf, count_by_segment, datatype,
                                  tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
@@ -177,7 +181,7 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
         /* Process the last segment */
         err = ompi_request_wait( &recv_reqs[req_index], MPI_STATUSES_IGNORE );
         if (err != MPI_SUCCESS) { line = __LINE__; goto error_hndl; }
-        sendcount = original_count - (ptrdiff_t)(num_segments - 1) * count_by_segment;
+        sendcount = original_count - (num_segments - 1) * count_by_segment;
         for( i = 0; i < tree->tree_nextsize; i++ ) {
 #if defined(COLL_TUNED_BCAST_USE_BLOCKING)
             err = MCA_PML_CALL(send(tmpbuf, sendcount, datatype,
@@ -207,8 +211,8 @@ ompi_coll_tuned_bcast_intra_generic( void* buffer,
            Receive all segments from parent in a loop:
            1) post irecv for the first segment
            2) for segments 1 .. num_segments
-           - post irecv for the next segment
-           - wait on the previous segment to arrive
+              - post irecv for the next segment
+              - wait on the previous segment to arrive
            3) wait for the last segment
         */
         req_index = 0;
@@ -256,7 +260,7 @@ ompi_coll_tuned_bcast_intra_bintree ( void* buffer,
                                       struct ompi_datatype_t* datatype, 
                                       int root,
                                       struct ompi_communicator_t* comm,
-                                      mca_coll_base_module_t *module,
+				      mca_coll_base_module_t *module,
                                       uint32_t segsize )
 {
     int segcount = count;
@@ -285,7 +289,7 @@ ompi_coll_tuned_bcast_intra_pipeline( void* buffer,
                                       struct ompi_datatype_t* datatype, 
                                       int root,
                                       struct ompi_communicator_t* comm,
-                                      mca_coll_base_module_t *module,
+				      mca_coll_base_module_t *module,
                                       uint32_t segsize )
 {
     int segcount = count;
@@ -314,7 +318,7 @@ ompi_coll_tuned_bcast_intra_chain( void* buffer,
                                    struct ompi_datatype_t* datatype, 
                                    int root,
                                    struct ompi_communicator_t* comm,
-                                   mca_coll_base_module_t *module,
+				   mca_coll_base_module_t *module,
                                    uint32_t segsize, int32_t chains )
 {
     int segcount = count;
@@ -343,7 +347,7 @@ ompi_coll_tuned_bcast_intra_binomial( void* buffer,
                                       struct ompi_datatype_t* datatype, 
                                       int root,
                                       struct ompi_communicator_t* comm,
-                                      mca_coll_base_module_t *module,
+				      mca_coll_base_module_t *module,
                                       uint32_t segsize )
 {
     int segcount = count;
@@ -372,16 +376,19 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
                                             struct ompi_datatype_t* datatype, 
                                             int root,
                                             struct ompi_communicator_t* comm,
-                                            mca_coll_base_module_t *module,
+					    mca_coll_base_module_t *module,
                                             uint32_t segsize )
 {
-    int err=0, line, rank, size, segindex, i, lr, pair;
-    uint32_t counts[2];
+    int err=0, line;
+    int rank, size;
+    int segindex, i, lr, pair;
     int segcount[2];       /* Number of elements sent with each segment */
+    uint32_t counts[2];
     int num_segments[2];   /* Number of segmenets */
     int sendcount[2];      /* the same like segcount, except for the last segment */ 
-    size_t realsegsize[2], type_size;
+    size_t realsegsize[2];
     char *tmpbuf[2];
+    size_t type_size;
     ptrdiff_t type_extent, lb;
     ompi_request_t *base_req, *new_req;
     ompi_coll_tree_t *tree;
@@ -427,23 +434,23 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
 
     /* if the message is too small to be split into segments */
     if( (counts[0] == 0 || counts[1] == 0) ||
-        (segsize > ((ptrdiff_t)counts[0] * type_size)) ||
-        (segsize > ((ptrdiff_t)counts[1] * type_size)) ) {
+        (segsize > counts[0] * type_size) ||
+        (segsize > counts[1] * type_size) ) {
         /* call linear version here ! */
         return (ompi_coll_tuned_bcast_intra_chain ( buffer, count, datatype, 
                                                     root, comm, module,
-                                                    segsize, 1 ));
+						    segsize, 1 ));
     }
 
     err = ompi_datatype_get_extent (datatype, &lb, &type_extent);
     
     /* Determine real segment size */
-    realsegsize[0] = (ptrdiff_t)segcount[0] * type_extent;
-    realsegsize[1] = (ptrdiff_t)segcount[1] * type_extent;
+    realsegsize[0] = segcount[0] * type_extent;
+    realsegsize[1] = segcount[1] * type_extent;
   
     /* set the buffer pointers */
     tmpbuf[0] = (char *) buffer;
-    tmpbuf[1] = (char *) buffer + (ptrdiff_t)counts[0] * type_extent;
+    tmpbuf[1] = (char *) buffer+counts[0] * type_extent;
 
     /* Step 1:
        Root splits the buffer in 2 and sends segmented message down the branches.
@@ -502,7 +509,7 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
         for( segindex = 1; segindex < num_segments[lr]; segindex++ ) {
             /* determine how many elements to expect in this round */
             if( segindex == (num_segments[lr] - 1)) 
-                sendcount[lr] = counts[lr] - (ptrdiff_t)segindex * (ptrdiff_t)segcount[lr];
+                sendcount[lr] = counts[lr] - segindex*segcount[lr];
             /* post new irecv */
             err = MCA_PML_CALL(irecv( tmpbuf[lr] + realsegsize[lr], sendcount[lr],
                                       datatype, tree->tree_prev, MCA_COLL_BASE_TAG_BCAST, 
@@ -540,8 +547,7 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
         sendcount[lr] = segcount[lr];
         for (segindex = 0; segindex < num_segments[lr]; segindex++) {
             /* determine how many elements to expect in this round */
-            if (segindex == (num_segments[lr] - 1))
-                sendcount[lr] = counts[lr] - (ptrdiff_t)segindex * (ptrdiff_t)segcount[lr];
+            if (segindex == (num_segments[lr] - 1)) sendcount[lr] = counts[lr] - segindex*segcount[lr];
             /* receive segments */
             err = MCA_PML_CALL(recv(tmpbuf[lr], sendcount[lr], datatype,
                                     tree->tree_prev, MCA_COLL_BASE_TAG_BCAST,
@@ -554,7 +560,7 @@ ompi_coll_tuned_bcast_intra_split_bintree ( void* buffer,
 
     /* reset the buffer pointers */
     tmpbuf[0] = (char *) buffer;
-    tmpbuf[1] = (char *) buffer + (ptrdiff_t)counts[0] * type_extent;
+    tmpbuf[1] = (char *) buffer+counts[0] * type_extent;
 
     /* Step 2:
        Find your immediate pair (identical node in opposite subtree) and SendRecv 
@@ -638,12 +644,16 @@ int
 ompi_coll_tuned_bcast_intra_basic_linear (void *buff, int count,
                                           struct ompi_datatype_t *datatype, int root,
                                           struct ompi_communicator_t *comm,
-                                          mca_coll_base_module_t *module)
+					  mca_coll_base_module_t *module)
 {
-    int i, size, rank, err;
+    int i;
+    int size;
+    int rank;
+    int err;
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
     mca_coll_tuned_comm_t *data = tuned_module->tuned_data;
-    ompi_request_t **preq, **reqs = data->mcct_reqs;
+    ompi_request_t **preq;
+    ompi_request_t **reqs = data->mcct_reqs;
 
 
     size = ompi_comm_size(comm);
@@ -769,7 +779,7 @@ int ompi_coll_tuned_bcast_intra_do_forced(void *buf, int count,
                                           struct ompi_datatype_t *dtype,
                                           int root,
                                           struct ompi_communicator_t *comm,
-                                          mca_coll_base_module_t *module)
+					  mca_coll_base_module_t *module)
 {
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
     mca_coll_tuned_comm_t *data = tuned_module->tuned_data;
@@ -803,7 +813,7 @@ int ompi_coll_tuned_bcast_intra_do_this(void *buf, int count,
                                         struct ompi_datatype_t *dtype,
                                         int root,
                                         struct ompi_communicator_t *comm,
-                                        mca_coll_base_module_t *module,
+					mca_coll_base_module_t *module,
                                         int algorithm, int faninout, int segsize)
 
 {

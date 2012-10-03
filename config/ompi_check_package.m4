@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2012      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2012      Cisco Systems,Inc.  All rights reserved.
 # Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -21,7 +21,7 @@
 
 # _OMPI_CHECK_PACKAGE_HEADER(prefix, header, dir-prefix, 
 #                            [action-if-found], [action-if-not-found],
-#                            includes)
+*                            includes)
 # --------------------------------------------------------------------
 AC_DEFUN([_OMPI_CHECK_PACKAGE_HEADER], [
     # This is stolen from autoconf to peek under the covers to get the
@@ -51,8 +51,7 @@ AC_DEFUN([_OMPI_CHECK_PACKAGE_HEADER], [
           AC_CHECK_HEADER([$2], [$4], [$5], [$6])],
           [$4])
     unset ompi_check_package_header_happy
-    
-    AS_VAR_POPDEF([ompi_Header])dnl
+    AS_VAR_POPDEF([ompi_Header])
 ])
 
 

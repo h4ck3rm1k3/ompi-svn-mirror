@@ -9,8 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2011      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
@@ -32,9 +30,6 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#if HAVE_TIME_H
-#include <time.h>
-#endif
 
 #include "opal/threads/condition.h"
 #include "opal/mca/mca.h"
@@ -42,6 +37,26 @@
 #include "orte/mca/plm/plm.h"
 
 BEGIN_C_DECLS
+
+/*
+ * Module open / close
+ */
+int orte_plm_rsh_component_open(void);
+int orte_plm_rsh_component_close(void);
+int orte_plm_rsh_component_query(mca_base_module_t **module, int *priority);
+
+/*
+ * Startup / Shutdown
+ */
+int orte_plm_rsh_finalize(void);
+
+/*
+ * Interface
+ */
+int orte_plm_rsh_init(void);
+int orte_plm_rsh_launch(orte_job_t *jdata);
+int orte_plm_rsh_terminate_orteds(void);
+int orte_plm_rsh_signal_job(orte_jobid_t, int32_t);
 
 /**
  * PLS Component
@@ -55,20 +70,19 @@ struct orte_plm_rsh_component_t {
     bool disable_llspawn;
     bool using_llspawn;
     bool daemonize_llspawn;
-    struct timespec delay;
+    int delay;
     int priority;
     bool tree_spawn;
-    int num_concurrent;
-    char *agent;
-    bool assume_same_shell;
-    bool pass_environ_mca_params;
+    opal_list_t children;
+    orte_std_cntr_t num_children;
+    orte_std_cntr_t num_concurrent;
+    opal_mutex_t lock;
+    opal_condition_t cond;
 };
 typedef struct orte_plm_rsh_component_t orte_plm_rsh_component_t;
 
 ORTE_MODULE_DECLSPEC extern orte_plm_rsh_component_t mca_plm_rsh_component;
 extern orte_plm_base_module_t orte_plm_rsh_module;
-
-ORTE_MODULE_DECLSPEC char **orte_plm_rsh_search(const char* agent_list, const char *path);
 
 END_C_DECLS
 

@@ -9,7 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -211,6 +210,18 @@ int opal_dss_compare_dt(opal_data_type_t *value1, opal_data_type_t *value2, opal
     return OPAL_EQUAL;
 }
 
+/* OPAL_DATA_VALUE */
+int opal_dss_compare_data_value(opal_dss_value_t *value1, opal_dss_value_t *value2, opal_data_type_t type)
+{
+    /* can't compare if the two types don't match */
+    if (value1->type != value2->type) {
+        return OPAL_ERR_TYPE_MISMATCH;
+    }
+
+    /* okay, go ahead and compare the values themselves */
+    return opal_dss.compare(value1->data, value2->data, value1->type);
+}
+
 /* OPAL_BYTE_OBJECT */
 int opal_dss_compare_byte_object(opal_byte_object_t *value1, opal_byte_object_t *value2, opal_data_type_t type)
 {
@@ -245,18 +256,6 @@ int opal_dss_compare_byte_object(opal_byte_object_t *value1, opal_byte_object_t 
 
 /* OPAL_PSTAT */
 int opal_dss_compare_pstat(opal_pstats_t *value1, opal_pstats_t *value2, opal_data_type_t type)
-{
-    return OPAL_EQUAL;  /* eventually compare field to field */
-}
-
-/* OPAL_NODE_STAT */
-int opal_dss_compare_node_stat(opal_node_stats_t *value1, opal_node_stats_t *value2, opal_data_type_t type)
-{
-    return OPAL_EQUAL;  /* eventually compare field to field */
-}
-
-/* OPAL_VALUE */
-int opal_dss_compare_value(opal_value_t *value1, opal_value_t *value2, opal_data_type_t type)
 {
     return OPAL_EQUAL;  /* eventually compare field to field */
 }

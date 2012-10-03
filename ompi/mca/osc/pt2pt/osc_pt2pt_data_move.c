@@ -37,7 +37,7 @@
 static inline int32_t
 create_send_tag(ompi_osc_pt2pt_module_t *module)
 {
-#if OPAL_ENABLE_MULTI_THREADS && OPAL_HAVE_ATOMIC_CMPSET_32
+#if OPAL_HAVE_THREAD_SUPPORT && OPAL_HAVE_ATOMIC_CMPSET_32
     int32_t newval, oldval;
     do {
         oldval = module->p2p_tag_counter;
@@ -86,12 +86,13 @@ inmsg_mark_complete(ompi_osc_pt2pt_module_t *module)
  * Sending a sendreq to target
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_sendreq_send_long_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_sendreq_send_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_longreq_t *longreq = 
-        (ompi_osc_pt2pt_longreq_t*) request->req_complete_cb_data;
-    ompi_osc_pt2pt_sendreq_t *sendreq = longreq->req_basereq.req_sendreq;
+        (ompi_osc_pt2pt_longreq_t*) mpireq;
+    ompi_osc_pt2pt_sendreq_t *sendreq = 
+        (ompi_osc_pt2pt_sendreq_t*) longreq->mpireq.cbdata;
     int32_t count;
 
     OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
@@ -107,20 +108,16 @@ ompi_osc_pt2pt_sendreq_send_long_cb(ompi_request_t *request)
     ompi_osc_pt2pt_sendreq_free(sendreq);
 
     if (0 == count) opal_condition_broadcast(&sendreq->req_module->p2p_cond);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
 }
 
 
-static int
-ompi_osc_pt2pt_sendreq_send_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_sendreq_send_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_buffer_t *buffer = 
-        (ompi_osc_pt2pt_buffer_t*) request->req_complete_cb_data;
+        (ompi_osc_pt2pt_buffer_t*) mpireq;
     ompi_osc_pt2pt_sendreq_t *sendreq = 
-        (ompi_osc_pt2pt_sendreq_t*) buffer->data;
+        (ompi_osc_pt2pt_sendreq_t*) mpireq->cbdata;
     ompi_osc_pt2pt_send_header_t *header =
         (ompi_osc_pt2pt_send_header_t*) buffer->payload;
     int32_t count;
@@ -138,7 +135,7 @@ ompi_osc_pt2pt_sendreq_send_cb(ompi_request_t *request)
             OMPI_OSC_PT2PT_SEND_HDR_NTOH(*header);
         }
 #endif
-
+        /* do we need to post a send? */
         if (header->hdr_msg_length != 0) {
             /* sendreq is done.  Mark it as so and get out of here */
             OPAL_THREAD_LOCK(&sendreq->req_module->p2p_lock);
@@ -150,11 +147,8 @@ ompi_osc_pt2pt_sendreq_send_cb(ompi_request_t *request)
     }
     
     /* release the buffer */
-    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers, buffer);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
+    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers,
+                          &mpireq->super);
 }
 
 
@@ -196,7 +190,8 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
     buffer = (ompi_osc_pt2pt_buffer_t*) item;
 
     /* setup buffer */
-    buffer->data = sendreq;
+    buffer->mpireq.cbfunc = ompi_osc_pt2pt_sendreq_send_cb;
+    buffer->mpireq.cbdata = (void*) sendreq;
 
     /* pack header */
     header = (ompi_osc_pt2pt_send_header_t*) buffer->payload;
@@ -289,16 +284,22 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
                          "%d sending sendreq to %d",
                          ompi_comm_rank(sendreq->req_module->p2p_comm),
                          sendreq->req_target_rank));
-    ret = ompi_osc_pt2pt_component_isend(buffer->payload,
-                                         buffer->len,
-                                         MPI_BYTE,
-                                         sendreq->req_target_rank,
-                                         CONTROL_MSG_TAG,
-                                         module->p2p_comm,
-                                         &buffer->request,
-                                         ompi_osc_pt2pt_sendreq_send_cb,
-                                         buffer);
+    ret = MCA_PML_CALL(isend(buffer->payload,
+                             buffer->len,
+                             MPI_BYTE,
+                             sendreq->req_target_rank,
+                             CONTROL_MSG_TAG,
+                             MCA_PML_BASE_SEND_STANDARD,
+                             module->p2p_comm,
+                             &buffer->mpireq.request));
 
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                     &buffer->mpireq.super.super);
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    /* Need to be fixed.
+     * The payload is made undefined due to the isend call.
+     */
     MEMCHECKER(
         opal_memchecker_base_mem_defined(buffer->payload, buffer->len);
     );
@@ -306,23 +307,29 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
         header->hdr_msg_length == 0) {
         ompi_osc_pt2pt_longreq_t *longreq;
         ompi_osc_pt2pt_longreq_alloc(&longreq);
-        longreq->req_basereq.req_sendreq = sendreq;
 
+        longreq->mpireq.cbfunc = ompi_osc_pt2pt_sendreq_send_long_cb;
+        longreq->mpireq.cbdata = sendreq;
         OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
                              "%d starting long sendreq to %d (%d)",
                              ompi_comm_rank(sendreq->req_module->p2p_comm),
                              sendreq->req_target_rank,
                              header->hdr_origin_tag));
 
-        ret = ompi_osc_pt2pt_component_isend(sendreq->req_origin_convertor.pBaseBuf,
-                                             sendreq->req_origin_convertor.count,
-                                             sendreq->req_origin_datatype,
-                                             sendreq->req_target_rank,
-                                             header->hdr_origin_tag,
-                                             sendreq->req_module->p2p_comm,
-                                             &(longreq->req_pml_request),
-                                             ompi_osc_pt2pt_sendreq_send_long_cb,
-                                             longreq);
+        mca_pml.pml_isend(sendreq->req_origin_convertor.pBaseBuf,
+                          sendreq->req_origin_convertor.count,
+                          sendreq->req_origin_datatype,
+                          sendreq->req_target_rank,
+                          header->hdr_origin_tag,
+                          MCA_PML_BASE_SEND_STANDARD,
+                          sendreq->req_module->p2p_comm,
+                          &(longreq->mpireq.request));
+
+        /* put the send request in the waiting list */
+        OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+        opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                         &(longreq->mpireq.super.super));
+        OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
     }
 
     goto done;
@@ -343,31 +350,28 @@ ompi_osc_pt2pt_sendreq_send(ompi_osc_pt2pt_module_t *module,
  * Sending a replyreq back to origin
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_replyreq_send_long_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_replyreq_send_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_longreq_t *longreq = 
-        (ompi_osc_pt2pt_longreq_t*) request->req_complete_cb_data;
-    ompi_osc_pt2pt_replyreq_t *replyreq = longreq->req_basereq.req_replyreq;
+        (ompi_osc_pt2pt_longreq_t*) mpireq;
+    ompi_osc_pt2pt_replyreq_t *replyreq = 
+        (ompi_osc_pt2pt_replyreq_t*) mpireq->cbdata;
 
     inmsg_mark_complete(replyreq->rep_module);
 
     ompi_osc_pt2pt_longreq_free(longreq);
     ompi_osc_pt2pt_replyreq_free(replyreq);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
 }
 
 
-static int
-ompi_osc_pt2pt_replyreq_send_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_replyreq_send_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_buffer_t *buffer = 
-        (ompi_osc_pt2pt_buffer_t*) request->req_complete_cb_data;
+        (ompi_osc_pt2pt_buffer_t*) mpireq;
     ompi_osc_pt2pt_replyreq_t *replyreq = 
-        (ompi_osc_pt2pt_replyreq_t*) buffer->data;
+        (ompi_osc_pt2pt_replyreq_t*) mpireq->cbdata;
     ompi_osc_pt2pt_reply_header_t *header =
         (ompi_osc_pt2pt_reply_header_t*) buffer->payload;
 
@@ -385,11 +389,8 @@ ompi_osc_pt2pt_replyreq_send_cb(ompi_request_t *request)
     }
     
     /* release the descriptor and replyreq */
-    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers, buffer);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
+    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers,
+                          &mpireq->super);
 }
 
 
@@ -419,7 +420,8 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
     }
 
     /* setup buffer */
-    buffer->data = replyreq;
+    buffer->mpireq.cbfunc = ompi_osc_pt2pt_replyreq_send_cb;
+    buffer->mpireq.cbdata = (void*) replyreq;
 
     /* pack header */
     header = (ompi_osc_pt2pt_reply_header_t*) buffer->payload;
@@ -480,15 +482,18 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
 #endif
 
     /* send fragment */
-    ret = ompi_osc_pt2pt_component_isend(buffer->payload,
-                                         buffer->len,
-                                         MPI_BYTE,
-                                         replyreq->rep_origin_rank,
-                                         CONTROL_MSG_TAG,
-                                         module->p2p_comm,
-                                         &buffer->request,
-                                         ompi_osc_pt2pt_replyreq_send_cb,
-                                         buffer);
+    ret = MCA_PML_CALL(isend(buffer->payload,
+                             buffer->len,
+                             MPI_BYTE,
+                             replyreq->rep_origin_rank,
+                             CONTROL_MSG_TAG,
+                             MCA_PML_BASE_SEND_STANDARD,
+                             module->p2p_comm,
+                             &buffer->mpireq.request));
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                     &buffer->mpireq.super.super);
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
 
     /* Need to be fixed.
      * The payload is made undefined due to the isend call.
@@ -499,17 +504,24 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
     if (header->hdr_msg_length == 0) {
         ompi_osc_pt2pt_longreq_t *longreq;
         ompi_osc_pt2pt_longreq_alloc(&longreq);
-        longreq->req_basereq.req_replyreq = replyreq;
 
-        ret = ompi_osc_pt2pt_component_isend(replyreq->rep_target_convertor.pBaseBuf,
-                                             replyreq->rep_target_convertor.count,
-                                             replyreq->rep_target_datatype,
-                                             replyreq->rep_origin_rank,
-                                             header->hdr_target_tag,
-                                             module->p2p_comm,
-                                             &(longreq->req_pml_request),
-                                             ompi_osc_pt2pt_replyreq_send_long_cb,
-                                             longreq);
+        longreq->mpireq.cbfunc = ompi_osc_pt2pt_replyreq_send_long_cb;
+        longreq->mpireq.cbdata = replyreq;
+
+        mca_pml.pml_isend(replyreq->rep_target_convertor.pBaseBuf,
+                          replyreq->rep_target_convertor.count,
+                          replyreq->rep_target_datatype,
+                          replyreq->rep_origin_rank,
+                          header->hdr_target_tag,
+                          MCA_PML_BASE_SEND_STANDARD,
+                          module->p2p_comm,
+                          &(longreq->mpireq.request));
+
+        /* put the send request in the waiting list */
+        OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+        opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                         &longreq->mpireq.super.super);
+        OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
     }
     goto done;
 
@@ -529,20 +541,16 @@ ompi_osc_pt2pt_replyreq_send(ompi_osc_pt2pt_module_t *module,
  * Receive a put on the target side
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_sendreq_recv_put_long_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_sendreq_recv_put_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
-    ompi_osc_pt2pt_longreq_t *longreq = 
-        (ompi_osc_pt2pt_longreq_t*) request->req_complete_cb_data;
+    ompi_osc_pt2pt_longreq_t *longreq =
+        (ompi_osc_pt2pt_longreq_t*) mpireq;
 
     OBJ_RELEASE(longreq->req_datatype);
     ompi_osc_pt2pt_longreq_free(longreq);
 
     inmsg_mark_complete(longreq->req_module);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
 }
 
 
@@ -609,18 +617,24 @@ ompi_osc_pt2pt_sendreq_recv_put(ompi_osc_pt2pt_module_t *module,
             ompi_osc_pt2pt_longreq_t *longreq;
             ompi_osc_pt2pt_longreq_alloc(&longreq);
 
+            longreq->mpireq.cbfunc = ompi_osc_pt2pt_sendreq_recv_put_long_cb;
+            longreq->mpireq.cbdata = NULL;
             longreq->req_datatype = datatype;
             longreq->req_module = module;
 
-            ret = ompi_osc_pt2pt_component_irecv(target,
-                                                 header->hdr_target_count,
-                                                 datatype,
-                                                 header->hdr_origin,
-                                                 header->hdr_origin_tag,
-                                                 module->p2p_comm,
-                                                 &(longreq->req_pml_request),
-                                                 ompi_osc_pt2pt_sendreq_recv_put_long_cb,
-                                                 longreq);
+            ret = mca_pml.pml_irecv(target,
+                                    header->hdr_target_count,
+                                    datatype,
+                                    header->hdr_origin,
+                                    header->hdr_origin_tag,
+                                    module->p2p_comm,
+                                    &(longreq->mpireq.request));
+
+            /* put the send request in the waiting list */
+            OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+            opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                             &(longreq->mpireq.super.super));
+            OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
     }
 
     return ret;
@@ -632,13 +646,14 @@ ompi_osc_pt2pt_sendreq_recv_put(ompi_osc_pt2pt_module_t *module,
  * Receive an accumulate on the target side
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_longreq_t *longreq =
-        (ompi_osc_pt2pt_longreq_t*) request->req_complete_cb_data;
+        (ompi_osc_pt2pt_longreq_t*) mpireq;
     ompi_osc_pt2pt_module_t *module = longreq->req_module;
-    ompi_osc_pt2pt_send_header_t *header = longreq->req_basereq.req_sendhdr;
+    ompi_osc_pt2pt_send_header_t *header = 
+        (ompi_osc_pt2pt_send_header_t*) mpireq->cbdata;
     void *payload = (void*) (header + 1);
     int ret;
     void *target = (unsigned char*) module->p2p_win->w_baseptr + 
@@ -702,7 +717,7 @@ ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_request_t *request)
                          header->hdr_origin));
 
     /* free the temp buffer */
-    free(longreq->req_basereq.req_sendhdr);
+    free(mpireq->cbdata);
 
     /* Release datatype & op */
     OBJ_RELEASE(longreq->req_datatype);
@@ -711,10 +726,6 @@ ompi_osc_pt2pt_sendreq_recv_accum_long_cb(ompi_request_t *request)
     inmsg_mark_complete(longreq->req_module);
 
     ompi_osc_pt2pt_longreq_free(longreq);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
 }
 
 
@@ -870,34 +881,39 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
         /* get a longreq and fill it in */
         ompi_osc_pt2pt_longreq_alloc(&longreq);
 
+        longreq->mpireq.cbfunc = ompi_osc_pt2pt_sendreq_recv_accum_long_cb;
         longreq->req_datatype = datatype;
         longreq->req_op = op;
         longreq->req_module = module;
 
         /* allocate a buffer to receive into ... */
-        longreq->req_basereq.req_sendhdr = (ompi_osc_pt2pt_send_header_t *) malloc(buflen + sizeof(ompi_osc_pt2pt_send_header_t));
-
-        if (NULL == longreq->req_basereq.req_sendhdr) return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
+        longreq->mpireq.cbdata = malloc(buflen + sizeof(ompi_osc_pt2pt_send_header_t));
+        
+        if (NULL == longreq->mpireq.cbdata) return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
         /* fill in tmp header */
-        memcpy(longreq->req_basereq.req_sendhdr, header,
+        memcpy(longreq->mpireq.cbdata, header,
                sizeof(ompi_osc_pt2pt_send_header_t));
-        ((ompi_osc_pt2pt_send_header_t*) longreq->req_basereq.req_sendhdr)->hdr_msg_length = buflen;
+        ((ompi_osc_pt2pt_send_header_t*) longreq->mpireq.cbdata)->hdr_msg_length = buflen;
 
-        ret = ompi_osc_pt2pt_component_irecv(((char*) longreq->req_basereq.req_sendhdr) + sizeof(ompi_osc_pt2pt_send_header_t),
-                                             primitive_count,
-                                             primitive_datatype,
-                                             header->hdr_origin,
-                                             header->hdr_origin_tag,
-                                             module->p2p_comm,
-                                             &(longreq->req_pml_request),
-                                             ompi_osc_pt2pt_sendreq_recv_accum_long_cb,
-                                             longreq);
+        ret = mca_pml.pml_irecv(((char*) longreq->mpireq.cbdata) + sizeof(ompi_osc_pt2pt_send_header_t),
+                                primitive_count,
+                                primitive_datatype,
+                                header->hdr_origin,
+                                header->hdr_origin_tag,
+                                module->p2p_comm,
+                                &(longreq->mpireq.request));
 
         OPAL_OUTPUT_VERBOSE((50, ompi_osc_base_output,
                              "%d started long recv accum message from %d (%d)",
                              ompi_comm_rank(module->p2p_comm),
                              header->hdr_origin,
                              header->hdr_origin_tag));
+
+        /* put the send request in the waiting list */
+        OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+        opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                         &(longreq->mpireq.super.super));
+        OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
     }
 
     return ret;
@@ -909,12 +925,13 @@ ompi_osc_pt2pt_sendreq_recv_accum(ompi_osc_pt2pt_module_t *module,
  * Recveive a get on the origin side
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_replyreq_recv_long_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_replyreq_recv_long_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
     ompi_osc_pt2pt_longreq_t *longreq = 
-        (ompi_osc_pt2pt_longreq_t*) request->req_complete_cb_data;
-    ompi_osc_pt2pt_sendreq_t *sendreq = longreq->req_basereq.req_sendreq;
+        (ompi_osc_pt2pt_longreq_t*) mpireq;
+    ompi_osc_pt2pt_sendreq_t *sendreq =
+        (ompi_osc_pt2pt_sendreq_t*) longreq->mpireq.cbdata;
     int32_t count;
 
     OPAL_THREAD_LOCK(&sendreq->req_module->p2p_lock);
@@ -925,10 +942,6 @@ ompi_osc_pt2pt_replyreq_recv_long_cb(ompi_request_t *request)
     ompi_osc_pt2pt_sendreq_free(sendreq);
 
     if (0 == count) opal_condition_broadcast(&sendreq->req_module->p2p_cond);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
 }
 
 int
@@ -983,18 +996,24 @@ ompi_osc_pt2pt_replyreq_recv(ompi_osc_pt2pt_module_t *module,
         ompi_osc_pt2pt_longreq_t *longreq;
         ompi_osc_pt2pt_longreq_alloc(&longreq);
 
-        longreq->req_basereq.req_sendreq = sendreq;
+        longreq->mpireq.cbfunc = ompi_osc_pt2pt_replyreq_recv_long_cb;
+        longreq->mpireq.cbdata = sendreq;
         longreq->req_module = module;
 
-        ret = ompi_osc_pt2pt_component_irecv(sendreq->req_origin_convertor.pBaseBuf,
-                                             sendreq->req_origin_convertor.count,
-                                             sendreq->req_origin_datatype,
-                                             sendreq->req_target_rank,
-                                             header->hdr_target_tag,
-                                             module->p2p_comm,
-                                             &(longreq->req_pml_request),
-                                             ompi_osc_pt2pt_replyreq_recv_long_cb,
-                                             longreq);
+        /* BWB - FIX ME -  George is going to kill me for this */
+        ret = mca_pml.pml_irecv(sendreq->req_origin_convertor.pBaseBuf,
+                                sendreq->req_origin_convertor.count,
+                                sendreq->req_origin_datatype,
+                                sendreq->req_target_rank,
+                                header->hdr_target_tag,
+                                module->p2p_comm,
+                                &(longreq->mpireq.request));
+
+        /* put the send request in the waiting list */
+        OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+        opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                         &(longreq->mpireq.super.super));
+        OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
     }
 
     return ret;
@@ -1006,17 +1025,12 @@ ompi_osc_pt2pt_replyreq_recv(ompi_osc_pt2pt_module_t *module,
  * Control message communication
  *
  **********************************************************************/
-static int
-ompi_osc_pt2pt_control_send_cb(ompi_request_t *request)
+static void
+ompi_osc_pt2pt_control_send_cb(ompi_osc_pt2pt_mpireq_t *mpireq)
 {
-    opal_free_list_item_t *item = (opal_free_list_item_t*) request->req_complete_cb_data;
-
     /* release the descriptor and sendreq */
-    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers, item);
-
-    ompi_request_free(&request);
-
-    return OMPI_SUCCESS;
+    OPAL_FREE_LIST_RETURN(&mca_osc_pt2pt_component.p2p_c_buffers,
+                          &mpireq->super);
 }
 
 
@@ -1054,7 +1068,8 @@ ompi_osc_pt2pt_control_send(ompi_osc_pt2pt_module_t *module,
     }
 
     /* setup buffer */
-    buffer->data = NULL;
+    buffer->mpireq.cbfunc = ompi_osc_pt2pt_control_send_cb;
+    buffer->mpireq.cbdata = NULL;
     buffer->len = sizeof(ompi_osc_pt2pt_control_header_t);
 
     /* pack header */
@@ -1074,15 +1089,19 @@ ompi_osc_pt2pt_control_send(ompi_osc_pt2pt_module_t *module,
 #endif
 
     /* send fragment */
-    ret = ompi_osc_pt2pt_component_isend(buffer->payload,
-                                         buffer->len,
-                                         MPI_BYTE,
-                                         rank,
-                                         CONTROL_MSG_TAG,
-                                         module->p2p_comm,
-                                         &buffer->request,
-                                         ompi_osc_pt2pt_control_send_cb,
-                                         buffer);
+    ret = MCA_PML_CALL(isend(buffer->payload,
+                             buffer->len,
+                             MPI_BYTE,
+                             rank,
+                             CONTROL_MSG_TAG,
+                             MCA_PML_BASE_SEND_STANDARD,
+                             module->p2p_comm,
+                             &buffer->mpireq.request));
+    OPAL_THREAD_LOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+    opal_list_append(&mca_osc_pt2pt_component.p2p_c_pending_requests,
+                     &(buffer->mpireq.super.super));
+    OPAL_THREAD_UNLOCK(&mca_osc_pt2pt_component.p2p_c_lock);
+
     goto done;
 
  cleanup:

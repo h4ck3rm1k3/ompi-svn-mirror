@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -8,9 +8,6 @@
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -23,69 +20,50 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#ifdef HAVE_STRING_H
-#include <string.h>
-#endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif
-
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-
-#include "opal/util/opal_environ.h"
-#include "opal/util/output.h"
 #include "opal/util/trace.h"
 #include "opal/util/output.h"
 
-#include "orte/util/show_help.h"
+
 #include "orte/mca/errmgr/base/base.h"
 #include "orte/mca/errmgr/base/errmgr_private.h"
+
+
+/*
+ * The following file was created by configure.  It contains extern
+ * statements and the definition of an array of pointers to each
+ * component's public mca_base_component_t struct.
+ */
 
 #include "orte/mca/errmgr/base/static-components.h"
 
 /*
- * Globals
+ * globals
  */
-opal_list_t orte_errmgr_base_components_available;
 
-orte_errmgr_base_t orte_errmgr_base;
-
-orte_errmgr_base_component_t orte_errmgr_base_selected_component;
-
-orte_errmgr_fault_callback_t *fault_cbfunc;
-
-/* Public module provides a wrapper around previous functions */
-orte_errmgr_base_module_t orte_errmgr_default_fns = {
-    NULL, /* init     */
-    NULL, /* finalize */
-    orte_errmgr_base_log,
-    orte_errmgr_base_abort,
-    orte_errmgr_base_abort_peers,
-    NULL, /* predicted_fault     */
-    NULL, /* suggest_map_targets */
-    NULL, /* ft_event            */
-    orte_errmgr_base_register_migration_warning
-};
-/* NOTE: ABSOLUTELY MUST initialize this
- * struct to include the log function as it
- * gets called even if the errmgr hasn't been
- * opened yet due to error
+/*
+ * Global variables
+ */
+int orte_errmgr_base_output = -1;
+/*
+ * define a default module that all application procs
+ * can use without having to open the framework. The
+ * decision on whether or not to open the framework is
+ * made in orte_init
  */
 orte_errmgr_base_module_t orte_errmgr = {
-    NULL,
-    NULL,
-    orte_errmgr_base_log,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL
+    orte_errmgr_base_proc_aborted_not_avail,
+    orte_errmgr_base_incomplete_start_not_avail,
+    orte_errmgr_base_register_cb_not_avail,
+    orte_errmgr_base_error_abort
 };
+
+bool orte_errmgr_base_selected = false;
+opal_list_t orte_errmgr_base_components_available;
+mca_errmgr_base_component_t orte_errmgr_base_selected_component;
+bool orte_errmgr_initialized = false;
 
 /**
  * Function for finding and opening either all MCA components, or the one
@@ -94,30 +72,24 @@ orte_errmgr_base_module_t orte_errmgr = {
 int orte_errmgr_base_open(void)
 {
     OPAL_TRACE(5);
+    
+    if (!orte_errmgr_initialized) { /* ensure we only do this once */
+      
+        orte_errmgr_base_output = opal_output_open(NULL);
 
-    /* Only pass this way once */
-    if( orte_errmgr_base.initialized ) {
-        return ORTE_SUCCESS;
-    }
-
-    orte_errmgr_base.output = opal_output_open(NULL);
-
-    /* load the default fns */
-    orte_errmgr = orte_errmgr_default_fns;
-
-    /*
-     * Open up all available components
-     */
-    if (ORTE_SUCCESS != 
-        mca_base_components_open("errmgr",
-                                 orte_errmgr_base.output,
-                                 mca_errmgr_base_static_components, 
-                                 &orte_errmgr_base_components_available,
-                                 true)) {
-        return ORTE_ERROR;
+        /* Open up all available components */
+    
+        if (ORTE_SUCCESS != 
+            mca_base_components_open("errmgr", orte_errmgr_base_output,
+                                     mca_errmgr_base_static_components, 
+                                     &orte_errmgr_base_components_available, true)) {
+            return ORTE_ERROR;
+        }
+    
+        orte_errmgr_initialized = true;
     }
     
-    orte_errmgr_base.initialized = true;
+    /* All done */
     
     return ORTE_SUCCESS;
 }

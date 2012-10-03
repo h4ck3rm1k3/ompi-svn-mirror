@@ -10,8 +10,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -51,10 +49,9 @@
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/rml_types.h"
-#include "orte/mca/state/state.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/runtime/orte_quit.h"
+#include "orte/runtime/orte_wait.h"
 
 #include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
@@ -187,7 +184,6 @@ static void filem_base_process_get_proc_node_name_cmd(orte_process_name_t* sende
     count = 1;
     if (ORTE_SUCCESS != (rc = opal_dss.unpack(buffer, &name, &count, ORTE_NAME))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
         goto CLEANUP;
     }
 
@@ -197,14 +193,16 @@ static void filem_base_process_get_proc_node_name_cmd(orte_process_name_t* sende
     /* get the job data object for this proc */
     if (NULL == (jdata = orte_get_job_data_object(name.jobid))) {
         ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        ORTE_UPDATE_EXIT_STATUS(1);
+        orte_trigger_event(&orte_exit);
         goto CLEANUP;
     }
     /* get the proc object for it */
     procs = (orte_proc_t**)jdata->procs->addr;
     if (NULL == procs[name.vpid] || NULL == procs[name.vpid]->node) {
         ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        ORTE_UPDATE_EXIT_STATUS(1);
+        orte_trigger_event(&orte_exit);
         goto CLEANUP;
     }
 
@@ -213,13 +211,13 @@ static void filem_base_process_get_proc_node_name_cmd(orte_process_name_t* sende
      */
     if (ORTE_SUCCESS != (rc = opal_dss.pack(&answer, &(procs[name.vpid]->node->name), 1, OPAL_STRING))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        ORTE_UPDATE_EXIT_STATUS(1);
+        orte_trigger_event(&orte_exit);
         goto CLEANUP;
     }
 
     if (0 > (rc = orte_rml.send_buffer(sender, &answer, ORTE_RML_TAG_FILEM_BASE_RESP, 0))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
     }
 
  CLEANUP:
@@ -253,7 +251,6 @@ static void filem_base_process_get_remote_path_cmd(orte_process_name_t* sender,
     count = 1;
     if (ORTE_SUCCESS != (rc = opal_dss.unpack(buffer, &filename, &count, OPAL_STRING))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
         goto CLEANUP;
     }
 
@@ -300,18 +297,19 @@ static void filem_base_process_get_remote_path_cmd(orte_process_name_t* sender,
      */
     if (ORTE_SUCCESS != (rc = opal_dss.pack(&answer, &tmp_name, 1, OPAL_STRING))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        ORTE_UPDATE_EXIT_STATUS(1);
+        orte_trigger_event(&orte_exit);
         goto CLEANUP;
     }
     if (ORTE_SUCCESS != (rc = opal_dss.pack(&answer, &file_type, 1, OPAL_INT))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        ORTE_UPDATE_EXIT_STATUS(1);
+        orte_trigger_event(&orte_exit);
         goto CLEANUP;
     }
 
     if (0 > (rc = orte_rml.send_buffer(sender, &answer, ORTE_RML_TAG_FILEM_BASE_RESP, 0))) {
         ORTE_ERROR_LOG(rc);
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
     }
 
  CLEANUP:

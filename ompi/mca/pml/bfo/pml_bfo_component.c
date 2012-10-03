@@ -20,7 +20,7 @@
  */
 
 #include "ompi_config.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "mpi.h"
 #include "ompi/runtime/params.h"
 #include "ompi/mca/pml/pml.h"
@@ -162,7 +162,6 @@ static int mca_pml_bfo_component_close(void)
     if (NULL != mca_pml_bfo.allocator_name) {
         free(mca_pml_bfo.allocator_name);
     }
-    opal_output_close(mca_pml_bfo_output);
 
     return OMPI_SUCCESS;
 }

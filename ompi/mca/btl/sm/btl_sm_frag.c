@@ -26,14 +26,14 @@ static inline void mca_btl_sm_frag_common_constructor(mca_btl_sm_frag_t* frag)
     if(frag->hdr != NULL) {
         frag->hdr->frag = (mca_btl_sm_frag_t*)((uintptr_t)frag |
             MCA_BTL_SM_FRAG_ACK);
-        frag->segment.base.seg_addr.pval = ((char*)frag->hdr) +
+        frag->segment.seg_addr.pval = ((char*)frag->hdr) +
             sizeof(mca_btl_sm_hdr_t);
         frag->hdr->my_smp_rank = mca_btl_sm_component.my_smp_rank;
     }
-    frag->segment.base.seg_len = frag->size;
-    frag->base.des_src = &frag->segment.base;
+    frag->segment.seg_len = frag->size;
+    frag->base.des_src = &frag->segment;
     frag->base.des_src_cnt = 1;
-    frag->base.des_dst = &frag->segment.base;
+    frag->base.des_dst = &frag->segment;
     frag->base.des_dst_cnt = 1;
     frag->base.des_flags = 0;
 }
@@ -59,20 +59,26 @@ static void mca_btl_sm_user_constructor(mca_btl_sm_frag_t* frag)
 	mca_btl_sm_frag_common_constructor(frag);
 }
 
+
+static void mca_btl_sm_frag_destructor(mca_btl_sm_frag_t* frag)
+{
+}
+
+
 OBJ_CLASS_INSTANCE(
     mca_btl_sm_frag1_t,
     mca_btl_base_descriptor_t,
     mca_btl_sm_frag1_constructor,
-    NULL);
+    mca_btl_sm_frag_destructor);
 
 OBJ_CLASS_INSTANCE(
     mca_btl_sm_frag2_t,
     mca_btl_base_descriptor_t,
     mca_btl_sm_frag2_constructor,
-    NULL);
+    mca_btl_sm_frag_destructor);
 
 OBJ_CLASS_INSTANCE(
     mca_btl_sm_user_t,
     mca_btl_base_descriptor_t,
     mca_btl_sm_user_constructor,
-    NULL);
+    mca_btl_sm_frag_destructor);

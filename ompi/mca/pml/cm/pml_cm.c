@@ -7,7 +7,6 @@
  *                         reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,10 +42,6 @@ ompi_pml_cm_t ompi_pml_cm = {
         mca_pml_cm_iprobe,
         mca_pml_cm_probe,
         mca_pml_cm_start,
-        mca_pml_cm_improbe,
-        mca_pml_cm_mprobe,
-        mca_pml_cm_imrecv,
-        mca_pml_cm_mrecv,
         mca_pml_cm_dump,
         NULL,
         0,
@@ -87,6 +82,8 @@ mca_pml_cm_enable(bool enable)
 int
 mca_pml_cm_add_comm(ompi_communicator_t* comm)
 {
+    int ret;
+
     /* should never happen, but it was, so check */
     if (comm->c_contextid > ompi_pml_cm.super.pml_max_contextid) {
         return OMPI_ERR_OUT_OF_RESOURCE;
@@ -96,15 +93,27 @@ mca_pml_cm_add_comm(ompi_communicator_t* comm)
     comm->c_pml_comm = NULL;
 
     /* notify the MTL about the added communicator */
-    return OMPI_MTL_CALL(add_comm(ompi_mtl, comm));
+    if ((NULL != ompi_mtl->mtl_add_comm) &&
+        (OMPI_SUCCESS != (ret = OMPI_MTL_CALL(add_comm(ompi_mtl, comm))))) {
+        return ret;
+    }
+
+    return OMPI_SUCCESS;
 }
 
 
 int
 mca_pml_cm_del_comm(ompi_communicator_t* comm)
 {
+    int ret;
+
     /* notify the MTL about the deleted communicator */
-    return OMPI_MTL_CALL(del_comm(ompi_mtl, comm));
+    if ((NULL != ompi_mtl->mtl_del_comm) &&
+        (OMPI_SUCCESS != (ret = OMPI_MTL_CALL(del_comm(ompi_mtl, comm))))) {
+        return ret;
+    }
+
+    return OMPI_SUCCESS;
 }
 
 

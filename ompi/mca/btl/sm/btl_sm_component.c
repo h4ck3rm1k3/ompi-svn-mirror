@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2011 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2009 The University of Tennessee and The University
@@ -10,11 +10,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire. All rights reserved.
- * Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010-2011 Los Alamos National Security, LLC.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
- * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
- * Copyright (c) 2010-2012 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -43,8 +41,7 @@
 #endif  /* HAVE_SYS_STAT_H */
 
 #include "ompi/constants.h"
-#include "opal/mca/event/event.h"
-#include "opal/util/bit_ops.h"
+#include "opal/event/event.h"
 #include "opal/util/output.h"
 #include "orte/util/proc_info.h"
 #include "orte/util/show_help.h"
@@ -63,16 +60,6 @@
 #include "btl_sm_frag.h"
 #include "btl_sm_fifo.h"
 
-static int mca_btl_sm_component_open(void);
-static int mca_btl_sm_component_close(void);
-static int sm_register(void);
-static mca_btl_base_module_t** mca_btl_sm_component_init(
-    int *num_btls,
-    bool enable_progress_threads,
-    bool enable_mpi_threads
-);
-
-
 /*
  * Shared Memory (SM) component instance.
  */
@@ -88,9 +75,7 @@ mca_btl_sm_component_t mca_btl_sm_component = {
             OMPI_MINOR_VERSION,  /* MCA component minor version */
             OMPI_RELEASE_VERSION,  /* MCA component release version */
             mca_btl_sm_component_open,  /* component open */
-            mca_btl_sm_component_close,  /* component close */
-            NULL,
-            sm_register,
+            mca_btl_sm_component_close  /* component close */
         },
         {
             /* The component is checkpoint ready */
@@ -128,7 +113,12 @@ static inline int mca_btl_sm_param_register_int(
 }
 
 
-static int sm_register(void)
+/*
+ *  Called by MCA framework to open the component, registers
+ *  component parameters.
+ */
+
+int mca_btl_sm_component_open(void)
 {
     int i;
 
@@ -173,13 +163,7 @@ static int sm_register(void)
                            false, false, 0,
                            &mca_btl_sm_component.knem_max_simultaneous);
 
-    /* CMA parameters */
-    mca_base_param_reg_int(&mca_btl_sm_component.super.btl_version,
-                           "use_cma",
-                           "Whether or not to enable CMA",
-                           false, false, 0, &mca_btl_sm_component.use_cma);
-
-
+    mca_btl_sm_component.sm_max_btls = 1;
     /* register SM component parameters */
     mca_btl_sm_component.sm_free_list_num =
         mca_btl_sm_param_register_int("free_list_num", 8);
@@ -195,9 +179,21 @@ static int sm_register(void)
         mca_btl_sm_param_register_int("fifo_size", 4096);
     mca_btl_sm_component.nfifos =
         mca_btl_sm_param_register_int("num_fifos", 1);
-
+    /* make sure the number of fifos is a power of 2 */
+    {
+        int i = 1;
+        while ( i < mca_btl_sm_component.nfifos )
+            i <<= 1;
+        mca_btl_sm_component.nfifos = i;
+    }
     mca_btl_sm_component.fifo_lazy_free =
         mca_btl_sm_param_register_int("fifo_lazy_free", 120);
+
+    /* make sure that queue size and lazy free parameter are compatible */
+    if (mca_btl_sm_component.fifo_lazy_free >= (mca_btl_sm_component.fifo_size >> 1) )
+        mca_btl_sm_component.fifo_lazy_free  = (mca_btl_sm_component.fifo_size >> 1);
+    if (mca_btl_sm_component.fifo_lazy_free <= 0)
+        mca_btl_sm_component.fifo_lazy_free  = 1;
 
     /* default number of extra procs to allow for future growth */
     mca_btl_sm_component.sm_extra_procs =
@@ -211,47 +207,16 @@ static int sm_register(void)
     mca_btl_sm.super.btl_rdma_pipeline_frag_size = 64*1024;
     mca_btl_sm.super.btl_min_rdma_pipeline_size = 64*1024;
     mca_btl_sm.super.btl_flags = MCA_BTL_FLAGS_SEND;
-#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
-    if (mca_btl_sm_component.use_knem || mca_btl_sm_component.use_cma) {
+#if OMPI_BTL_SM_HAVE_KNEM
+    if (mca_btl_sm_component.use_knem) {
         mca_btl_sm.super.btl_flags |= MCA_BTL_FLAGS_GET;
     }
-
-    if (mca_btl_sm_component.use_knem && mca_btl_sm_component.use_cma) {
-        /* Disable CMA if knem is runtime enabled */
-        opal_output(0, "CMA disabled because knem is enabled");
-        mca_btl_sm_component.use_cma = 0;
-    }
-
 #endif
-    mca_btl_sm.super.btl_seg_size = sizeof (mca_btl_sm_segment_t);
     mca_btl_sm.super.btl_bandwidth = 9000;  /* Mbs */
     mca_btl_sm.super.btl_latency   = 1;     /* Microsecs */
 
-    /* Call the BTL based to register its MCA params */
     mca_btl_base_param_register(&mca_btl_sm_component.super.btl_version,
                                 &mca_btl_sm.super);
-
-    return OMPI_SUCCESS;
-}
-
-/*
- *  Called by MCA framework to open the component, registers
- *  component parameters.
- */
-
-static int mca_btl_sm_component_open(void)
-{
-    mca_btl_sm_component.sm_max_btls = 1;
-
-    /* make sure the number of fifos is a power of 2 */
-    mca_btl_sm_component.nfifos = opal_next_poweroftwo_inclusive (mca_btl_sm_component.nfifos);
-
-    /* make sure that queue size and lazy free parameter are compatible */
-    if (mca_btl_sm_component.fifo_lazy_free >= (mca_btl_sm_component.fifo_size >> 1) )
-        mca_btl_sm_component.fifo_lazy_free  = (mca_btl_sm_component.fifo_size >> 1);
-    if (mca_btl_sm_component.fifo_lazy_free <= 0)
-        mca_btl_sm_component.fifo_lazy_free  = 1;
-
     mca_btl_sm_component.max_frag_size = mca_btl_sm.super.btl_max_send_size;
     mca_btl_sm_component.eager_limit = mca_btl_sm.super.btl_eager_limit;
 
@@ -269,7 +234,7 @@ static int mca_btl_sm_component_open(void)
  * component cleanup - sanity checking of queue lengths
  */
 
-static int mca_btl_sm_component_close(void)
+int mca_btl_sm_component_close(void)
 {
     int return_value = OMPI_SUCCESS;
 
@@ -292,7 +257,7 @@ static int mca_btl_sm_component_close(void)
     OBJ_DESTRUCT(&mca_btl_sm_component.sm_lock);
     /**
      * We don't have to destroy the fragment lists. They are allocated
-     * directly into the mmapped file, they will auto-magically disappear
+     * directly into the mmapped file, they will auto-magically dissapear
      * when the file get unmapped.
      */
     /*OBJ_DESTRUCT(&mca_btl_sm_component.sm_frags_eager);*/
@@ -325,7 +290,7 @@ static int mca_btl_sm_component_close(void)
         OBJ_RELEASE(mca_btl_sm_component.sm_seg);
     }
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     /* close/cleanup fifo create for event notification */
     if(mca_btl_sm_component.sm_fifo_fd > 0) {
         /* write a done message down the pipe */
@@ -354,7 +319,7 @@ CLEANUP:
 /*
  *  SM component initialization
  */
-static mca_btl_base_module_t** mca_btl_sm_component_init(
+mca_btl_base_module_t** mca_btl_sm_component_init(
     int *num_btls,
     bool enable_progress_threads,
     bool enable_mpi_threads)
@@ -366,16 +331,11 @@ static mca_btl_base_module_t** mca_btl_sm_component_init(
 
     *num_btls = 0;
 
-    /* if no session directory was created, then we cannot be used */
-    if (!orte_create_session_dirs) {
-        return NULL;
-    }
-    
     /* lookup/create shared memory pool only when used */
     mca_btl_sm_component.sm_mpool = NULL;
     mca_btl_sm_component.sm_mpool_base = NULL;
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     /* create a named pipe to receive events  */
     sprintf( mca_btl_sm_component.sm_fifo_path,
              "%s"OPAL_PATH_SEP"sm_fifo.%lu", orte_process_info.job_session_dir,
@@ -421,106 +381,96 @@ static mca_btl_base_module_t** mca_btl_sm_component_init(
     mca_btl_sm.btl_inited = false;
 
 #if OMPI_BTL_SM_HAVE_KNEM
-    if (mca_btl_sm_component.use_knem) {
-        /* Set knem_status_num_used outside the check for use_knem so that
-           we can only have to check one thing (knem_status_num_used) in
-           the progress loop. */
-        mca_btl_sm.knem_fd = -1;
-        mca_btl_sm.knem_status_array = NULL;
-        mca_btl_sm.knem_frag_array = NULL;
-        mca_btl_sm.knem_status_num_used = 0;
-        mca_btl_sm.knem_status_first_avail = 0;
-        mca_btl_sm.knem_status_first_used = 0;
+    /* Set knem_status_num_used outside the check for use_knem so that
+       we can only have to check one thing (knem_status_num_used) in
+       the progress loop. */
+    mca_btl_sm.knem_fd = -1;
+    mca_btl_sm.knem_status_array = NULL;
+    mca_btl_sm.knem_frag_array = NULL;
+    mca_btl_sm.knem_status_num_used = 0;
+    mca_btl_sm.knem_status_first_avail = 0;
+    mca_btl_sm.knem_status_first_used = 0;
 
-        if (0 != mca_btl_sm_component.use_knem) {
-            /* Open the knem device.  Try to print a helpful message if we
-               fail to open it. */
-            mca_btl_sm.knem_fd = open("/dev/knem", O_RDWR);
-            if (mca_btl_sm.knem_fd < 0) {
-                if (EACCES == errno) {
-                    struct stat sbuf;
-                    if (0 != stat("/dev/knem", &sbuf)) {
-                        sbuf.st_mode = 0;
-                    }
-                    orte_show_help("help-mpi-btl-sm.txt", "knem permission denied",
-                                   true, orte_process_info.nodename, sbuf.st_mode);
-                } else {
-                    orte_show_help("help-mpi-btl-sm.txt", "knem fail open",
-                                   true, orte_process_info.nodename, errno,
-                                   strerror(errno));
+    if (0 != mca_btl_sm_component.use_knem) {
+        /* Open the knem device.  Try to print a helpful message if we
+           fail to open it. */
+        mca_btl_sm.knem_fd = open("/dev/knem", O_RDWR);
+        if (mca_btl_sm.knem_fd < 0) {
+            if (EACCES == errno) {
+                struct stat sbuf;
+                if (0 != stat("/dev/knem", &sbuf)) {
+                    sbuf.st_mode = 0;
                 }
-                goto no_knem;
+                orte_show_help("help-mpi-btl-sm.txt", "knem permission denied",
+                               true, orte_process_info.nodename, sbuf.st_mode);
+            } else {
+                orte_show_help("help-mpi-btl-sm.txt", "knem fail open",
+                               true, orte_process_info.nodename, errno,
+                               strerror(errno));
             }
+            goto no_knem;
+        }
 
-            /* Check that the ABI if the kernel module running is the same
-               as what we were compiled against */
-            rc = ioctl(mca_btl_sm.knem_fd, KNEM_CMD_GET_INFO,
-                       &mca_btl_sm_component.knem_info);
-            if (rc < 0) {
-                orte_show_help("help-mpi-btl-sm.txt", "knem get ABI fail",
+        /* Check that the ABI if the kernel module running is the same
+           as what we were compiled against */
+        rc = ioctl(mca_btl_sm.knem_fd, KNEM_CMD_GET_INFO, 
+                   &mca_btl_sm_component.knem_info);
+        if (rc < 0) {
+            orte_show_help("help-mpi-btl-sm.txt", "knem get ABI fail",
+                           true, orte_process_info.nodename, errno,
+                           strerror(errno));
+            goto no_knem;
+        }
+        if (KNEM_ABI_VERSION != mca_btl_sm_component.knem_info.abi) {
+            orte_show_help("help-mpi-btl-sm.txt", "knem ABI mismatch",
+                           true, orte_process_info.nodename, KNEM_ABI_VERSION,
+                           mca_btl_sm_component.knem_info.abi);
+            goto no_knem;
+        }
+
+        /* If we want DMA mode and DMA mode is supported, then set
+           knem_dma_flag to KNEM_FLAG_DMA. */
+        mca_btl_sm_component.knem_dma_flag = 0;
+        if (mca_btl_sm_component.knem_dma_min > 0 && 
+            (mca_btl_sm_component.knem_info.features & KNEM_FEATURE_DMA)) {
+            mca_btl_sm_component.knem_dma_flag = KNEM_FLAG_DMA;
+        }
+
+        /* Get the array of statuses from knem if max_simultaneous > 0 */
+        if (mca_btl_sm_component.knem_max_simultaneous > 0) {
+            mca_btl_sm.knem_status_array = mmap(NULL, 
+                                                mca_btl_sm_component.knem_max_simultaneous,
+                                                (PROT_READ | PROT_WRITE), 
+                                                MAP_SHARED, mca_btl_sm.knem_fd, 
+                                                KNEM_STATUS_ARRAY_FILE_OFFSET);
+            if (MAP_FAILED == mca_btl_sm.knem_status_array) {
+                orte_show_help("help-mpi-btl-sm.txt", "knem mmap fail",
                                true, orte_process_info.nodename, errno,
                                strerror(errno));
                 goto no_knem;
             }
-            if (KNEM_ABI_VERSION != mca_btl_sm_component.knem_info.abi) {
-                orte_show_help("help-mpi-btl-sm.txt", "knem ABI mismatch",
-                               true, orte_process_info.nodename, KNEM_ABI_VERSION,
-                               mca_btl_sm_component.knem_info.abi);
+
+            /* The first available status index is 0.  Make an empty frag
+               array. */
+            mca_btl_sm.knem_frag_array = (mca_btl_sm_frag_t **)
+                malloc(sizeof(mca_btl_sm_frag_t *) *
+                       mca_btl_sm_component.knem_max_simultaneous);
+            if (NULL == mca_btl_sm.knem_frag_array) {
+                orte_show_help("help-mpi-btl-sm.txt", "knem init fail",
+                               true, orte_process_info.nodename, "malloc",
+                               errno, strerror(errno));
                 goto no_knem;
             }
-
-            /* If we want DMA mode and DMA mode is supported, then set
-               knem_dma_flag to KNEM_FLAG_DMA. */
-            mca_btl_sm_component.knem_dma_flag = 0;
-            if (mca_btl_sm_component.knem_dma_min > 0 &&
-                (mca_btl_sm_component.knem_info.features & KNEM_FEATURE_DMA)) {
-                mca_btl_sm_component.knem_dma_flag = KNEM_FLAG_DMA;
-            }
-
-            /* Get the array of statuses from knem if max_simultaneous > 0 */
-            if (mca_btl_sm_component.knem_max_simultaneous > 0) {
-                mca_btl_sm.knem_status_array = mmap(NULL,
-                                                    mca_btl_sm_component.knem_max_simultaneous,
-                                                    (PROT_READ | PROT_WRITE),
-                                                    MAP_SHARED, mca_btl_sm.knem_fd,
-                                                    KNEM_STATUS_ARRAY_FILE_OFFSET);
-                if (MAP_FAILED == mca_btl_sm.knem_status_array) {
-                    orte_show_help("help-mpi-btl-sm.txt", "knem mmap fail",
-                                   true, orte_process_info.nodename, errno,
-                                   strerror(errno));
-                    goto no_knem;
-                }
-
-                /* The first available status index is 0.  Make an empty frag
-                   array. */
-                mca_btl_sm.knem_frag_array = (mca_btl_sm_frag_t **)
-                    malloc(sizeof(mca_btl_sm_frag_t *) *
-                           mca_btl_sm_component.knem_max_simultaneous);
-                if (NULL == mca_btl_sm.knem_frag_array) {
-                    orte_show_help("help-mpi-btl-sm.txt", "knem init fail",
-                                   true, orte_process_info.nodename, "malloc",
-                                   errno, strerror(errno));
-                    goto no_knem;
-                }
-            }
-        }
-        /* Set the BTL get function pointer if we're supporting KNEM;
-           choose between synchronous and asynchronous. */
-        if (mca_btl_sm_component.knem_max_simultaneous > 0) {
-            mca_btl_sm.super.btl_get = mca_btl_sm_get_async;
-        } else {
-            mca_btl_sm.super.btl_get = mca_btl_sm_get_sync;
         }
     }
-#endif /* OMPI_BTL_SM_HAVE_KNEM */
-
-#if OMPI_BTL_SM_HAVE_CMA
-    if (mca_btl_sm_component.use_cma) {
-        /* Will only ever have either cma or knem enabled at runtime
-           so no problems with accidentally overwriting this set earlier */
+    /* Set the BTL get function pointer if we're supporting KNEM;
+       choose between synchronous and asynchronous. */
+    if (mca_btl_sm_component.knem_max_simultaneous > 0) {
+        mca_btl_sm.super.btl_get = mca_btl_sm_get_async;
+    } else {
         mca_btl_sm.super.btl_get = mca_btl_sm_get_sync;
     }
-#endif /* OMPI_BTL_SM_HAVE_CMA */
+#endif
 
     return btls;
 
@@ -560,7 +510,7 @@ static mca_btl_base_module_t** mca_btl_sm_component_init(
  *  SM component progress.
  */
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 void mca_btl_sm_component_event_thread(opal_object_t* thread)
 {
     while(1) {
@@ -609,7 +559,6 @@ void btl_sm_process_pending_sends(struct mca_btl_base_endpoint_t *ep)
 int mca_btl_sm_component_progress(void)
 {
     /* local variables */
-    mca_btl_base_segment_t seg;
     mca_btl_sm_frag_t *frag;
     mca_btl_sm_frag_t Frag;
     sm_fifo_t *fifo = NULL;
@@ -672,10 +621,11 @@ int mca_btl_sm_component_progress(void)
 #endif
                 /* recv upcall */
                 reg = mca_btl_base_active_message_trigger + hdr->tag;
-                seg.seg_addr.pval = ((char *)hdr) + sizeof(mca_btl_sm_hdr_t);
-                seg.seg_len = hdr->len;
+                Frag.segment.seg_addr.pval = ((char*)hdr) +
+                    sizeof(mca_btl_sm_hdr_t);
+                Frag.segment.seg_len = hdr->len;
                 Frag.base.des_dst_cnt = 1;
-                Frag.base.des_dst = &seg;
+                Frag.base.des_dst = &(Frag.segment);
                 reg->cbfunc(&mca_btl_sm.super, hdr->tag, &(Frag.base),
                             reg->cbdata);
                 /* return the fragment */

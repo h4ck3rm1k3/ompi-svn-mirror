@@ -28,19 +28,13 @@
 #define MCA_BTL_MX_RECV  0x02
 
 BEGIN_C_DECLS
-
-struct mca_btl_mx_segment_t {
-  mca_btl_base_segment_t base;
-  uint64_t key;
-};
-typedef struct mca_btl_mx_segment_t mca_btl_mx_segment_t;
     
 /**
  * MX send framxent derived type.
  */
 struct mca_btl_mx_frag_t {
     mca_btl_base_descriptor_t       base; 
-    mca_btl_mx_segment_t            segment[2]; 
+    mca_btl_base_segment_t          segment[2]; 
     struct mca_btl_base_endpoint_t* endpoint; 
     uint8_t                         type;
     mx_request_t                    mx_request;
@@ -74,7 +68,7 @@ do {                                                                          \
     if( OPAL_LIKELY(NULL != item) ) {                                         \
         frag = (mca_btl_mx_frag_t*) item;                                     \
         frag->mx_frag_list = &(mca_btl_mx_component.mx_send_eager_frags);     \
-        frag->segment[0].base.seg_addr.pval = (void*)(frag+1);                \
+        frag->segment[0].seg_addr.pval = (void*)(frag+1);                     \
     }                                                                         \
 } while(0)
 

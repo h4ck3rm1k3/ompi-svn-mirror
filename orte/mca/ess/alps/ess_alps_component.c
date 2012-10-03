@@ -5,16 +5,16 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
- *
+ * 
  * Additional copyrights may follow
- *
+ * 
  * $HEADER$
  *
  * These symbols are in a file by themselves to provide nice linker
@@ -42,7 +42,7 @@ orte_ess_base_component_t mca_ess_alps_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     {
-        ORTE_ESS_BASE_VERSION_3_0_0,
+        ORTE_ESS_BASE_VERSION_2_0_0,
 
         /* Component name and version */
         "alps",
@@ -61,19 +61,36 @@ orte_ess_base_component_t mca_ess_alps_component = {
     }
 };
 
+
 int
 orte_ess_alps_component_open(void)
 {
     return ORTE_SUCCESS;
 }
 
+
 int orte_ess_alps_component_query(mca_base_module_t **module, int *priority)
 {
-    /* we only build if CNOS support is available, so select us */
+#if ORTE_MCA_ESS_ALPS_HAVE_CNOS == 1
     *priority = 35;
     *module = (mca_base_module_t *)&orte_ess_alps_module;
     return ORTE_SUCCESS;
+#else
+    /* if i'm a daemon, then only i can safely select this component if
+     * PMI_GNI_LOC_ADDR exists */
+    if (NULL != getenv("PMI_GNI_LOC_ADDR") &&
+        ORTE_PROC_IS_DAEMON) {
+        *priority = 35;
+        *module = (mca_base_module_t *)&orte_ess_alps_module;
+        return ORTE_SUCCESS;
+    }
+    /* can't be selected, so disqualify myself */
+    *priority = -1;
+    *module = NULL;
+    return ORTE_ERROR;
+#endif /* ORTE_MCA_ESS_ALPS_HAVE_CNOS == 1 */
 }
+
 
 int
 orte_ess_alps_component_close(void)

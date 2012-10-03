@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -38,7 +38,7 @@
 #include "opal/class/opal_pointer_array.h"
 #include "opal/class/opal_hash_table.h"
 #include "opal/util/output.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/threads/threads.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/mpool/mpool.h"
@@ -142,7 +142,7 @@ typedef enum {
 /* The structer for manage all BTL SRQs */
 typedef struct mca_btl_openib_srq_manager_t {
     opal_mutex_t lock;
-    /* The keys of this hash table are addresses of
+    /* The keys of this hash table are addresses of 
        SRQs structures, and the elements are BTL modules
        pointers that associated with these SRQs */
     opal_hash_table_t srq_addr_table;
@@ -199,7 +199,6 @@ struct mca_btl_openib_component_t {
 
     size_t eager_limit;      /**< Eager send limit of first fragment, in Bytes */
     size_t max_send_size;    /**< Maximum send size, in Bytes */
-    uint32_t max_hw_msg_size;/**< Maximum message size for RDMA protocols in Bytes */
     uint32_t reg_mru_len;    /**< Length of the registration cache most recently used list */
     uint32_t use_srq;        /**< Use the Shared Receive Queue (SRQ mode) */
 
@@ -355,7 +354,7 @@ struct mca_btl_base_endpoint_t;
 typedef struct mca_btl_openib_device_t {
     opal_object_t super;
     struct ibv_device *ib_dev;  /* the ib device */
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
     struct ibv_comp_channel *ib_channel; /* Channel event for the device */
     opal_thread_t thread;                /* Progress thread */
     volatile bool progress;              /* Progress status */
@@ -416,12 +415,12 @@ struct mca_btl_openib_module_srq_qp_t {
     /** We post additional WQEs only if a number of WQEs (in specific SRQ) is less of this value.
          The value increased together with rd_curr_num. The value is unique for every SRQ. */
     int32_t rd_low_local;
-    /** The flag points if we want to get the
+    /** The flag points if we want to get the 
          IBV_EVENT_SRQ_LIMIT_REACHED events for dynamically resizing SRQ */
     bool srq_limit_event_flag;
     /**< In difference of the "--mca enable_srq_resize" parameter that says, if we want(or no)
          to start with small num of pre-posted receive buffers (rd_curr_num) and to increase this number by needs
-         (the max of this value is rd_num * the whole size of SRQ), the "srq_limit_event_flag" says if we want to get limit event
+         (the max of this value is rd_num – the whole size of SRQ), the "srq_limit_event_flag" says if we want to get limit event
          from device if the defined srq limit was reached (signal to the main thread) and we put off this flag if the rd_curr_num
          was increased up to rd_num.
          In order to prevent lock/unlock operation in the critical path we prefer only put-on
@@ -486,7 +485,7 @@ struct mca_btl_openib_reg_t {
 };
 typedef struct mca_btl_openib_reg_t mca_btl_openib_reg_t;
 
-#if OMPI_ENABLE_PROGRESS_THREADS == 1
+#if OPAL_ENABLE_PROGRESS_THREADS == 1
 extern void* mca_btl_openib_progress_thread(opal_object_t*);
 #endif
 
@@ -593,7 +592,7 @@ extern int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     uint32_t flags,
     mca_btl_base_tag_t tag,
     mca_btl_base_descriptor_t** descriptor
-);
+); 
 
 /**
  * PML->BTL Initiate a put of the specified size.

@@ -9,9 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -59,10 +56,21 @@ BEGIN_C_DECLS
  * rmaps module functions
  */
 
-/* mapping event - the event one activates to schedule mapping
- * of procs to nodes for pending jobs
-  */
-ORTE_DECLSPEC extern opal_event_t orte_mapping_event;
+/**
+ * Public API
+ */
+typedef int (*orte_rmaps_base_API_map_fn_t)(orte_job_t *jdata);
+
+typedef orte_job_map_t* (*orte_rmaps_base_API_get_job_map_fn_t)(orte_jobid_t job);
+
+/* global structure for accessing RMAPS API's */
+typedef struct {
+    orte_rmaps_base_API_map_fn_t            map_job;
+    orte_rmaps_base_API_get_job_map_fn_t    get_job_map;
+} orte_rmaps_t;
+
+ORTE_DECLSPEC extern orte_rmaps_t orte_rmaps;
+
 
 /**
 * RMAPS module functions - these are not accessible to the outside world,
@@ -101,6 +109,13 @@ typedef struct orte_rmaps_base_component_2_0_0_t orte_rmaps_base_component_2_0_0
 /** Convenience typedef */
 typedef orte_rmaps_base_component_2_0_0_t orte_rmaps_base_component_t;
 
+
+/**
+ * Macro for use in components that are of type rmaps
+ */
+#define ORTE_RMAPS_BASE_VERSION_2_0_0 \
+  MCA_BASE_VERSION_2_0_0, \
+  "rmaps", 2, 0, 0
 
 END_C_DECLS
 

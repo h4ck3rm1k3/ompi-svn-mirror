@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2007 The University of Tennessee and The University
@@ -10,10 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -101,16 +99,6 @@ extern opal_pointer_array_t ompi_info_f_to_c_table;
 OMPI_DECLSPEC extern ompi_predefined_info_t ompi_mpi_info_null;
 
 /**
- * Symbol for Fortran 03 bindings to bind to
- */
-OMPI_DECLSPEC extern ompi_predefined_info_t *ompi_mpi_info_null_addr;
-
-/**
- * Global instance for MPI_INFO_ENV
- */
-OMPI_DECLSPEC extern ompi_predefined_info_t ompi_mpi_info_env;
-
-/**
  * \internal
  * Some declarations needed to use OBJ_NEW and OBJ_DESTRUCT macros
  */
@@ -160,7 +148,7 @@ int ompi_info_dup (ompi_info_t *info, ompi_info_t **newinfo);
  * @retval MPI_SUCCESS upon success
  * @retval MPI_ERR_NO_MEM if out of memory
  */
-OMPI_DECLSPEC int ompi_info_set (ompi_info_t *info, char *key, char *value);
+int ompi_info_set (ompi_info_t *info, char *key, char *value);
 
 /**
  * ompi_info_free - Free an 'MPI_Info' object.

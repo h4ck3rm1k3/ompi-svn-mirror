@@ -9,9 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -248,9 +247,6 @@ static int hostfile_parse_line(int token, opal_list_t* updates, opal_list_t* exc
         /* store this for later processing */
         node = OBJ_NEW(orte_node_t);
         node->name = strdup(orte_util_hostfile_value.sval);
-        if (NULL != username) {
-            node->username = strdup(username);
-        }
     } else if (ORTE_HOSTFILE_RANK == token) {
         /* we can ignore the rank, but we need to extract the node name. we
          * first need to shift over to the other side of the equal sign as
@@ -333,6 +329,42 @@ static int hostfile_parse_line(int token, opal_list_t* updates, opal_list_t* exc
             node->username = hostfile_parse_string();
             break;
 
+        case ORTE_HOSTFILE_BOARDS:
+            rc = hostfile_parse_int();
+            if (rc < 0) {
+                orte_show_help("help-hostfile.txt", "boards",
+                               true,
+                               cur_hostfile_name, rc);
+                OBJ_RELEASE(node);
+                return ORTE_ERROR;
+            }
+            node->boards = rc;
+            break;
+
+        case ORTE_HOSTFILE_SOCKETS_PER_BOARD:
+            rc = hostfile_parse_int();
+            if (rc < 0) {
+                orte_show_help("help-hostfile.txt", "sockets",
+                               true,
+                               cur_hostfile_name, rc);
+                OBJ_RELEASE(node);
+                return ORTE_ERROR;
+            }
+            node->sockets_per_board = rc;
+            break;
+
+        case ORTE_HOSTFILE_CORES_PER_SOCKET:
+            rc = hostfile_parse_int();
+            if (rc < 0) {
+                orte_show_help("help-hostfile.txt", "cores",
+                               true,
+                               cur_hostfile_name, rc);
+                OBJ_RELEASE(node);
+                return ORTE_ERROR;
+            }
+            node->cores_per_socket = rc;
+            break;
+
         case ORTE_HOSTFILE_COUNT:
         case ORTE_HOSTFILE_CPU:
         case ORTE_HOSTFILE_SLOTS:
@@ -391,14 +423,12 @@ static int hostfile_parse_line(int token, opal_list_t* updates, opal_list_t* exc
     }
 
 done:
-    if (got_count) {
-        node->slots_given = true;
-    } else if (got_max) {
-        node->slots = node->slots_max;
-        node->slots_given = true;
-    } else {
-        /* should be set by obj_new, but just to be clear */
-        node->slots_given = false;
+    if (!got_count) {
+        if (got_max) {
+            node->slots = node->slots_max;
+        } else {
+            ++node->slots;
+        }
     }
     opal_list_append(updates, &node->super);
 
@@ -421,25 +451,8 @@ static int hostfile_parse(const char *hostfile, opal_list_t* updates, opal_list_
     orte_util_hostfile_done = false;
     orte_util_hostfile_in = fopen(hostfile, "r");
     if (NULL == orte_util_hostfile_in) {
-        if (NULL == orte_default_hostfile ||
-            0 != strcmp(orte_default_hostfile, hostfile)) {
-            /* not the default hostfile, so not finding it
-             * is an error
-             */
-            orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
-            rc = ORTE_ERR_SILENT;
-            goto unlock;
-        }
-        /* if this is the default hostfile and it was given,
-         * then it's an error
-         */
-        if (orte_default_hostfile_given) {
-            orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
-            rc = ORTE_ERR_NOT_FOUND;
-            goto unlock;
-        }
-        /* otherwise, not finding it is okay */
-        rc = ORTE_SUCCESS;
+        orte_show_help("help-hostfile.txt", "no-hostfile", true, hostfile);
+        rc = ORTE_ERR_NOT_FOUND;
         goto unlock;
     }
 
@@ -493,6 +506,7 @@ unlock:
  */
 
 int orte_util_add_hostfile_nodes(opal_list_t *nodes,
+                                 bool *override_oversubscribed,
                                  char *hostfile)
 {
     opal_list_t exclude;
@@ -543,6 +557,15 @@ int orte_util_add_hostfile_nodes(opal_list_t *nodes,
         OBJ_RELEASE(item);
     }
     
+    /* indicate that ORTE should override any oversubscribed conditions
+     * based on local hardware limits since the user (a) might not have
+     * provided us any info on the #slots for a node, and (b) the user
+     * might have been wrong! If we don't check the number of local physical
+     * processors, then we could be too aggressive on our sched_yield setting
+     * and cause performance problems.
+     */
+    *override_oversubscribed = true;
+
 cleanup:
     OBJ_DESTRUCT(&exclude);
 
@@ -554,8 +577,7 @@ cleanup:
  * are not found in the hostfile
  */
 int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
-                                    char *hostfile,
-                                    bool remove)
+                                    char *hostfile)
 {
     opal_list_t newnodes, exclude;
     opal_list_item_t *item1, *item2, *next, *item3;
@@ -584,8 +606,7 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
     if (0 == opal_list_get_size(&newnodes)) {
         OBJ_DESTRUCT(&newnodes);
         OBJ_DESTRUCT(&exclude);
-        /* indicate that the hostfile was empty */
-        return ORTE_ERR_TAKE_NEXT_OPTION;
+        return ORTE_SUCCESS;
     }
 
     /* remove from the list of newnodes those that are in the exclude list
@@ -599,7 +620,6 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
             orte_node_t *node = (orte_node_t*)item2;
             if (0 == strcmp(node_from_file->name, node->name)) {
                 /* match - remove it */
-                opal_output(0, "HOST %s ON EXCLUDE LIST - REMOVING", node->name);
                 opal_list_remove_item(&newnodes, item2);
                 OBJ_RELEASE(item2);
                 break;
@@ -608,7 +628,7 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
         OBJ_RELEASE(item1);
     }
     
-    /* now check our nodes and keep or mark those that match. We can
+    /* now check our nodes and keep those that match. We can
      * destruct our hostfile list as we go since this won't be needed
      */
     OBJ_CONSTRUCT(&keep, opal_list_t);
@@ -654,15 +674,10 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
                                 goto skipnode;
                             }
                         }
-                        if (remove) {
-                            /* remove item from list */
-                            opal_list_remove_item(nodes, item1);
-                            /* xfer to keep list */
-                            opal_list_append(&keep, item1);
-                        } else {
-                            /* mark as included */
-                            node_from_list->mapped = true;
-                        }
+                        /* remove item from list */
+                        opal_list_remove_item(nodes, item1);
+                        /* xfer to keep list */
+                        opal_list_append(&keep, item1);
                         --num_empty;
                     }
                 skipnode:
@@ -694,15 +709,10 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
                      item1 = opal_list_get_next(nodes)) {
                     node_from_list = (orte_node_t*)item1;
                     if (0 == strcmp(node_from_list->name, node_from_pool->name)) {
-                        if (remove) {
-                            /* match - remove item from list */
-                            opal_list_remove_item(nodes, item1);
-                            /* xfer to keep list */
-                            opal_list_append(&keep, item1);
-                        } else {
-                            /* mark as included */
-                            node_from_list->mapped = true;
-                        }
+                        /* match - remove item from list */
+                        opal_list_remove_item(nodes, item1);
+                        /* xfer to keep list */
+                        opal_list_append(&keep, item1);
                         break;
                     }
                 }
@@ -728,8 +738,6 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
                  * we have to check for local interfaces
                  */
                 if (0 == strcmp(node_from_file->name, node_from_list->name) ||
-                    (0 == strcmp(node_from_file->name, "localhost") &&
-                     0 == strcmp(node_from_list->name, orte_process_info.nodename)) ||
                     (opal_ifislocal(node_from_list->name) &&
                      opal_ifislocal(node_from_file->name))) {
                     /* if the slot count here is less than the
@@ -738,17 +746,13 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
                      * to subdivide an allocation
                      */
                     if (node_from_file->slots < node_from_list->slots) {
-                        node_from_list->slots = node_from_file->slots;
+                        node_from_list->slots_alloc = node_from_file->slots;
                     }
-                    if (remove) {
-                        /* remove the node from the list */
-                        opal_list_remove_item(nodes, item1);
-                        /* xfer it to keep list */
-                        opal_list_append(&keep, item1);
-                    } else {
-                        /* mark as included */
-                        node_from_list->mapped = true;
-                    }
+                    /* remove the node from the list */
+                    opal_list_remove_item(nodes, item1);
+                    /* xfer it to keep list */
+                    opal_list_append(&keep, item1);
+                    /* mark as found */
                     found = true;
                     break;
                 }
@@ -780,12 +784,6 @@ int orte_util_filter_hostfile_nodes(opal_list_t *nodes,
         }
         OBJ_DESTRUCT(&newnodes);
         return ORTE_ERR_SILENT;
-    }
-
-    if (!remove) {
-        /* all done */
-        OBJ_DESTRUCT(&newnodes);
-        return ORTE_SUCCESS;
     }
 
     /* clear the rest of the nodes list */
@@ -873,9 +871,9 @@ int orte_util_get_ordered_host_list(opal_list_t *nodes,
                      * to subdivide an allocation
                      */
                     if (node->slots < node_from_pool->slots) {
-                        newnode->slots = node->slots;
+                        newnode->slots_alloc = node->slots;
                     } else {
-                        newnode->slots = node_from_pool->slots;
+                        newnode->slots_alloc = node_from_pool->slots;
                     }
                     opal_list_insert_pos(nodes, item1, &newnode->super);
                     /* track number added */
@@ -926,9 +924,9 @@ int orte_util_get_ordered_host_list(opal_list_t *nodes,
              * to subdivide an allocation
              */
             if (node->slots < node_from_pool->slots) {
-                newnode->slots = node->slots;
+                newnode->slots_alloc = node->slots;
             } else {
-                newnode->slots = node_from_pool->slots;
+                newnode->slots_alloc = node_from_pool->slots;
             }
             /* insert it before item1 */
             opal_list_insert_pos(nodes, item1, &newnode->super);

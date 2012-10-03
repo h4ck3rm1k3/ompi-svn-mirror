@@ -20,12 +20,10 @@
 # $HEADER$
 #
 
-# MCA_opal_shmem_mmap_CONFIG(action-if-can-compile,
-#                        [action-if-cant-compile])
+# MCA_shmem_mmap_CONFIG(action-if-can-compile,
+#                       [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_opal_shmem_mmap_CONFIG],[
-    AC_CONFIG_FILES([opal/mca/shmem/mmap/Makefile])
-
+AC_DEFUN([MCA_shmem_mmap_CONFIG],[
     # do we have the mmap shm stuff?
     AC_MSG_CHECKING([if want mmap shared memory support])
     AC_ARG_ENABLE(mmap-shmem,

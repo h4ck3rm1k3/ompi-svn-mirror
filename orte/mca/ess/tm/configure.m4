@@ -10,27 +10,22 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2011      Los Alamos National Security, LLC.
-#                         All rights reserved.
+# Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
 # $HEADER$
 #
-AC_DEFUN([MCA_orte_ess_tm_PRIORITY], [10])
 
 # MCA_ess_tm_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_orte_ess_tm_CONFIG],[
-    AC_CONFIG_FILES([orte/mca/ess/tm/Makefile])
-
+AC_DEFUN([MCA_ess_tm_CONFIG],[
     ORTE_CHECK_TM([ess_tm], [ess_tm_good=1], [ess_tm_good=0])
          
     # if check worked, set wrapper flags if so.  
     # Evaluate succeed / fail
-    AS_IF([test "$ess_tm_good" = "1" -a "$orte_without_full_support" = 0],
+    AS_IF([test "$ess_tm_good" = "1"],
           [ess_tm_WRAPPER_EXTRA_LDFLAGS="$ess_tm_LDFLAGS"
            ess_tm_WRAPPER_EXTRA_LIBS="$ess_tm_LIBS"
            $1],

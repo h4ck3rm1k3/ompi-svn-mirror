@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -33,7 +33,7 @@ destdir="$4"
 
 # Set this to any value for additional output; typically only when
 # debugging
-debug=1
+debug=
 
 # do you want a success mail?
 want_success_mail=1
@@ -142,14 +142,6 @@ fi
 if test ! -d "$destdir"; then
     die "Could not cd to dest dir: $destdir"
 fi
-
-# make sure we can write to the destdir
-file="$destdir/test-write.$$"
-touch "$file"
-if test ! -f "$file"; then
-    die "Could not write to the dest dir: $destdir"
-fi
-rm -f "$file"
 
 # if there's a $destdir/latest_snapshot.txt, see if anything has
 # happened since that r number.
@@ -274,8 +266,8 @@ svnversion="r`svnversion .`"
 version_files="`find . -name VERSION`"
 d=`date +'%b %d, %Y'`
 for file in $version_files; do
-    sed -e 's/^want_repo_rev=.*/want_repo_rev=1/' \
-        -e 's/^repo_rev=.*/repo_rev='$svnversion/ \
+    sed -e 's/^want_svn=.*/want_svn=1/' \
+        -e 's/^svn_r=.*/svn_r='$svnversion/ \
         -e 's@^date=.*@date="'"$d"' (nightly snapshot tarball)"@' \
         $file > $file.new
     cp -f $file.new $file
@@ -289,7 +281,7 @@ USER="ompibuilder"
 export USER
 
 # autogen is our friend
-do_command "./autogen.pl"
+do_command "./autogen.sh"
 
 # do config
 do_command "./configure --enable-dist"
@@ -309,18 +301,6 @@ save=
 gz="`/bin/ls openmpi*tar.gz`"
 bz2="`/bin/ls openmpi*tar.bz2`"
 mv $gz $bz2 $destdir
-if test "$?" != "0"; then
-    cat <<EOF
-ERROR -- move final tarballs to web tree failed!
-
-From:  `pwd`
-Files: $gz $bz2
-To:    $destdir
-
-The nightly snapshots are therefore not available on the web!
-EOF
-    die "Could not move final tarballs to web dir: $destdir"
-fi
 cd $destdir
 
 # make the latest_snapshot.txt file containing the last version

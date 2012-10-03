@@ -12,7 +12,6 @@
  * Copyright (c) 2007-2008 Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
- * Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -57,11 +56,10 @@
 #include "opal/util/opal_environ.h"
 #include "opal/util/os_dirpath.h"
 #include "opal/util/basename.h"
-#include "opal/util/error.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "opal/util/show_help.h"
 
+#include "orte/util/show_help.h"
 #include "orte/util/proc_info.h"
 
 #include "opal/runtime/opal.h"
@@ -202,31 +200,19 @@ static int parse_args(int argc, char *argv[]) {
      * Initialize list of available command line options.
      */
     opal_cmd_line_create(&cmd_line, cmd_line_opts);
-    ret = opal_cmd_line_parse(&cmd_line, false, argc, argv);
-
-    if (OPAL_SUCCESS != ret) {
-        if (OPAL_ERR_SILENT != ret) {
-            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
-                    opal_strerror(ret));
-        }
-        return ret;
-    }
+    ret = opal_cmd_line_parse(&cmd_line, true, argc, argv);
 
     /**
      * Now start parsing our specific arguments
      */
-    if (orte_clean_globals.help) {
-        char *str, *args = NULL;
+    if (OPAL_SUCCESS != ret || 
+        orte_clean_globals.help) {
+        char *args = NULL;
         args = opal_cmd_line_get_usage_msg(&cmd_line);
-        str = opal_show_help_string("help-orte-clean.txt", "usage", true,
-                                    args);
-        if (NULL != str) {
-            printf("%s", str);
-            free(str);
-        }
+        orte_show_help("help-orte-clean.txt", "usage", true,
+                       args);
         free(args);
-        /* If we show the help message, that should be all we do */
-        exit(0);
+        return ORTE_ERROR;
     }
 
     OBJ_DESTRUCT(&cmd_line);

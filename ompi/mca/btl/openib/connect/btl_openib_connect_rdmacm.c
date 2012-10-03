@@ -4,8 +4,6 @@
  * Copyright (c) 2008      Mellanox Technologies. All rights reserved.
  * Copyright (c) 2009      Sandia National Laboratories. All rights reserved.
  * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  *
  * $COPYRIGHT$
  *
@@ -17,33 +15,19 @@
 #include "ompi_config.h"
 
 #include <rdma/rdma_cma.h>
-#ifdef HAVE_UNISTD_H
 #include <unistd.h>
-#endif
 #include <sys/types.h>
-#ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
-#endif
-#ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
-#endif
-#ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
-#endif
-#ifdef HAVE_NET_IF_H
 #include <net/if.h>
-#endif
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#ifdef HAVE_DIRENT_H
 #include <dirent.h>
-#endif
 #include <stddef.h>
 
 #include "opal/util/output.h"
@@ -56,6 +40,9 @@
 #include "connect/connect.h"
 #include "btl_openib_ip.h"
 #include "btl_openib_ini.h"
+
+/* JMS to be removed: see #1264 */
+#undef event
 
 #define mymin(a, b) ((a) < (b) ? (a) : (b))
 
@@ -106,7 +93,7 @@ typedef struct {
 
 static void rdmacm_contents_constructor(rdmacm_contents_t *contents);
 static void rdmacm_contents_destructor(rdmacm_contents_t *contents);
-OBJ_CLASS_INSTANCE(rdmacm_contents_t, opal_list_item_t,
+OBJ_CLASS_INSTANCE(rdmacm_contents_t, opal_list_item_t, 
                    rdmacm_contents_constructor,
                    rdmacm_contents_destructor);
 
@@ -140,7 +127,7 @@ typedef struct {
 
 static void id_context_constructor(id_context_t *context);
 static void id_context_destructor(id_context_t *context);
-OBJ_CLASS_INSTANCE(id_context_t, opal_list_item_t,
+OBJ_CLASS_INSTANCE(id_context_t, opal_list_item_t, 
                    id_context_constructor,
                    id_context_destructor);
 
@@ -223,7 +210,7 @@ static void rdmacm_contents_destructor(rdmacm_contents_t *contents)
 /*
  * Invoked by main thread
  *
- * Sets up any rdma_cm specific commandline params
+ * Sets up any rdma_cm specific commandline params 
  */
 static void rdmacm_component_register(void)
 {
@@ -285,8 +272,8 @@ static void rdmacm_component_register(void)
  */
 static char *stringify(uint32_t addr)
 {
-    char *line = (char *) malloc(64);
-    asprintf(&line, "%d.%d.%d.%d (0x%x)",
+    char *line = malloc(64);
+    asprintf(&line, "%d.%d.%d.%d (0x%x)", 
 #if defined(WORDS_BIGENDIAN)
              (addr >> 24),
              (addr >> 16) & 0xff,
@@ -304,7 +291,7 @@ static char *stringify(uint32_t addr)
 
 /*
  * Invoked by service thread
- *
+ * 
  * This function traverses the list of endpoints associated with the
  * device and determines which of them the remote side is attempting
  * to connect to.  This is determined based on the local endpoint's
@@ -333,12 +320,12 @@ static mca_btl_openib_endpoint_t *rdmacm_find_endpoint(rdmacm_contents_t *conten
         mca_btl_openib_endpoint_t *endpoint;
         modex_message_t *message;
 
-        endpoint = (mca_btl_openib_endpoint_t *) opal_pointer_array_get_item(endpoints, i);
+        endpoint = opal_pointer_array_get_item(endpoints, i);
         if (NULL == endpoint) {
             continue;
         }
 
-        message = (modex_message_t *) endpoint->endpoint_remote_cpc_data->cbm_modex_message;
+        message = endpoint->endpoint_remote_cpc_data->cbm_modex_message;
         OPAL_OUTPUT((-1, "message ipaddr = %s port %d",
                      a = stringify(message->ipaddr), message->tcp_port));
 #if OPAL_ENABLE_DEBUG
@@ -358,7 +345,7 @@ static mca_btl_openib_endpoint_t *rdmacm_find_endpoint(rdmacm_contents_t *conten
 }
 
 /*
- * Returns max inlne size for qp #N
+ * Returns max inlne size for qp #N 
  */
 static uint32_t max_inline_size(int qp, mca_btl_openib_device_t *device)
 {
@@ -423,7 +410,7 @@ static int rdmacm_setup_qp(rdmacm_contents_t *contents,
         attr.cap.max_recv_wr = 0;
     }
     attr.cap.max_send_wr = max_send_wr;
-    attr.cap.max_inline_data = req_inline =
+    attr.cap.max_inline_data = req_inline = 
         max_inline_size(qpnum, contents->openib_btl->device);
     attr.cap.max_send_sge = 1;
     attr.cap.max_recv_sge = 1; /* we do not use SG list */
@@ -471,7 +458,7 @@ out:
 }
 
 
-/*
+/* 
  * Invoked by both main and service threads
  *
  * To avoid all kinds of nasty race conditions, we only allow
@@ -488,7 +475,7 @@ static bool i_initiate(uint32_t local_ipaddr, uint16_t local_port,
     char *a = stringify(local_ipaddr);
     char *b = stringify(remote_ipaddr);
 #endif
-
+    
     if (local_ipaddr > remote_ipaddr ||
         (local_ipaddr == remote_ipaddr && local_port < remote_port)) {
         OPAL_OUTPUT((-1, "i_initiate (I WIN): local ipaddr %s, remote ipaddr %s",
@@ -562,10 +549,10 @@ static int rdmacm_client_connect_one(rdmacm_contents_t *contents,
      * RDMA_CM_EVENT_ADDR_RESOLVED event will occur on the local event
      * handler.
      */
-    OPAL_OUTPUT((-1, "MAIN Resolving id: from IP %s:%d to IP %s:%d",
-                 a = stringify(contents->ipaddr),
+    OPAL_OUTPUT((-1, "MAIN Resolving id: from IP %s:%d to IP %s:%d", 
+                 a = stringify(contents->ipaddr), 
                  contents->tcp_port,
-                 b = stringify(message->ipaddr),
+                 b = stringify(message->ipaddr), 
                  message->tcp_port));
 #if OPAL_ENABLE_DEBUG
     free(a);
@@ -627,7 +614,7 @@ out:
     return OMPI_ERROR;
 }
 
-/*
+/* 
  * Invoked by main thread
  *
  * Connect method called by the upper layers to connect the local
@@ -649,7 +636,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
        invoked from the event_handler (to intitiate connections in the
        Right direction), where we don't have the CPC, so it'll be
        NULL. */
-    local_message =
+    local_message = 
         (modex_message_t *) endpoint->endpoint_local_cpc->data.cbm_modex_message;
     message = (modex_message_t *)
         endpoint->endpoint_remote_cpc_data->cbm_modex_message;
@@ -696,8 +683,8 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
 
     /* Are we the initiator?  Or do we expect this connect request to
        be rejected? */
-    endpoint->endpoint_initiator =
-        i_initiate(contents->ipaddr, contents->tcp_port,
+    endpoint->endpoint_initiator = 
+        i_initiate(contents->ipaddr, contents->tcp_port, 
                    message->ipaddr, message->tcp_port);
     OPAL_OUTPUT((-1, "MAIN Start connect; ep=%p (%p), I %s the initiator to %s",
                  (void*) endpoint,
@@ -709,7 +696,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
     if (contents->endpoint->endpoint_initiator) {
         /* Initiator needs a CTS frag (non-initiator will have a CTS
            frag allocated later) */
-        if (OMPI_SUCCESS !=
+        if (OMPI_SUCCESS != 
             (rc = ompi_btl_openib_connect_base_alloc_cts(contents->endpoint))) {
             BTL_ERROR(("Failed to alloc CTS frag"));
             goto out;
@@ -718,7 +705,7 @@ static int rdmacm_module_start_connect(ompi_btl_openib_connect_base_module_t *cp
         for (qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
             rc = rdmacm_client_connect_one(contents, message, qp);
             if (OMPI_SUCCESS != rc) {
-                BTL_ERROR(("rdmacm_client_connect_one error (real QP %d)",
+                BTL_ERROR(("rdmacm_client_connect_one error (real QP %d)", 
                            qp));
                 goto out;
             }
@@ -748,7 +735,7 @@ out:
 static void *show_help_cant_find_endpoint(void *context)
 {
     char *msg;
-    cant_find_endpoint_context_t *c =
+    cant_find_endpoint_context_t *c = 
         (cant_find_endpoint_context_t*) context;
 
     if (NULL != c) {
@@ -772,7 +759,7 @@ static void *show_help_cant_find_endpoint(void *context)
     return NULL;
 }
 
-/*
+/* 
  * Invoked by service thread
  *
  * The server thread will handle the incoming connection requests and
@@ -805,7 +792,7 @@ static int handle_connect_request(struct rdma_cm_event *event)
     endpoint = rdmacm_find_endpoint(contents, event->id, rem_port);
     if (NULL == endpoint) {
         struct sockaddr *peeraddr = rdma_get_peer_addr(event->id);
-        cant_find_endpoint_context_t *c = (cant_find_endpoint_context_t *) calloc(1, sizeof(*c));
+        cant_find_endpoint_context_t *c = calloc(1, sizeof(*c));
         if (NULL != c) {
             snprintf(c->device_name, sizeof(c->device_name) - 1,
                      "%s:%d",
@@ -819,13 +806,13 @@ static int handle_connect_request(struct rdma_cm_event *event)
         goto out;
     }
 
-    message = (modex_message_t *) endpoint->endpoint_remote_cpc_data->cbm_modex_message;
-    endpoint->endpoint_initiator =
+    message = endpoint->endpoint_remote_cpc_data->cbm_modex_message;
+    endpoint->endpoint_initiator = 
         i_initiate(contents->ipaddr, contents->tcp_port,
                    message->ipaddr, rem_port);
 
     BTL_VERBOSE(("ep state = %d, local ipaddr = %x, remote ipaddr = %x, local port = %d, remote port = %d",
-                 endpoint->endpoint_state, contents->ipaddr, message->ipaddr,
+                 endpoint->endpoint_state, contents->ipaddr, message->ipaddr, 
                  contents->tcp_port, rem_port));
 
     OPAL_OUTPUT((-1, "SERVICE in handle_connect_request; ep=%p (%p), I still %s the initiator to %s",
@@ -877,7 +864,7 @@ static int handle_connect_request(struct rdma_cm_event *event)
     if (mca_btl_openib_component.credits_qp == qpnum) {
         struct ibv_recv_wr *bad_wr, *wr;
 
-        if (OMPI_SUCCESS !=
+        if (OMPI_SUCCESS != 
             ompi_btl_openib_connect_base_alloc_cts(endpoint)) {
             BTL_ERROR(("Failed to alloc CTS frag"));
             goto out1;
@@ -886,7 +873,7 @@ static int handle_connect_request(struct rdma_cm_event *event)
         assert(NULL != wr);
         wr->next = NULL;
 
-        if (0 != ibv_post_recv(endpoint->qps[qpnum].qp->lcl_qp,
+        if (0 != ibv_post_recv(endpoint->qps[qpnum].qp->lcl_qp, 
                                wr, &bad_wr)) {
             BTL_ERROR(("failed to post CTS recv buffer"));
             goto out1;
@@ -921,10 +908,10 @@ static int handle_connect_request(struct rdma_cm_event *event)
     /* See rdma_connect(3) for a description of these 2 values.  We
        ensure to pass these values around via the modex so that we can
        compute the values properly. */
-    conn_param.responder_resources =
+    conn_param.responder_resources = 
         mymin(contents->openib_btl->device->ib_dev_attr.max_qp_rd_atom,
               message->device_max_qp_init_rd_atom);
-    conn_param.initiator_depth =
+    conn_param.initiator_depth = 
         mymin(contents->openib_btl->device->ib_dev_attr.max_qp_init_rd_atom,
               message->device_max_qp_rd_atom);
     conn_param.retry_count = mca_btl_openib_component.ib_retry_count;
@@ -999,9 +986,9 @@ static void *call_disconnect_callback(void *v)
     return NULL;
 }
 
-/*
+/* 
  * Invoked by main thread
- *
+ * 
  * Runs *while* the progress thread is running.  We can't stop the
  * progress thread because this function may be invoked to kill a
  * specific endpoint that was the result of MPI-2 dynamics (i.e., this
@@ -1031,12 +1018,12 @@ static int rdmacm_endpoint_finalize(struct mca_btl_base_endpoint_t *endpoint)
     opal_mutex_lock(&client_list_lock);
     num_to_wait_for = disconnect_callbacks = 0;
     for (item = opal_list_get_first(&client_list);
-         item != opal_list_get_end(&client_list);
+         item != opal_list_get_end(&client_list); 
          item = opal_list_get_next(item)) {
         rdmacm_contents_t *contents = (rdmacm_contents_t *) item;
 
         if (endpoint == contents->endpoint) {
-            while (NULL !=
+            while (NULL != 
                    (item2 = opal_list_remove_first(&(contents->ids)))) {
                 /* Fun race condition: we cannot call
                    rdma_disconnect() here in the main thread, because
@@ -1051,10 +1038,8 @@ static int rdmacm_endpoint_finalize(struct mca_btl_base_endpoint_t *endpoint)
                 OPAL_OUTPUT((-1, "MAIN Main thread calling disconnect on ID %p",
                              (void*) ((id_context_t*) item2)->id));
                 ++num_to_wait_for;
-#ifndef __WINDOWS__
                 ompi_btl_openib_fd_run_in_service(call_disconnect_callback,
                                                   item2);
-#endif
             }
 	    /* remove_item returns the item before the item removed,
 	       meaning that the for list is still safe */
@@ -1070,10 +1055,8 @@ static int rdmacm_endpoint_finalize(struct mca_btl_base_endpoint_t *endpoint)
 
     /* Now wait for all the disconnect callbacks to occur */
     while (num_to_wait_for != disconnect_callbacks) {
-#ifndef __WINDOWS__
         ompi_btl_openib_fd_main_thread_drain();
         sched_yield();
-#endif
     }
 
     OPAL_OUTPUT((-1, "MAIN Endpoint finished finalizing"));
@@ -1129,7 +1112,7 @@ static int rdmacm_connect_endpoint(id_context_t *context,
         BTL_ERROR(("Can't find endpoint"));
         return OMPI_ERR_NOT_FOUND;
     }
-    data =
+    data = 
         (rdmacm_endpoint_local_cpc_data_t *)endpoint->endpoint_local_cpc_data;
 
     /* Only notify the upper layers after the last QP has been
@@ -1140,7 +1123,7 @@ static int rdmacm_connect_endpoint(id_context_t *context,
         return OMPI_SUCCESS;
     }
 
-    message = (modex_message_t *) endpoint->endpoint_remote_cpc_data->cbm_modex_message;
+    message = endpoint->endpoint_remote_cpc_data->cbm_modex_message;
     BTL_VERBOSE(("%s connected!!! local %x remote %x state = %d",
                  contents->server?"server":"client",
                  contents->ipaddr,
@@ -1208,7 +1191,7 @@ static int rdmacm_rejected(id_context_t *context, struct rdma_cm_event *event)
         /* Why were we rejected? */
         switch (*((reject_reason_t*) event->param.conn.private_data)) {
         case REJECT_WRONG_DIRECTION:
-            OPAL_OUTPUT((-1, "SERVICE A good reject! for qp %d, id 0x%p",
+            OPAL_OUTPUT((-1, "SERVICE A good reject! for qp %d, id 0x%p", 
                          context->qpnum, (void*) context->id));
             rdmacm_destroy_dummy_qp(context);
             break;
@@ -1259,10 +1242,10 @@ out:
 /*
  * Runs in service thread
  */
-static int create_dummy_cq(rdmacm_contents_t *contents,
+static int create_dummy_cq(rdmacm_contents_t *contents, 
                            mca_btl_openib_module_t *openib_btl)
 {
-    contents->dummy_cq =
+    contents->dummy_cq = 
         ibv_create_cq(openib_btl->device->ib_dev_context, 1, NULL, NULL, 0);
     if (NULL == contents->dummy_cq) {
         BTL_ERROR(("dummy_cq not created"));
@@ -1277,7 +1260,7 @@ out:
 /*
  * Runs in service thread
  */
-static int create_dummy_qp(rdmacm_contents_t *contents,
+static int create_dummy_qp(rdmacm_contents_t *contents, 
                            struct rdma_cm_id *id, int qpnum)
 {
     struct ibv_qp_init_attr attr;
@@ -1345,7 +1328,7 @@ static int finish_connect(id_context_t *context)
     /* If we're the initiator, then setup the QP's and post the CTS
        message buffer */
     if (contents->endpoint->endpoint_initiator) {
-        rc = rdmacm_setup_qp(contents, contents->endpoint,
+        rc = rdmacm_setup_qp(contents, contents->endpoint, 
                              context->id, context->qpnum);
         if (0 != rc) {
             BTL_ERROR(("rdmacm_setup_qp error %d", rc));
@@ -1355,14 +1338,14 @@ static int finish_connect(id_context_t *context)
         if (mca_btl_openib_component.credits_qp == context->qpnum) {
             /* Post a single receive buffer on the smallest QP for the CTS
                protocol */
-
+            
             struct ibv_recv_wr *bad_wr, *wr;
             assert(NULL != contents->endpoint->endpoint_cts_frag.super.super.base.super.ptr);
             wr = &(contents->endpoint->endpoint_cts_frag.rd_desc);
             assert(NULL != wr);
             wr->next = NULL;
-
-            if (0 != ibv_post_recv(contents->endpoint->qps[context->qpnum].qp->lcl_qp,
+            
+            if (0 != ibv_post_recv(contents->endpoint->qps[context->qpnum].qp->lcl_qp, 
                                    wr, &bad_wr)) {
                 BTL_ERROR(("failed to post CTS recv buffer"));
                 goto out1;
@@ -1397,10 +1380,10 @@ static int finish_connect(id_context_t *context)
 
     memset(&conn_param, 0, sizeof(conn_param));
     /* See above comment about rdma_connect(3) and these two values. */
-    conn_param.responder_resources =
+    conn_param.responder_resources = 
         mymin(contents->openib_btl->device->ib_dev_attr.max_qp_rd_atom,
               message->device_max_qp_init_rd_atom);
-    conn_param.initiator_depth =
+    conn_param.initiator_depth = 
         mymin(contents->openib_btl->device->ib_dev_attr.max_qp_init_rd_atom,
               message->device_max_qp_rd_atom);
     conn_param.flow_control = 0;
@@ -1454,7 +1437,7 @@ out:
     return OMPI_ERROR;
 }
 
-/*
+/* 
  * Runs in main thread
  */
 static void *show_help_rdmacm_event_error(void *c)
@@ -1564,14 +1547,14 @@ static int event_handler(struct rdma_cm_event *event)
             found = false;
             if (OMPI_SUCCESS == ompi_btl_openib_ini_query(attr->vendor_id,
                                                           attr->vendor_part_id,
-                                                          &ini) &&
+                                                          &ini) && 
                 ini.rdmacm_reject_causes_connect_error) {
                 found = true;
             }
             if (rdmacm_reject_causes_connect_error) {
                 found = true;
             }
-
+            
             if (found) {
                 OPAL_OUTPUT((-1, "SERVICE Got CONNECT_ERROR, but ignored: %p", (void*) event->id));
                 rc = rdmacm_destroy_dummy_qp(context);
@@ -1626,7 +1609,7 @@ static inline void rdmamcm_event_error(struct rdma_cm_event *event)
         endpoint = ((id_context_t *)event->id->context)->contents->endpoint;
     }
 
-    ompi_btl_openib_fd_run_in_main(mca_btl_openib_endpoint_invoke_error,
+    ompi_btl_openib_fd_run_in_main(mca_btl_openib_endpoint_invoke_error, 
                                    endpoint);
 }
 
@@ -1682,7 +1665,7 @@ static void *rdmacm_event_dispatch(int fd, int flags, void *context)
 /*
  * Runs in main thread
  *
- * CPC init function - Setup all globals here
+ * CPC init function - Setup all globals here 
  */
 static int rdmacm_init(mca_btl_openib_endpoint_t *endpoint)
 {
@@ -1714,14 +1697,14 @@ static int ipaddrcheck(id_context_t *context,
      * up).  Unfortunately, the subnet and IP address look up needs to match or
      * there could be a mismatch if IP Aliases are being used.  For more
      * information on this, please read comment above
-     * mca_btl_openib_get_ip_subnet_id in btl_openib_ip.c
+     * mca_btl_openib_get_ip_subnet_id in btl_openib_ip.c 
      */
-    ipaddr =
-        mca_btl_openib_rdma_get_ipv4addr(openib_btl->device->ib_dev_context,
+    ipaddr = 
+        mca_btl_openib_rdma_get_ipv4addr(openib_btl->device->ib_dev_context, 
                                          openib_btl->port_num);
     if (0 == ipaddr) {
         BTL_VERBOSE(("*** Could not find IP address for %s:%d -- is there an IP address configured for this device?",
-                     ibv_get_device_name(openib_btl->device->ib_dev),
+                     ibv_get_device_name(openib_btl->device->ib_dev), 
                      openib_btl->port_num));
         return OMPI_ERR_NOT_FOUND;
     }
@@ -1733,16 +1716,16 @@ static int ipaddrcheck(id_context_t *context,
 
     /* Ok, we found the IP address of this device/port.  Have we
        already see this IP address/TCP port before? */
-    for (item = opal_list_get_first(&server_listener_list);
-         item != opal_list_get_end(&server_listener_list);
+    for (item = opal_list_get_first(&server_listener_list); 
+         item != opal_list_get_end(&server_listener_list); 
          item = opal_list_get_next(item)) {
         rdmacm_contents_t *contents = (rdmacm_contents_t *)item;
-        BTL_VERBOSE(("paddr = %x, ipaddr addr = %x",
+        BTL_VERBOSE(("paddr = %x, ipaddr addr = %x", 
                      contents->ipaddr, ipaddr));
         if (contents->ipaddr == ipaddr &&
             contents->tcp_port == server_tcp_port) {
             str = stringify(ipaddr);
-            BTL_VERBOSE(("server already listening on %s:%d",
+            BTL_VERBOSE(("server already listening on %s:%d", 
                          str, server_tcp_port));
             free(str);
             already_exists = true;
@@ -1753,7 +1736,7 @@ static int ipaddrcheck(id_context_t *context,
     /* If we haven't seen it before, save it */
     if (!already_exists) {
         str = stringify(ipaddr);
-        BTL_VERBOSE(("creating new server to listen on %s:%d",
+        BTL_VERBOSE(("creating new server to listen on %s:%d", 
                      str, server_tcp_port));
         free(str);
         server->ipaddr = ipaddr;
@@ -1763,8 +1746,8 @@ static int ipaddrcheck(id_context_t *context,
     return already_exists ? OMPI_ERROR : OMPI_SUCCESS;
 }
 
-static int create_message(rdmacm_contents_t *server,
-                          mca_btl_openib_module_t *openib_btl,
+static int create_message(rdmacm_contents_t *server, 
+                          mca_btl_openib_module_t *openib_btl, 
                           ompi_btl_openib_connect_base_module_data_t *data)
 {
     modex_message_t *message;
@@ -1772,20 +1755,20 @@ static int create_message(rdmacm_contents_t *server,
     char *a;
 #endif
 
-    message = (modex_message_t *) malloc(sizeof(modex_message_t));
+    message = malloc(sizeof(modex_message_t));
     if (NULL == message) {
         BTL_ERROR(("malloc failed"));
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
-    message->device_max_qp_rd_atom =
+    message->device_max_qp_rd_atom = 
         openib_btl->device->ib_dev_attr.max_qp_rd_atom;
-    message->device_max_qp_init_rd_atom =
+    message->device_max_qp_init_rd_atom = 
         openib_btl->device->ib_dev_attr.max_qp_init_rd_atom;
     message->ipaddr = server->ipaddr;
     message->tcp_port = server->tcp_port;
 
-    OPAL_OUTPUT((-1, "Message IP address is %s, port %d",
+    OPAL_OUTPUT((-1, "Message IP address is %s, port %d", 
                  a = stringify(message->ipaddr), message->tcp_port));
 #if OPAL_ENABLE_DEBUG
     free(a);
@@ -1796,7 +1779,7 @@ static int create_message(rdmacm_contents_t *server,
     return OMPI_SUCCESS;
 }
 
-/*
+/* 
  * Runs in main thread
  *
  * This function determines if the RDMACM is a possible cpc method and
@@ -1820,7 +1803,7 @@ static int rdmacm_component_query(mca_btl_openib_module_t *openib_btl, ompi_btl_
 
     BTL_VERBOSE(("rdmacm_component_query"));
 
-    *cpc = (ompi_btl_openib_connect_base_module_t *) malloc(sizeof(ompi_btl_openib_connect_base_module_t));
+    *cpc = malloc(sizeof(ompi_btl_openib_connect_base_module_t));
     if (NULL == *cpc) {
         rc = OMPI_ERR_OUT_OF_RESOURCE;
         goto out;
@@ -1941,7 +1924,7 @@ out:
     } else {
         opal_output_verbose(5, mca_btl_base_output,
                             "openib BTL: rmacm CPC unavailable for use on %s:%d; fatal error %d (%s)",
-                            ibv_get_device_name(openib_btl->device->ib_dev),
+                            ibv_get_device_name(openib_btl->device->ib_dev), 
                             openib_btl->port_num, rc,
                             opal_strerror(rc));
     }
@@ -1968,10 +1951,8 @@ static int rdmacm_component_finalize(void)
     }
 
     if (NULL != event_channel) {
-#ifndef __WINDOWS__
-        rc = ompi_btl_openib_fd_unmonitor(event_channel->fd,
+        rc = ompi_btl_openib_fd_unmonitor(event_channel->fd, 
                                           rdmacm_unmonitor, (void*) &barrier);
-#endif
         if (OMPI_SUCCESS != rc) {
             BTL_ERROR(("Error disabling fd monitor"));
         }
@@ -1979,9 +1960,7 @@ static int rdmacm_component_finalize(void)
         /* Wait for the service thread to stop monitoring the fd */
         OPAL_OUTPUT((-1, "MAIN rdmacm_component_finalize: waiting for thread to finish"));
         while (0 == barrier) {
-#ifndef __WINDOWS__
             sched_yield();
-#endif
         }
         OPAL_OUTPUT((-1, "MAIN rdmacm_component_finalize: thread finished"));
     }
@@ -2041,12 +2020,10 @@ static int rdmacm_component_init(void)
         return OMPI_ERR_UNREACH;
     }
 
-#ifndef __WINDOWS__
     /* Start monitoring the fd associated with the cm_device */
     ompi_btl_openib_fd_monitor(event_channel->fd, OPAL_EV_READ,
                                rdmacm_event_dispatch, NULL);
-#endif
-
+    
     rdmacm_component_initialized = true;
     return OMPI_SUCCESS;
 }

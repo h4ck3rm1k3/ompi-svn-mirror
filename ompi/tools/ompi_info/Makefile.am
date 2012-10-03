@@ -11,8 +11,6 @@
 #                         All rights reserved.
 # Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2012      Los Alamos National Security, LLC.
-#                         All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -21,9 +19,9 @@
 #
 
 AM_CFLAGS = \
-            -DOPAL_CONFIGURE_USER="\"@OPAL_CONFIGURE_USER@\"" \
-            -DOPAL_CONFIGURE_HOST="\"@OPAL_CONFIGURE_HOST@\"" \
-            -DOPAL_CONFIGURE_DATE="\"@OPAL_CONFIGURE_DATE@\"" \
+            -DOMPI_CONFIGURE_USER="\"@OMPI_CONFIGURE_USER@\"" \
+            -DOMPI_CONFIGURE_HOST="\"@OMPI_CONFIGURE_HOST@\"" \
+            -DOMPI_CONFIGURE_DATE="\"@OMPI_CONFIGURE_DATE@\"" \
             -DOMPI_BUILD_USER="\"$$USER\"" \
             -DOMPI_BUILD_HOST="\"`hostname`\"" \
             -DOMPI_BUILD_DATE="\"`date`\"" \
@@ -36,7 +34,10 @@ AM_CFLAGS = \
             -DOMPI_BUILD_LDFLAGS="\"@LDFLAGS@\"" \
             -DOMPI_BUILD_LIBS="\"@LIBS@\"" \
             -DOPAL_CC_ABSOLUTE="\"@OPAL_CC_ABSOLUTE@\"" \
-            -DOMPI_CXX_ABSOLUTE="\"@OMPI_CXX_ABSOLUTE@\""
+            -DOMPI_CXX_ABSOLUTE="\"@OMPI_CXX_ABSOLUTE@\"" \
+            -DOMPI_F77_ABSOLUTE="\"@OMPI_F77_ABSOLUTE@\"" \
+            -DOMPI_F90_ABSOLUTE="\"@OMPI_F90_ABSOLUTE@\"" \
+            -DOMPI_F90_BUILD_SIZE="\"@OMPI_F90_BUILD_SIZE@\""
 
 include $(top_srcdir)/Makefile.man-page-rules
 
@@ -46,6 +47,8 @@ EXTRA_DIST = $(man_pages:.1=.1in) CMakeLists.txt
 if OMPI_INSTALL_BINARIES
 
 bin_PROGRAMS = ompi_info
+
+dist_pkgdata_DATA = help-ompi_info.txt
 
 nodist_man_MANS = $(man_pages)
 
@@ -59,6 +62,7 @@ endif
 ompi_info_SOURCES = \
         ompi_info.h \
         ompi_info.c \
+        output.c \
         param.c \
         components.c \
         version.c

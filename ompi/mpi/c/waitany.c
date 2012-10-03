@@ -1,3 +1,5 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -11,8 +13,6 @@
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -40,7 +40,7 @@
 static const char FUNC_NAME[] = "MPI_Waitany";
 
 
-int MPI_Waitany(int count, MPI_Request requests[], int *indx, MPI_Status *status) 
+int MPI_Waitany(int count, MPI_Request *requests, int *indx, MPI_Status *status) 
 {
     MEMCHECKER(
         int j;

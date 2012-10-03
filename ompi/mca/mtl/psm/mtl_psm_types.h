@@ -10,8 +10,6 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      QLogic Corporation. All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,7 +18,7 @@
  */
 
 #ifndef MTL_PSM_TYPES_H_HAS_BEEN_INCLUDED
-#define MTL_PSM_TYPES_H_HAS_BEEN_INCLUDED
+#define MTL_PSM_TYPS_H_HAS_BEEN_INCLUDED
 
 #include "ompi_config.h"
 #include "mtl_psm.h"

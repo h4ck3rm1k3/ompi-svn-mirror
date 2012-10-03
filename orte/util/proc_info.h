@@ -2,14 +2,12 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
- *                         All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  * 
@@ -39,11 +37,7 @@
 #endif
 
 #include "orte/types.h"
-
 #include "opal/dss/dss_types.h"
-#include "opal/mca/hwloc/hwloc.h"
-
-#include "orte/mca/grpcomm/grpcomm_types.h"
 
 BEGIN_C_DECLS
 
@@ -59,8 +53,7 @@ typedef uint32_t orte_proc_type_t;
 #define ORTE_PROC_MPI           0x0020
 #define ORTE_PROC_APP           0x0030
 #define ORTE_PROC_CM            0x0040
-#define ORTE_PROC_IOF_ENDPT     0x1000
-#define ORTE_PROC_SCHEDULER     0x2000
+#define ORTE_PROC_CM_APP        0x0080
 
 #define ORTE_PROC_IS_SINGLETON      (ORTE_PROC_SINGLETON & orte_process_info.proc_type)
 #define ORTE_PROC_IS_DAEMON         (ORTE_PROC_DAEMON & orte_process_info.proc_type)
@@ -70,8 +63,7 @@ typedef uint32_t orte_proc_type_t;
 #define ORTE_PROC_IS_MPI            (ORTE_PROC_MPI & orte_process_info.proc_type)
 #define ORTE_PROC_IS_APP            (ORTE_PROC_APP & orte_process_info.proc_type)
 #define ORTE_PROC_IS_CM             (ORTE_PROC_CM & orte_process_info.proc_type)
-#define ORTE_PROC_IS_IOF_ENDPT      (ORTE_PROC_IOF_ENDPT & orte_process_info.proc_type)
-#define ORTE_PROC_IS_SCHEDULER      (ORTE_PROC_SCHEDULER & orte_process_info.proc_type)
+#define ORTE_PROC_IS_CM_APP         (ORTE_PROC_CM_APP & orte_process_info.proc_type)
 
 
 /**
@@ -89,12 +81,9 @@ struct orte_proc_info_t {
     char *my_daemon_uri;                /**< Contact info to local daemon */
     orte_process_name_t my_hnp;         /**< Name of my hnp */
     char *my_hnp_uri;                   /**< Contact info for my hnp */
-    orte_process_name_t my_parent;      /**< Name of my parent (or my HNP if no parent was specified) */
     pid_t hnp_pid;                      /**< hnp pid - used if singleton */
-    orte_app_idx_t app_num;             /**< our index into the app_context array */
+    int32_t app_num;                    /**< our index into the app_context array */
     orte_vpid_t num_procs;              /**< number of processes in this job */
-    orte_vpid_t max_procs;              /**< Maximum number of processes ever in the job */
-    orte_vpid_t num_daemons;            /**< number of daemons in system */
     int num_nodes;                      /**< number of nodes in the job */
     char *nodename;                     /**< string name for this node */
     pid_t pid;                          /**< Local process ID for this process */
@@ -102,9 +91,6 @@ struct orte_proc_info_t {
     opal_buffer_t *sync_buf;            /**< buffer to store sync response */
     uint16_t my_port;                   /**< TCP port for out-of-band comm */
     int32_t num_restarts;               /**< number of times this proc has restarted */
-    orte_node_rank_t my_node_rank;      /**< node rank */
-    orte_local_rank_t my_local_rank;    /**< local rank */
-    int32_t num_local_peers;            /**< number of procs from my job that share my node with me */
     /* The session directory has the form
      * <prefix>/<openmpi-sessions-user>/<jobid>/<procid>, where the prefix
      * can either be provided by the user via the
@@ -119,15 +105,6 @@ struct orte_proc_info_t {
     char *sock_stdin;                   /**< Path name to temp file for stdin. */
     char *sock_stdout;                  /**< Path name to temp file for stdout. */
     char *sock_stderr;                  /**< Path name to temp file for stderr. */
-#if OPAL_HAVE_HWLOC
-    opal_hwloc_level_t bind_level;
-    unsigned int bind_idx;
-#endif
-    int32_t app_rank;                       /**< rank within my app_context */
-    orte_grpcomm_coll_id_t peer_modex;   /**< modex collective id */
-    orte_grpcomm_coll_id_t peer_init_barrier;   /**< barrier id during init */
-    orte_grpcomm_coll_id_t peer_fini_barrier;   /**< barrier id during finalize */
-    bool strip_prefix_from_node_names;
 };
 typedef struct orte_proc_info_t orte_proc_info_t;
 

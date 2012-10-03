@@ -1,7 +1,5 @@
 /*
  * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011      Los Alamos National Security, LLC.
- *                         All rights reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -65,7 +63,7 @@ static char* lookup ( char *service_name, ompi_info_t *info )
     if (PMI_SUCCESS != (rc = PMI2_Nameserv_lookup(service_name, NULL, port, 1024))) {
         ORTE_PMI_ERROR(rc, "PMI2_Nameserv_lookup");
         free(port);
-        return NULL;
+        return OMPI_ERROR;
     }
 #else
     if (PMI_SUCCESS != (rc = PMI_Lookup_name(service_name, port))) {

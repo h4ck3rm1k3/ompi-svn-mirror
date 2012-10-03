@@ -18,15 +18,15 @@
 /**
  * @file
  */
-#ifndef MCA_BTL_TEMPLATE_H
-#define MCA_BTL_TEMPLATE_H
+#ifndef MCA_PTL_TEMPLATE_H
+#define MCA_PTL_TEMPLATE_H
 
 #include "ompi_config.h"
 #include <sys/types.h>
 #include <string.h>
 
 /* Open MPI includes */
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
@@ -96,6 +96,16 @@ struct mca_btl_template_module_t {
 typedef struct mca_btl_template_module_t mca_btl_template_module_t;
 extern mca_btl_template_module_t mca_btl_template_module;
 
+
+/**
+ * Register TEMPLATE component parameters with the MCA framework
+ */
+extern int mca_btl_template_component_open(void);
+
+/**
+ * Any final cleanup before being unloaded.
+ */
+extern int mca_btl_template_component_close(void);
 
 /**
  * TEMPLATE component initialization.

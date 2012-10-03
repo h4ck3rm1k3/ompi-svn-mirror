@@ -2,14 +2,14 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2008 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -43,7 +43,6 @@
 #include "opal/constants.h"
 #include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
-#include "opal/runtime/opal.h"
 
 /*
  * Local types
@@ -113,6 +112,7 @@ static int syn_register(int index_orig, const char *syn_type_name,
                         const char *syn_component_name,
                         const char *syn_param_name, bool deprecated);
 static bool param_lookup(size_t index, mca_base_param_storage_t *storage,
+                         opal_hash_table_t *attrs,
                          mca_base_param_source_t *source,
                          char **source_file);
 static bool param_set_override(size_t index, 
@@ -488,7 +488,7 @@ int mca_base_param_lookup_int(int index, int *value)
 {
   mca_base_param_storage_t storage;
   
-  if (param_lookup(index, &storage, NULL, NULL)) {
+  if (param_lookup(index, &storage, NULL, NULL, NULL)) {
     *value = storage.intval;
     return OPAL_SUCCESS;
   }
@@ -532,7 +532,7 @@ int mca_base_param_lookup_string(int index, char **value)
 {
   mca_base_param_storage_t storage;
   
-  if (param_lookup(index, &storage, NULL, NULL)) {
+  if (param_lookup(index, &storage, NULL, NULL, NULL)) {
     *value = storage.stringval;
     return OPAL_SUCCESS;
   }
@@ -561,7 +561,7 @@ int mca_base_param_lookup_source(int index, mca_base_param_source_t *source, cha
 {
     mca_base_param_storage_t storage;
   
-    if (param_lookup(index, &storage, source, source_file)) {
+    if (param_lookup(index, &storage, NULL, source, source_file)) {
         return OPAL_SUCCESS;
     }
     return OPAL_ERROR;
@@ -630,7 +630,7 @@ char *mca_base_param_environ_variable(const char *type,
     }
 
     id = mca_base_param_find(type, component, param);
-    if (0 <= id) {
+    if (OPAL_ERROR != id) {
         array = OPAL_VALUE_ARRAY_GET_BASE(&mca_base_params, mca_base_param_t);
         ret = strdup(array[id].mbp_env_var_name);
     } else {
@@ -857,7 +857,7 @@ int mca_base_param_build_env(char ***env, int *num_env, bool internal)
         }
 
         if (array[i].mbp_internal == internal || internal) {
-            if (param_lookup(i, &storage, NULL, NULL)) {
+            if (param_lookup(i, &storage, NULL, NULL, NULL)) {
                 if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type) {
                     asprintf(&str, "%s=%d", array[i].mbp_env_var_name, 
                              storage.intval);
@@ -1363,8 +1363,8 @@ static int param_register(const char *type_name,
   for (i = 0; i < len; ++i) {
     if (0 == strcmp(param.mbp_full_name, array[i].mbp_full_name)) {
 
-        /* We found an entry with the same param name.  Check to
-           ensure that we're not changing types */
+        /* We found an entry with the same param name.  Check to see
+           if we're changing types */
         /* Easy case: both are INT */
 
       if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type &&
@@ -1425,22 +1425,93 @@ static int param_register(const char *type_name,
           }
       } 
 
-      /* If the original is INT and the new is STRING, or the original
-         is STRING and the new is INT, this is an OMPI developer
-         error. */
+      /* Original is INT, new is STRING */
 
-      else if ((MCA_BASE_PARAM_TYPE_INT    == array[i].mbp_type &&
-                MCA_BASE_PARAM_TYPE_STRING == param.mbp_type) ||
-               (MCA_BASE_PARAM_TYPE_STRING == array[i].mbp_type &&
-                MCA_BASE_PARAM_TYPE_INT    == param.mbp_type)) {
-#if OPAL_ENABLE_DEBUG
-          opal_show_help("help-mca-param.txt", 
-                         "re-register with different type",
-                         true, array[i].mbp_full_name);
-#endif
-          /* Return an error code and hope for the best. */
-          OBJ_DESTRUCT(&param);
-          return OPAL_ERR_VALUE_OUT_OF_BOUNDS;
+      else if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type &&
+               MCA_BASE_PARAM_TYPE_STRING == param.mbp_type) {
+          if (NULL != default_value && 
+              NULL != param.mbp_default_value.stringval) {
+              array[i].mbp_default_value.stringval =
+                  strdup(param.mbp_default_value.stringval);
+          } else {
+              /* If the new STRING doesn't have a default value, we
+                 must set the default value to "NULL" because it still
+                 contains the old INT default value (which may not
+                 compare equally to NULL) */
+              array[i].mbp_default_value.stringval = NULL;
+          }
+
+          if (NULL != file_value &&
+              NULL != param.mbp_file_value.stringval) {
+              array[i].mbp_file_value.stringval =
+                  strdup(param.mbp_file_value.stringval);
+              array[i].mbp_file_value_set = true;
+          } else {
+              /* Similar to above, be sure to set the file default
+                 value to NULL to ensure that it's not still set to a
+                 non-NULL value from the prior INT default value */
+              array[i].mbp_file_value.stringval = NULL;
+              array[i].mbp_file_value_set = false;
+          }
+
+          if (NULL != override_value &&
+              NULL != param.mbp_override_value.stringval) {
+              array[i].mbp_override_value.stringval =
+                  strdup(param.mbp_override_value.stringval);
+              array[i].mbp_override_value_set = true;
+          } else {
+              /* Similar to above, be sure to set the file default
+                 value to NULL to ensure that it's not still set to a
+                 non-NULL value from the prior INT default value */
+              array[i].mbp_file_value.stringval = NULL;
+              array[i].mbp_file_value_set = false;
+          }
+
+          array[i].mbp_type = param.mbp_type;
+      } 
+
+      /* Original is STRING, new is INT */
+
+      else if (MCA_BASE_PARAM_TYPE_STRING == array[i].mbp_type &&
+                 MCA_BASE_PARAM_TYPE_INT == param.mbp_type) {
+          /* Free the old STRING default value, if it exists */
+          if (NULL != array[i].mbp_default_value.stringval) {
+              free(array[i].mbp_default_value.stringval);
+          }
+
+          /* Set the new default value, or 0 if one wasn't provided */
+          if (NULL != default_value) {
+              array[i].mbp_default_value.intval =
+                  param.mbp_default_value.intval;
+          } else {
+              array[i].mbp_default_value.intval = 0;
+          }
+
+          if (NULL != file_value) {
+              if (NULL != array[i].mbp_file_value.stringval) {
+                  free(array[i].mbp_file_value.stringval);
+              }
+              array[i].mbp_file_value.intval =
+                  param.mbp_file_value.intval;
+              array[i].mbp_file_value_set = true;
+          } else {
+              array[i].mbp_file_value.intval = 0;
+              array[i].mbp_file_value_set = false;
+          }
+
+          if (NULL != override_value) {
+              if (NULL != array[i].mbp_override_value.stringval) {
+                  free(array[i].mbp_override_value.stringval);
+              }
+              array[i].mbp_override_value.intval =
+                  param.mbp_override_value.intval;
+              array[i].mbp_override_value_set = true;
+          } else {
+              array[i].mbp_file_value.intval = 0;
+              array[i].mbp_file_value_set = false;
+          }
+
+          array[i].mbp_type = param.mbp_type;
       }
 
       /* Now delete the newly-created entry (since we just saved the
@@ -1451,7 +1522,7 @@ static int param_register(const char *type_name,
       /* Finally, if we have a lookup value, look it up */
       
       if (NULL != current_value) {
-          if (!param_lookup(i, current_value, NULL, NULL)) {
+          if (!param_lookup(i, current_value, NULL, NULL, NULL)) {
               return OPAL_ERR_NOT_FOUND;
           }
       }
@@ -1475,7 +1546,7 @@ static int param_register(const char *type_name,
   /* Finally, if we have a lookup value, look it up */
 
   if (NULL != current_value) {
-      if (!param_lookup(ret, current_value, NULL, NULL)) {
+      if (!param_lookup(ret, current_value, NULL, NULL, NULL)) {
           return OPAL_ERR_NOT_FOUND;
       }
   }
@@ -1645,6 +1716,7 @@ static bool param_set_override(size_t index,
  * Lookup a parameter in multiple places
  */
 static bool param_lookup(size_t index, mca_base_param_storage_t *storage,
+                         opal_hash_table_t *attrs,
                          mca_base_param_source_t *source_param,
                          char **source_file)
 {

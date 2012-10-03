@@ -95,10 +95,6 @@ typedef DWORD in_port_t;
 typedef char* caddr_t;
 typedef unsigned int uint;
 
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-
 #ifdef _MSC_VER
 #if defined(OMPI_BUILDING) && OMPI_BUILDING
 #include "opal/win32/ompi_uio.h"
@@ -107,7 +103,6 @@ typedef unsigned int uint;
 #include "opal/win32/ompi_util.h"
 #include "opal/win32/ompi_misc.h"
 #include "opal/win32/ompi_inet.h"
-#include "opal/win32/ompi_socket.h"
 #endif
 
 /* Defines for the access functions */
@@ -168,10 +163,10 @@ typedef unsigned int uint;
 #include "opal/win32/ompi_util.h"
 #include "opal/win32/ompi_inet.h"
 #include "opal/win32/ompi_misc.h"
-#include "opal/win32/ompi_socket.h"
 #endif
 
 #define strtok_r(s,d,p)           *p = strtok(s,d)
+#define random()                  rand()
 
 #endif
 
@@ -321,13 +316,15 @@ typedef unsigned int uint;
 #define LOG_INFO    6
 #define LOG_DEBUG   7
 
+/* hwloc support is not ready on Windows,
+   will remove this lines when it's done. */
+#define OPAL_HAVE_HWLOC 0
 
 /*
  * Mask these to Windows equivalents
  */
 #define bzero(p, l) memset(p, 0, l)
 #define bcopy(s, t, l) memmove(t, s, l)
-#define isblank(c) (c == ' ' || c == '\t')?1:0
 
 /*
  * OMPI functions that need to be redefined.

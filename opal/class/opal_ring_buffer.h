@@ -26,6 +26,8 @@
 
 #include "opal_config.h"
 
+#include "opal/threads/mutex.h"
+#include "opal/threads/condition.h"
 #include "opal/threads/threads.h"
 #include "opal/class/opal_object.h"
 #include "opal/util/output.h"
@@ -95,8 +97,7 @@ OPAL_DECLSPEC void* opal_ring_buffer_pop(opal_ring_buffer_t *ring);
 
 /*
  * Access an element of the ring, without removing it, indexed
- * starting at the tail - a value of -1 will return the element
- * at the head of the ring
+ * starting at the tail
  */
 OPAL_DECLSPEC void* opal_ring_buffer_poke(opal_ring_buffer_t *ring, int i);
 

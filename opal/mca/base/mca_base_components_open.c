@@ -2,16 +2,14 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
- *                         All rights reserved.
+ * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -298,8 +296,8 @@ static int parse_requested(int mca_param, bool *include_mode,
 
   /* See if the user requested anything */
 
-  if (0 > mca_base_param_lookup_string(mca_param, &requested)) {
-      return OPAL_ERROR;
+  if (OPAL_ERROR == mca_base_param_lookup_string(mca_param, &requested)) {
+    return OPAL_ERROR;
   }
   if (NULL == requested || 0 == strlen(requested)) {
     return OPAL_SUCCESS;
@@ -387,7 +385,7 @@ static int open_components(const char *type_name, int output_id,
                                 component->mca_component_name);
         } else {
             ret = component->mca_register_component_params();
-            if (OPAL_SUCCESS == ret) {
+            if (MCA_SUCCESS == ret) {
                 registered = true;
                 opal_output_verbose(10, output_id, 
                                     "mca: base: components_open: "
@@ -427,7 +425,7 @@ static int open_components(const char *type_name, int output_id,
         } else {
             called_open = true;
             ret = component->mca_open_component();
-            if (OPAL_SUCCESS == ret) {
+            if (MCA_SUCCESS == ret) {
                 opened = true;
                 opal_output_verbose(10, output_id, 
                                     "mca: base: components_open: "
@@ -484,9 +482,9 @@ static int open_components(const char *type_name, int output_id,
            opened_components list */
         
         else {
-            if (0 > mca_base_param_find(type_name, 
-                                        component->mca_component_name,
-                                        "priority")) {
+            if (OPAL_ERROR == mca_base_param_find(type_name, 
+                                                  component->mca_component_name,
+                                                  "priority")) {
                 mca_base_param_register_int(type_name,
                                             component->mca_component_name,
                                             "priority", NULL, 0);

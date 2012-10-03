@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All
+ * Copyright (c) 2011      Los Alamos National Security, LLC. All
  *                         rights reserved.
  * $COPYRIGHT$
  * 
@@ -28,13 +28,13 @@
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/ess/pmi/ess_pmi.h"
 
-#include "orte/mca/common/pmi/common_pmi.h"
-
 extern orte_ess_base_module_t orte_ess_pmi_module;
 
 static int pmi_component_open(void);
 static int pmi_component_close(void);
 static int pmi_component_query(mca_base_module_t **module, int *priority);
+
+static bool started_by_me=false;
 
 /*
  * Instantiate the public struct with all of our public information
@@ -42,7 +42,7 @@ static int pmi_component_query(mca_base_module_t **module, int *priority);
  */
 orte_ess_base_component_t mca_ess_pmi_component = {
     {
-        ORTE_ESS_BASE_VERSION_3_0_0,
+        ORTE_ESS_BASE_VERSION_2_0_0,
 
         /* Component name and version */
         "pmi",
@@ -67,12 +67,48 @@ static int pmi_component_open(void)
     return ORTE_SUCCESS;
 }
 
+static bool pmi_startup(void)
+{
+#if WANT_CRAY_PMI2_EXT
+    int spawned, size, rank, appnum;
+
+    if (PMI2_Initialized()) {
+        /* already initialized */
+        return true;
+    }
+    /* if we can't startup PMI, we can't be used */
+    if (PMI_SUCCESS != PMI2_Init(&spawned, &size, &rank, &appnum)) {
+        return false;
+    }
+    /* flag that we started PMI */
+    started_by_me = true;
+    /* ignore the info - we'll pick it up elsewhere */
+    return true;
+#else
+    PMI_BOOL initialized;
+
+    if (PMI_SUCCESS != PMI_Initialized(&initialized)) {
+        return false;
+    }
+    if (PMI_TRUE != initialized) {
+        if (PMI_SUCCESS != PMI_Init(&initialized)) {
+            return false;
+        }
+        /* flag that we started PMI */
+        started_by_me = true;
+    }
+    return true;
+#endif
+}
+
 static int pmi_component_query(mca_base_module_t **module, int *priority)
 {
-    /* we are available anywhere PMI is available, but not for HNP itself */
-    if (!ORTE_PROC_IS_HNP && mca_common_pmi_init ()) {
+    /* for now, only use PMI when direct launched */
+    if (!ORTE_PROC_IS_HNP &&
+        NULL == orte_process_info.my_hnp_uri &&
+        pmi_startup()) {
         /* if PMI is available, use it */
-        *priority = 35;
+        *priority = 100;
         *module = (mca_base_module_t *)&orte_ess_pmi_module;
         return ORTE_SUCCESS;
     }
@@ -86,7 +122,20 @@ static int pmi_component_query(mca_base_module_t **module, int *priority)
 
 static int pmi_component_close(void)
 {
-    mca_common_pmi_finalize ();
+#if WANT_CRAY_PMI2_EXT
+    if (started_by_me && PMI2_Initialized()) {
+        PMI2_Finalize();
+    }
+#else
+    PMI_BOOL initialized;
+
+    /* if we weren't selected, cleanup */
+    if (started_by_me &&
+        PMI_SUCCESS == PMI_Initialized(&initialized) &&
+        PMI_TRUE == initialized) {
+        PMI_Finalize();
+    }
+#endif
 
     return ORTE_SUCCESS;
 }

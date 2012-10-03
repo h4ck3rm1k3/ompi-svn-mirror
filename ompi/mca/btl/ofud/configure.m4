@@ -12,7 +12,6 @@
 #                         All rights reserved.
 # Copyright (c) 2006      Sandia National Laboratories. All rights
 #                         reserved.
-# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -24,10 +23,8 @@
 # MCA_btl_ofud_CONFIG([action-if-can-compile], 
 #                      [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_ompi_btl_ofud_CONFIG],[
-    AC_CONFIG_FILES([ompi/mca/btl/ofud/Makefile])
-
-    OMPI_CHECK_OPENFABRICS([btl_ofud],
+AC_DEFUN([MCA_btl_ofud_CONFIG],[
+    OMPI_CHECK_OPENIB([btl_ofud],
                         [btl_ofud_happy="yes"],
                         [btl_ofud_happy="no"])
 

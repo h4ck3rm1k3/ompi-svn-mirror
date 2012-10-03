@@ -171,11 +171,7 @@ static int ptym_open(char *pts_name)
 #ifdef HAVE_PTSNAME
     char *ptr;
 
-#ifdef _AIX
-    strcpy(pts_name, "/dev/ptc");
-#else
     strcpy(pts_name, "/dev/ptmx");
-#endif
     fdm = open(pts_name, O_RDWR);
     if (fdm < 0) {
         return -1;
@@ -232,7 +228,6 @@ static int ptys_open(int fdm, char *pts_name)
         close(fdm);
         return -5;
     }
-#if defined(__SVR4) && defined(__sun)
     if (ioctl(fds, I_PUSH, "ptem") < 0) {
         close(fdm);
         close(fds);
@@ -243,7 +238,6 @@ static int ptys_open(int fdm, char *pts_name)
         close(fds);
         return -7;
     }
-#endif
 
     return fds;
 #else

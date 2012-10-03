@@ -149,6 +149,7 @@ struct ompi_osc_rdma_rdma_info_header_t {
     ompi_osc_rdma_base_header_t hdr_base;
     int16_t  hdr_windx;
     int32_t  hdr_origin;
+    uint64_t hdr_segkey;
 };
 typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t;
 
@@ -157,6 +158,7 @@ typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t
         OMPI_OSC_RDMA_BASE_HDR_HTON((hdr).hdr_base);    \
         (hdr).hdr_windx = htons((hdr).hdr_windx);       \
         (hdr).hdr_origin = htonl((hdr).hdr_origin);     \
+        (hdr).hdr_segkey = hton64((hdr).hdr_segkey);    \
     } while (0)
 
 #define OMPI_OSC_RDMA_RDMA_INFO_HDR_NTOH(hdr)           \
@@ -164,6 +166,7 @@ typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t
         OMPI_OSC_RDMA_BASE_HDR_NTOH((hdr).hdr_base);    \
         (hdr).hdr_windx = ntohs((hdr).hdr_windx);       \
         (hdr).hdr_origin = ntohl((hdr).hdr_origin);     \
+        (hdr).hdr_segkey = ntoh64((hdr).hdr_segkey);    \
     } while (0)
 
 

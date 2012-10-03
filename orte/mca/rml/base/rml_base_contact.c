@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2011 The University of Tennessee and The University
+ * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -38,9 +38,9 @@
 
 int orte_rml_base_get_contact_info(orte_jobid_t job, opal_buffer_t *data)
 {
-    int i;
+    orte_vpid_t i;
     orte_job_t *jdata;
-    orte_proc_t *proc;
+    orte_proc_t **procs;
     int rc;
     
     /* lookup the job */
@@ -51,15 +51,13 @@ int orte_rml_base_get_contact_info(orte_jobid_t job, opal_buffer_t *data)
     }
 
     /* cycle through all procs in the job, adding their contact info to the buffer */
-    for (i=0; i < jdata->procs->size; i++) {
-        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(jdata->procs, i))) {
-            continue;
-        }
+    procs = (orte_proc_t**)jdata->procs->addr;
+    for (i=0; i < jdata->num_procs; i++) {
         /* if this proc doesn't have any contact info, ignore it */
-        if (NULL == proc->rml_uri) {
+        if (NULL == procs[i]->rml_uri) {
             continue;
         }
-        if (ORTE_SUCCESS != (rc = opal_dss.pack(data, &proc->rml_uri, 1, OPAL_STRING))) {
+        if (ORTE_SUCCESS != (rc = opal_dss.pack(data, &procs[i]->rml_uri, 1, OPAL_STRING))) {
             ORTE_ERROR_LOG(rc);
             return rc;
         }
@@ -137,15 +135,12 @@ int orte_rml_base_update_contact_info(opal_buffer_t* data)
         ORTE_PROC_IS_DAEMON &&
         orte_process_info.num_procs < num_procs) {
         orte_process_info.num_procs = num_procs;
-
-        if (orte_process_info.max_procs < orte_process_info.num_procs) {
-            orte_process_info.max_procs = orte_process_info.num_procs;
-        }
-
-        /* if we changed it, then we better update the routing
-         * plan so daemon collectives work correctly
+        /* if we changed it, then we better update the routed
+         * tree so daemon collectives work correctly
          */
-        orte_routed.update_routing_plan();
+        if (ORTE_SUCCESS != (rc = orte_routed.update_routing_tree())) {
+            ORTE_ERROR_LOG(rc);
+        }
     }
     
     return ORTE_SUCCESS;

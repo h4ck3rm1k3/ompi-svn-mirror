@@ -21,14 +21,7 @@
 
 #include "opal_config.h"
 
-#include "opal/util/output.h"
-
 BEGIN_C_DECLS
-
-#define OPAL_ERROR_LOG(r) \
-    opal_output(0, "OPAL ERROR: %s in file %s at line %d", \
-                opal_strerror((r)), __FILE__, __LINE__);
-
 
 /**
  * Prints error message for errnum on stderr
@@ -72,7 +65,7 @@ OPAL_DECLSPEC const char *opal_strerror(int errnum);
 OPAL_DECLSPEC int opal_strerror_r(int errnum, char *strerrbuf, size_t buflen);
 
 
-typedef int (*opal_err2str_fn_t)(int errnum, const char **str);
+typedef const char * (*opal_err2str_fn_t)(int errnum);
 
 /**
  * \internal

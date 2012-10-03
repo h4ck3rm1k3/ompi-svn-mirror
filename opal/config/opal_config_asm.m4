@@ -19,17 +19,6 @@ dnl $HEADER$
 dnl
 
 
-AC_DEFUN([OPAL_CHECK_SYNC_BUILTINS], [
-  AC_MSG_CHECKING([for __sync builtin atomics])
-
-  AC_TRY_COMPILE([], [__sync_synchronize()], 
-    [AC_MSG_RESULT([yes])
-     $1],
-    [AC_MSG_RESULT([no])
-     $2])
-])
-
-
 dnl #################################################################
 dnl
 dnl OMPI_CHECK_ASM_TEXT
@@ -442,10 +431,10 @@ AC_DEFUN([OMPI_CHECK_ASM_GNU_STACKEXEC], [
              cat >conftest.c <<EOF
 int testfunc() {return 0; }
 EOF
-             OPAL_LOG_COMMAND([$CC $CFLAGS -c conftest.c -o conftest.$OBJEXT],
+             OMPI_LOG_COMMAND([$CC $CFLAGS -c conftest.c -o conftest.$OBJEXT],
                  [$OBJDUMP -x conftest.$OBJEXT | $GREP '\.note\.GNU-stack' > /dev/null && ompi_cv_asm_gnu_stack_result=yes],
-                 [OPAL_LOG_MSG([the failed program was:], 1)
-                  OPAL_LOG_FILE([conftest.c])
+                 [OMPI_LOG_MSG([the failed program was:], 1)
+                  OMPI_LOG_FILE([conftest.c])
                   ompi_cv_asm_gnu_stack_result=no])
              if test "$ompi_cv_asm_gnu_stack_result" != "yes" ; then
                  ompi_cv_asm_gnu_stack_result="no"
@@ -596,18 +585,27 @@ AC_DEFUN([OMPI_CHECK_INLINE_C_GCC],[
         # Disable for now.
         asm_result="no (Portland Group)"
     else
-        if test ! "$assembly" = "" ; then
-                AC_RUN_IFELSE([AC_LANG_PROGRAM([
+        case $host in
+            *-aix*)
+                # the AIX compilers and linkers really don't do gcc 
+                # inline assembly right - disable for now.
+                asm_result="no (AIX)"
+                ;;
+            *)
+                if test ! "$assembly" = "" ; then
+                        AC_RUN_IFELSE([AC_LANG_PROGRAM([
 AC_INCLUDES_DEFAULT],
 [[int ret = 1;
 int negone = -1;
 __asm__ __volatile__ ($assembly);
 return ret;]])],
-            [asm_result="yes"], [asm_result="no"], 
-            [asm_result="unknown"])
-        else
-            assembly="test skipped - assuming no"
-        fi
+                    [asm_result="yes"], [asm_result="no"], 
+                    [asm_result="unknown"])
+                else
+                    assembly="test skipped - assuming no"
+                fi
+                ;;
+        esac
 
         # if we're cross compiling, just try to compile and figure good enough
         if test "$asm_result" = "unknown" ; then
@@ -643,33 +641,36 @@ AC_DEFUN([OMPI_CHECK_INLINE_CXX_GCC],[
     AC_LANG_PUSH([C++])
     AC_MSG_CHECKING([if $CXX supports GCC inline assembly])
 
-    if test "$ompi_cv_c_compiler_vendor" = "portland group" ; then
-        # PGI seems to have some issues with our inline assembly.
-        # Disable for now.
-        asm_result="no (Portland Group)"
-    else
-        if test ! "$assembly" = "" ; then
-                AC_RUN_IFELSE([AC_LANG_PROGRAM([
+    case $host in
+        *-aix*)
+            # the AIX compilers and linkers really don't do gcc 
+            # inline assembly right - disable for now.
+            asm_result="no (AIX)"
+            ;;
+        *)
+            if test ! "$assembly" = "" ; then
+            AC_RUN_IFELSE([AC_LANG_PROGRAM([
 AC_INCLUDES_DEFAULT],
 [[int ret = 1;
 int negone = -1;
 __asm__ __volatile__ ($assembly);
 return ret;]])],
-                [asm_result="yes"], [asm_result="no"], 
-                [asm_result="unknown"])
-        else
-            assembly="test skipped - assuming no"
-        fi
-        # if we're cross compiling, just try to compile and figure good enough
-        if test "$asm_result" = "unknown" ; then
-            AC_LINK_IFELSE([AC_LANG_PROGRAM([
+                    [asm_result="yes"], [asm_result="no"], 
+                    [asm_result="unknown"])
+            else
+                assembly="test skipped - assuming no"
+            fi
+            ;;
+    esac
+    # if we're cross compiling, just try to compile and figure good enough
+    if test "$asm_result" = "unknown" ; then
+        AC_LINK_IFELSE([AC_LANG_PROGRAM([
 AC_INCLUDES_DEFAULT],
 [[int ret = 1;
 int negone = -1;
 __asm__ __volatile__ ($assembly);
 return ret;]])],
-                [asm_result="yes"], [asm_result="no"])
-        fi
+            [asm_result="yes"], [asm_result="no"])
     fi
 
     AC_MSG_RESULT([$asm_result])
@@ -702,8 +703,8 @@ AC_DEFUN([OMPI_CHECK_INLINE_C_DEC],[
     AC_MSG_CHECKING([if $CC supports DEC inline assembly])
 
     AC_LINK_IFELSE([AC_LANG_PROGRAM([
-AC_INCLUDES_DEFAULT
-#include <c_asm.h>],
+AC_INCLUDES_DEFAULT[
+#include <c_asm.h>]],
 [[asm("");
 return 0;]])],
         [asm_result="yes"], [asm_result="no"])
@@ -729,8 +730,8 @@ AC_DEFUN([OMPI_CHECK_INLINE_CXX_DEC],[
     AC_MSG_CHECKING([if $CXX supports DEC inline assembly])
 
     AC_LINK_IFELSE([AC_LANG_PROGRAM([
-AC_INCLUDES_DEFAULT
-#include <c_asm.h>],
+AC_INCLUDES_DEFAULT[
+#include <c_asm.h>]],
 [[asm("");
 return 0;]])],
         [asm_result="yes"], [asm_result="no"])
@@ -801,7 +802,7 @@ AC_DEFUN([OMPI_CHECK_INLINE_CXX_XLC],[
 
 dnl #################################################################
 dnl
-dnl OPAL_CONFIG_ASM
+dnl OMPI_CONFIG_ASM
 dnl
 dnl DEFINE OPAL_ASSEMBLY_ARCH to something in sys/architecture.h
 dnl DEFINE OPAL_ASSEMBLY_FORMAT to string containing correct
@@ -810,16 +811,16 @@ dnl SUBST OPAL_ASSEMBLY_FORMAT to string containing correct
 dnl                             format for assembly (not user friendly)
 dnl
 dnl #################################################################
-AC_DEFUN([OPAL_CONFIG_ASM],[
-    AC_REQUIRE([OPAL_SETUP_CC])
+AC_DEFUN([OMPI_CONFIG_ASM],[
+    AC_REQUIRE([OMPI_SETUP_CC])
     # Only require C++ if we're building the OMPI project
-    m4_ifdef([project_ompi], [AC_REQUIRE([OPAL_SETUP_CXX])])
+    m4_ifdef([project_ompi], [AC_REQUIRE([OMPI_SETUP_CXX])])
     AC_REQUIRE([AM_PROG_AS])
 
     # OS X Leopard ld bus errors if you have "-g" or "-gX" in the link line
     # with our assembly (!).  So remove it from CCASFLAGS if it's
     # there (and we're on Leopard).
-    OPAL_VAR_SCOPE_PUSH([ompi_config_asm_flags_new ompi_config_asm_flag])
+    OMPI_VAR_SCOPE_PUSH([ompi_config_asm_flags_new ompi_config_asm_flag])
     AC_MSG_CHECKING([if need to remove -g from CCASFLAGS])
     case "$host" in
         *-apple-darwin9.*)
@@ -842,7 +843,7 @@ AC_DEFUN([OPAL_CONFIG_ASM],[
             AC_MSG_RESULT([no])
             ;;
     esac
-    OPAL_VAR_SCOPE_POP
+    OMPI_VAR_SCOPE_POP
 
     AC_MSG_CHECKING([whether to enable smp locks])
     AC_ARG_ENABLE([smp-locks], 
@@ -858,21 +859,8 @@ AC_DEFUN([OPAL_CONFIG_ASM],[
     AC_DEFINE_UNQUOTED([OPAL_WANT_SMP_LOCKS], [$want_smp_locks],
                        [whether we want to have smp locks in atomic ops or not])
 
-    AC_ARG_ENABLE([builtin-atomics],
-      [AC_HELP_STRING([--enable-builtin-atomics],
-         [Enable use of __sync builtin atomics (default: disabled)])])
-
     if test "$ompi_cv_c_compiler_vendor" = "microsoft" ; then
         ompi_cv_asm_arch="WINDOWS"
-    elif test "$enable_builtin_atomics" = "yes" ; then
-       OPAL_CHECK_SYNC_BUILTINS([ompi_cv_asm_arch="SYNC_BUILTIN"],
-         [AC_MSG_ERROR([__sync builtin atomics requested but not found.])])
-       AC_DEFINE([OPAL_C_GCC_INLINE_ASSEMBLY], [1],
-         [Whether C compiler supports GCC style inline assembly])
-       m4_ifdef([project_ompi],
-                [AS_IF([test "$WANT_MPI_CXX_SUPPORT" = "1"],
-         [AC_DEFINE([OMPI_CXX_GCC_INLINE_ASSEMBLY], [1],
-           [Whether C++ compiler supports GCC style inline assembly])])])
     else
         OMPI_CHECK_ASM_PROC
         OMPI_CHECK_ASM_TEXT
@@ -948,7 +936,7 @@ AC_DEFUN([OPAL_CONFIG_ASM],[
             OMPI_GCC_INLINE_ASSIGN='"or %0,[$]0,[$]0" : "=&r"(ret)'
             ;;
 
-        powerpc-*|powerpc64-*|rs6000-*|ppc-*)
+        powerpc-*|powerpc64-*)
             OMPI_CHECK_POWERPC_REG
             if test "$ac_cv_sizeof_long" = "4" ; then
                 ompi_cv_asm_arch="POWERPC32"
@@ -998,19 +986,10 @@ AC_MSG_ERROR([Can not continue.])
             ;;
 
         *)
-            OPAL_CHECK_SYNC_BUILTINS([ompi_cv_asm_arch="SYNC_BUILTIN"],
-              [AC_MSG_ERROR([No atomic primitives available for $host])])
+            AC_MSG_ERROR([No atomic primitives available for $host])
             ;;
         esac
 
-      if test "$ompi_cv_asm_arch" = "SYNC_BUILTIN" ; then
-        AC_DEFINE([OPAL_C_GCC_INLINE_ASSEMBLY], [1],
-          [Whether C compiler supports GCC style inline assembly])
-        m4_ifdef([project_ompi],
-                 [AS_IF([test "$WANT_MPI_CXX_SUPPORT" = "1"],
-          [AC_DEFINE([OMPI_CXX_GCC_INLINE_ASSEMBLY], [1],
-            [Whether C++ compiler supports GCC style inline assembly])])])
-      else
         AC_DEFINE_UNQUOTED([OPAL_ASM_SUPPORT_64BIT],
             [$OPAL_ASM_SUPPORT_64BIT],
             [Whether we can do 64bit assembly operations or not.  Should not be used outside of the assembly header files])
@@ -1065,7 +1044,6 @@ AC_MSG_ERROR([Can not continue.])
         AC_DEFINE_UNQUOTED([OPAL_ASSEMBLY_FORMAT], ["$OPAL_ASSEMBLY_FORMAT"],
                            [Format of assembly file])
         AC_SUBST([OPAL_ASSEMBLY_FORMAT])
-      fi # if ompi_cv_asm_arch = SYNC_BUILTIN
     fi # if cv_c_compiler_vendor = microsoft
 
     result="OMPI_$ompi_cv_asm_arch"
@@ -1094,7 +1072,7 @@ AC_DEFUN([OMPI_ASM_FIND_FILE], [
     AC_REQUIRE([AC_PROG_GREP])
     AC_REQUIRE([AC_PROG_FGREP])
 
-if test "$ompi_cv_asm_arch" != "WINDOWS" -a "$ompi_cv_asm_arch" != "SYNC_BUILTIN" ; then
+if test "$ompi_cv_asm_arch" != "WINDOWS" ; then
     AC_CHECK_PROG([PERL], [perl], [perl])
 
     # see if we have a pre-built one already

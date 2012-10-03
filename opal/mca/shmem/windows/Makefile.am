@@ -30,7 +30,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if MCA_BUILD_opal_shmem_windows_DSO
+if OMPI_BUILD_shmem_windows_DSO 
 component_noinst =
 component_install = mca_shmem_windows.la
 else

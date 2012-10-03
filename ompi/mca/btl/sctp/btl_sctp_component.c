@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2012 The University of Tennessee and The University
+ * Copyright (c) 2004-2006 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -45,7 +45,7 @@
 #endif
 
 #include "ompi/constants.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/if.h"
 #include "opal/util/argv.h"
 #include "ompi/mca/btl/btl.h"
@@ -217,7 +217,6 @@ static int mca_btl_sctp_component_register(void)
                                        MCA_BTL_FLAGS_NEED_CSUM | 
                                        MCA_BTL_FLAGS_NEED_ACK |
                                        MCA_BTL_FLAGS_HETEROGENEOUS_RDMA;
-    mca_btl_sctp_module.super.btl_seg_size = sizeof (mca_btl_base_segment_t);
     mca_btl_sctp_module.super.btl_bandwidth = 100;
     mca_btl_sctp_module.super.btl_latency = 100;
     mca_btl_base_param_register(&mca_btl_sctp_component.super.btl_version,
@@ -625,7 +624,7 @@ static int mca_btl_sctp_component_create_listen(void)
 
 
         /* register listen port */
-        opal_event_set(opal_event_base,
+        opal_event_set(
                 &mca_btl_sctp_component.sctp_recv_event,
                 mca_btl_sctp_component.sctp_listen_sd, 
                 OPAL_EV_READ|OPAL_EV_PERSIST, 
@@ -675,7 +674,7 @@ static int mca_btl_sctp_component_register_listen(void)
 
 
     /* register listen port */
-    opal_event_set(opal_event_base,
+    opal_event_set(
             &mca_btl_sctp_component.sctp_recv_event,
             mca_btl_sctp_component.sctp_listen_sd, 
             OPAL_EV_READ|OPAL_EV_PERSIST, 
@@ -868,6 +867,15 @@ mca_btl_base_module_t** mca_btl_sctp_component_init(int *num_btl_modules,
     }
 }
 
+/*
+ *  SCTP module control
+ */
+
+int mca_btl_sctp_component_control(int param, void* value, size_t size)
+{
+    return OMPI_SUCCESS;
+}
+
 
 /*
  *  Called by mca_btl_sctp_component_recv() when the SCTP listen
@@ -907,7 +915,7 @@ void mca_btl_sctp_component_accept(void)
             /* wait for receipt of peers process identifier to complete this connection */
 
             event = OBJ_NEW(mca_btl_sctp_event_t);
-            opal_event_set(opal_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_sctp_component_recv_handler, event);
+            opal_event_set(&event->event, sd, OPAL_EV_READ, mca_btl_sctp_component_recv_handler, event);
             opal_event_add(&event->event, 0);
         }
     }
@@ -927,7 +935,7 @@ void mca_btl_sctp_component_accept(void)
         /* wait for receipt of peers process identifier to complete this connection */
 
         event = OBJ_NEW(mca_btl_sctp_event_t);
-        opal_event_set(opal_event_base, &event->event, sd, OPAL_EV_READ, mca_btl_sctp_recv_handler, event);
+        opal_event_set(&event->event, sd, OPAL_EV_READ, mca_btl_sctp_recv_handler, event);
         opal_event_add(&event->event, 0);
     }
 }

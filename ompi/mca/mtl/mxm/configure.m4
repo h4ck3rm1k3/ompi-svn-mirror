@@ -10,9 +10,7 @@
 # MCA_mtl_mxm_CONFIG([action-if-can-compile],
 #                    [action-if-cant-compile])
 # ------------------------------------------------
-AC_DEFUN([MCA_ompi_mtl_mxm_CONFIG],[
-    AC_CONFIG_FILES([ompi/mca/mtl/mxm/Makefile])
-
+AC_DEFUN([MCA_mtl_mxm_CONFIG],[
     OMPI_CHECK_MXM([mtl_mxm],
                    [mtl_mxm_happy="yes"],
                    [mtl_mxm_happy="no"])

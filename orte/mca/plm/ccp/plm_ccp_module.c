@@ -4,8 +4,6 @@
  *                         reserved.
  * Copyright (c) 2004-2010 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
- * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
- *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -41,7 +39,7 @@
 #include <comutil.h>
 
 #include "opal/mca/installdirs/installdirs.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "opal/util/argv.h"
 #include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
@@ -53,7 +51,6 @@
 #include "orte/runtime/orte_wait.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rmaps/rmaps.h"
-#include "orte/mca/state/state.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/plm_private.h"
@@ -74,7 +71,7 @@
  */
 static int plm_ccp_init(void);
 static int plm_ccp_launch_job(orte_job_t *jdata);
-static int plm_ccp_terminate_orteds(void);
+static int plm_ccp_terminate_orteds();
 static int plm_ccp_signal_job(orte_jobid_t jobid, int32_t signal);
 static int plm_ccp_finalize(void);
 
@@ -99,7 +96,12 @@ orte_plm_base_module_t orte_plm_ccp_module = {
     plm_ccp_finalize
 };
 
-static void launch_daemons(int fd, short args, void *cbdata);
+
+/*
+ * Local variables
+ */
+static orte_jobid_t active_job = ORTE_JOBID_INVALID;
+
 
 /**
 * Init the module
@@ -108,47 +110,25 @@ static int plm_ccp_init(void)
 {
     int rc;
     
-    /* point to our launch command */
-    if (ORTE_SUCCESS != (rc = orte_state.add_job_state(ORTE_JOB_STATE_LAUNCH_DAEMONS,
-                                                       launch_daemons, ORTE_SYS_PRI))) {
-        ORTE_ERROR_LOG(rc);
-        return rc;
-    }
-    
     if (ORTE_SUCCESS != (rc = orte_plm_base_comm_start())) {
         ORTE_ERROR_LOG(rc);
     }
 
-    /* we assign daemon nodes at launch */
-    orte_plm_globals.daemon_nodes_assigned_at_launch = true;
+    /* we don't need a barrier to exit */
+    orte_orted_exit_with_barrier = false;
 
     return rc;
 }
 
 
-static int plm_ccp_launch_job(orte_job_t *jdata)
-{  
-    if (ORTE_JOB_CONTROL_RESTART & jdata->controls) {
-        /* this is a restart situation - skip to the mapping stage */
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_MAP);
-    } else {
-        /* new job - set it up */
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_INIT);
-    }
-    return ORTE_SUCCESS;
-}
-
 /* When working in this function, ALWAYS jump to "cleanup" if
  * you encounter an error so that orterun will be woken up and
  * the job can cleanly terminate
  */
-static void launch_daemons(int fd, short args, void *cbdata)
-{
-    orte_state_caddy_t *state = (orte_state_caddy_t*)cbdata;
-    orte_job_t *jdata = state->jdata;
-
-    orte_app_context_t *app;
-    orte_node_t *node;
+static int plm_ccp_launch_job(orte_job_t *jdata)
+{  
+    orte_app_context_t **apps;
+    orte_node_t **nodes;
     orte_std_cntr_t launched = 0, i; 
 
     orte_job_map_t *map = NULL;
@@ -176,65 +156,56 @@ static void launch_daemons(int fd, short args, void *cbdata)
     ITask* pTask = NULL;
     JobPriority job_priority = JobPriority_Normal;
 
-    orte_jobid_t failed_job; 
-    orte_job_state_t job_state = ORTE_JOB_STATE_NEVER_LAUNCHED;
-    orte_job_t *daemons;
+ 	orte_jobid_t failed_job; 
+    orte_job_state_t job_state = ORTE_JOB_NEVER_LAUNCHED;
 
-    /* default to declaring the daemon launch failed */ 
-    failed_job = ORTE_PROC_MY_NAME->jobid; 
+ 	/* default to declaring the daemon launch failed */ 
+ 	failed_job = ORTE_PROC_MY_NAME->jobid; 
 
     /* check for timing request - get start time if so */
     if (orte_timing) {
         if (0 != gettimeofday(&jobstart, NULL)) {
-            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm_ccp: could not obtain job start time"));
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm_ccp: could not obtain job start time"));
         }
     }
 
-    /* start by launching the virtual machine */
-    daemons = orte_get_job_data_object(ORTE_PROC_MY_NAME->jobid);
-    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_virtual_machine(jdata))) {
+    /* if this jobid isn't invalid, then it already
+     * has been setup, so skip the setup actions
+     */
+    if (ORTE_JOBID_INVALID != jdata->jobid) {
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                             "%s plm:ccp: launching job %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_JOBID_PRINT(jdata->jobid)));
+        goto GETMAP;
+    }
+    
+    /* setup the job */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_setup_job(jdata))) {
         ORTE_ERROR_LOG(rc);
         goto cleanup;
     }
-
-    /* if we don't want to launch, then don't attempt to
-     * launch the daemons - the user really wants to just
-     * look at the proposed process map
-     */
-    if (orte_do_not_launch) {
-        /* set the state to indicate the daemons reported - this
-         * will trigger the daemons_reported event and cause the
-         * job to move to the following step
-         */
-        jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
-        ORTE_ACTIVATE_JOB_STATE(jdata, ORTE_JOB_STATE_DAEMONS_REPORTED);
-        OBJ_RELEASE(state);
-        return;
-    }
     
     OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                         "%s plm:rsh: launching vm",
-                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-    
+                         "%s plm:ccp: launching job %s",
+                         ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                         ORTE_JOBID_PRINT(jdata->jobid)));
+
+GETMAP:
     /* Get the map for this job */
-    if (NULL == (map = daemons->map)) {
+    if (NULL == (map = orte_rmaps.get_job_map(jdata->jobid))) {
         ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
         rc = ORTE_ERR_NOT_FOUND;
         goto cleanup;
     }
 
+    apps = (orte_app_context_t**)jdata->apps->addr;
+    nodes = (orte_node_t**)map->nodes->addr;
+
     if (0 == map->num_new_daemons) {
-        /* set the state to indicate the daemons reported - this
-         * will trigger the daemons_reported event and cause the
-         * job to move to the following step
-         */
-        state->jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
-        if (ORTE_JOB_STATE_DAEMONS_REPORTED == daemons->state) {
-            ORTE_ACTIVATE_JOB_STATE(state->jdata, ORTE_JOB_STATE_DAEMONS_REPORTED);
-        }
-        OBJ_RELEASE(state);
-        return;
+        /* have all the daemons we need - launch app */
+        goto launch_apps;
     }
     
     /* add the daemon command (as specified by user) */
@@ -245,7 +216,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
     /* Add basic orted command line options */
     orte_plm_base_orted_append_basic_args(&argc, &argv, "env",
                                           &proc_vpid_index,
-                                          NULL);
+                                          false, NULL);
 
     if (0 < opal_output_get_verbosity(orte_plm_globals.output)) {
         param = opal_argv_join(argv, ' ');
@@ -302,20 +273,19 @@ static void launch_daemons(int fd, short args, void *cbdata)
     free(var);
     
     /* If we have a prefix, then modify the PATH and
-       LD_LIBRARY_PATH environment variables. We only allow
-       a single prefix to be specified. Since there will
-       always be at least one app_context, we take it from
-       there
+        LD_LIBRARY_PATH environment variables. We only allow
+        a single prefix to be specified. Since there will
+        always be at least one app_context, we take it from
+        there
     */
-    app = (orte_app_context_t*)opal_pointer_array_get_item(jdata->apps, 0);
-    if (NULL != app->prefix_dir) {
+    if (NULL != apps[0]->prefix_dir) {
         char *newenv;
         
         for (i = 0; NULL != env && NULL != env[i]; ++i) {
             /* Reset PATH */
             if (0 == strncmp("PATH=", env[i], 5)) {
                 asprintf(&newenv, "%s/%s:%s", 
-                         app->prefix_dir, bin_base, env[i] + 5);
+                            apps[0]->prefix_dir, bin_base, env[i] + 5);
                 OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                                      "%s plm:ccp: resetting PATH: %s",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -327,7 +297,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
             /* Reset LD_LIBRARY_PATH */
             else if (0 == strncmp("LD_LIBRARY_PATH=", env[i], 16)) {
                 asprintf(&newenv, "%s/%s:%s", 
-                         app->prefix_dir, lib_base, env[i] + 16);
+                            apps[0]->prefix_dir, lib_base, env[i] + 16);
                 OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                                      "%s plm:ccp: resetting LD_LIBRARY_PATH: %s",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
@@ -357,10 +327,8 @@ static void launch_daemons(int fd, short args, void *cbdata)
         v.pdispVal->QueryInterface(IID_INode, reinterpret_cast<void **> (&pNode));
 
         /* Iterate through each of the nodes and check to sum up all the processors. */
-        for (i = 0; i < map->nodes->size; i++) {
-            if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(map->nodes, i))) {
-                continue;
-            }
+        for (i = 0; i < map->num_nodes; i++) {
+            orte_node_t* node = nodes[i];
 
             BSTR node_name;
             hr = pNode->get_Name(&node_name);
@@ -377,27 +345,27 @@ static void launch_daemons(int fd, short args, void *cbdata)
     if(NULL != mca_plm_ccp_component.job_name){
         pJob->put_Name(_bstr_t(mca_plm_ccp_component.job_name));
     } else {
-        pJob->put_Name(_bstr_t((*app).app));
+        pJob->put_Name(_bstr_t((*(*apps)).app));
     }
 
     pJob->put_MinimumNumberOfProcessors(num_processors);
     if (FAILED(hr)) {
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                             "plm:ccp:failed to put min num of processors!"));
+                    "plm:ccp:failed to put min num of processors!"));
         goto cleanup;
     }
 
     pJob->put_MaximumNumberOfProcessors(num_processors);
     if (FAILED(hr)) {
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                             "plm:ccp:failed to put max num of processors!"));
+                    "plm:ccp:failed to put max num of processors!"));
         goto cleanup;
     }
 
     hr = pJob->put_Priority(job_priority);
     if (FAILED(hr)) {
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                             "plm:ccp:failed to set proiority!"));
+                    "plm:ccp:failed to set proiority!"));
         goto cleanup;
     }
 
@@ -406,14 +374,12 @@ static void launch_daemons(int fd, short args, void *cbdata)
     /* set the job state to indicate we attempted to launch */
     job_state = ORTE_JOB_STATE_FAILED_TO_START;
     
-    /* Iterate through each of the nodes and spin
+     /* Iterate through each of the nodes and spin
      * up a daemon.
      */
-    for (i = 0; i < map->nodes->size; i++) {
+    for (i = 0; i < map->num_nodes; i++) {
+        orte_node_t* node = nodes[i];
         char* vpid_string;
-        if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(map->nodes, i))) {
-            continue;
-        }
 
         /* if this daemon already exists, don't launch it! */
         if (node->daemon_launched) {
@@ -426,10 +392,10 @@ static void launch_daemons(int fd, short args, void *cbdata)
                              node->name));
         
         /* setup process name */
-        rc = orte_util_convert_vpid_to_string(&vpid_string, node->daemon->name.vpid);
+        rc = orte_util_convert_vpid_to_string(&vpid_string, nodes[i]->daemon->name.vpid);
         if (ORTE_SUCCESS != rc) {
-            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp: unable to get daemon vpid as string"));
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm:ccp: unable to get daemon vpid as string"));
             exit(-1);
         }
         free(argv[proc_vpid_index]);
@@ -449,8 +415,8 @@ static void launch_daemons(int fd, short args, void *cbdata)
         /* check for timing request - get start time if so */
         if (orte_timing) {
             if (0 != gettimeofday(&launchstart, NULL)) {
-                OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                     "plm_ccp: could not obtain start time"));
+            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                "plm_ccp: could not obtain start time"));
                 launchstart.tv_sec = 0;
                 launchstart.tv_usec = 0;
             }
@@ -460,38 +426,38 @@ static void launch_daemons(int fd, short args, void *cbdata)
         if (FAILED(hr)) {
             plm_get_cluster_message(pCluster);
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to create task object!"));
+                                "plm:ccp:failed to create task object!"));
             goto cleanup;
         }
         
         pTask->put_MinimumNumberOfProcessors(num_procs[i]);
         if (FAILED(hr)) {
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to create task object!"));
+                                "plm:ccp:failed to create task object!"));
             goto cleanup;
         }
 
         pTask->put_MaximumNumberOfProcessors(num_procs[i]);
         if (FAILED(hr)) {
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to create task object!"));
+                                "plm:ccp:failed to create task object!"));
             goto cleanup;
         }
 
         pTask->put_RequiredNodes(_bstr_t(node->name));
         if (FAILED(hr)) {
-            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to set required nodes!"));
+                OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                    "plm:ccp:failed to set required nodes!"));
             goto cleanup;
         }
         
         /* Prepare the command line a little bit. */
-        command_line = plm_ccp_commandline(app->prefix_dir, node->name, argc, argv);
+        command_line = plm_ccp_commandline(apps[0]->prefix_dir, node->name, argc, argv);
 
         hr = pTask->put_CommandLine(_bstr_t(command_line));
         if (FAILED(hr)) {
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to put command line!"));
+                                "plm:ccp:failed to put command line!"));
             goto cleanup;
         }
 
@@ -499,7 +465,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
             hr = pTask->put_Stdout(_bstr_t(mca_plm_ccp_component.stdout_file));
             if (FAILED(hr)) {
                 OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                     "plm:ccp:failed to set stdout!"));
+                                    "plm:ccp:failed to set stdout!"));
                 goto cleanup;
             }
         }
@@ -508,7 +474,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
             hr = pTask->put_Stderr(_bstr_t(mca_plm_ccp_component.stderr_file));
             if (FAILED(hr)) {
                 OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                     "plm:ccp:failed to set stderr!"));
+                                    "plm:ccp:failed to set stderr!"));
                 goto cleanup;
             }
         }
@@ -516,17 +482,14 @@ static void launch_daemons(int fd, short args, void *cbdata)
         hr = pJob->AddTask(pTask);
         if (FAILED(hr)) {
             OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                                 "plm:ccp:failed to add task!"));
+                                "plm:ccp:failed to add task!"));
             goto cleanup;
         }
 
-#if 0
-        /* RHC: you definitely cannot do that here!! Use
-        * nanosleep if you need to wait a little while
-        */
+        
         /* Allow some progress to occur */
-        opal_event_loop(orte_event_base, OPAL_EVLOOP_NONBLOCK);
-#endif
+        opal_event_loop(OPAL_EVLOOP_NONBLOCK);
+        
         launched++;
 
         pTask->Release();
@@ -536,7 +499,7 @@ static void launch_daemons(int fd, short args, void *cbdata)
     hr = pCluster->QueueJob(pJob, NULL, NULL, VARIANT_TRUE, 0, &job_id);
     if (SUCCEEDED(hr)) {
         OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
-                             "Added job %d to scheduling queue.\n", job_id));
+                            "Added job %d to scheduling queue.\n", job_id));
     }else {
         plm_get_cluster_message(pCluster);
     }
@@ -545,11 +508,50 @@ static void launch_daemons(int fd, short args, void *cbdata)
                          "%s plm:ccp:launch: finished spawning orteds",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
 
-    /* set the job state to indicate the daemons are launched */
-    jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
+    /* wait for daemons to callback */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_daemon_callback(map->num_new_daemons))) {
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                             "%s plm:ccp: daemon launch failed for job %s on error %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_JOBID_PRINT(jdata->jobid), ORTE_ERROR_NAME(rc)));
+        goto cleanup;
+    }
+
+launch_apps:
+    /* if we get here, then daemons launched - change to declaring apps failed */ 
+ 	failed_job = active_job; 
+    if (ORTE_SUCCESS != (rc = orte_plm_base_launch_apps(jdata->jobid))) {
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                             "%s plm:ccp: launch of apps failed for job %s on error %s",
+                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                             ORTE_JOBID_PRINT(jdata->jobid), ORTE_ERROR_NAME(rc)));
+        goto cleanup;
+    }
     
-    /* set the job state to indicate the daemons are launched */
-    state->jdata->state = ORTE_JOB_STATE_DAEMONS_LAUNCHED;
+    /* if we get here, then everything launched okay - record that fact */
+    failed_launch = false;
+    
+    /* check for timing request - get stop time for launch completion and report */
+    if (orte_timing) {
+        if (0 != gettimeofday(&completionstop, NULL)) {
+            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                "plm_ccp: could not obtain completion stop time"));
+        } else {
+            deltat = (launchstop.tv_sec - launchstart.tv_sec)*1000000 +
+                     (launchstop.tv_usec - launchstart.tv_usec);
+            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                "plm_ccp: launch completion required %d usec", deltat));
+        }
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm_ccp: Launch statistics:"));
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm_ccp: Average time to launch an orted: %f usec", avgtime));
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm_ccp: Max time to launch an orted: %d usec at iter %d", maxtime, maxiter));
+        OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                            "plm_ccp: Min time to launch an orted: %d usec at iter %d", mintime, miniter));
+    }
+    
     
  cleanup:
     if (NULL != argv) {
@@ -574,15 +576,27 @@ static void launch_daemons(int fd, short args, void *cbdata)
 
     /* check for failed launch - if so, force terminate */
     if (failed_launch) {
-        ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+        orte_plm_base_launch_failed(failed_job, -1, ORTE_ERROR_DEFAULT_EXIT_CODE, job_state);
     }
         
+    /* check for timing request - get stop time and process if so */
+    if (orte_timing) {
+        if (0 != gettimeofday(&jobstop, NULL)) {
+            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                "plm_ccp: could not obtain stop time"));
+        } else {
+            deltat = (jobstop.tv_sec - jobstart.tv_sec)*1000000 +
+                     (jobstop.tv_usec - jobstart.tv_usec);
+            OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
+                                "plm_ccp: launch of entire job required %d usec", deltat));
+        }
+    }
+    
     OPAL_OUTPUT_VERBOSE((1, orte_plm_globals.output,
                          "%s plm:ccp:launch: finished",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
 
-    OBJ_RELEASE(state);
-    return;
+    return rc;
 }
 
 
@@ -593,24 +607,11 @@ int plm_ccp_terminate_orteds()
 {
     int rc;
     
-    /* now tell them to die */
-    if (orte_abnormal_term_ordered) {
-        /* cannot know if a daemon is able to
-         * tell us it died, so just ensure they
-         * all terminate
-         */
-        if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_HALT_VM_CMD))) {
-            ORTE_ERROR_LOG(rc);
-        }
-    } else {
-        /* we need them to "phone home", though,
-         * so we can know that they have exited
-         */
-        if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
-            ORTE_ERROR_LOG(rc);
-        }
+    /* now tell them to die! */
+    if (ORTE_SUCCESS != (rc = orte_plm_base_orted_exit(ORTE_DAEMON_EXIT_CMD))) {
+        ORTE_ERROR_LOG(rc);
     }
-
+    
     return rc;
 }
 
@@ -692,7 +693,7 @@ static int plm_ccp_disconnect(void)
 static char *plm_ccp_commandline(char *prefix, char *node_name, int argc, char **argv)
 {
     char *commandline;
-    size_t i, len = 0;
+    int i, len = 0;
 
     for( i = 0; i < argc; i++ ) {
         len += strlen(argv[i]) + 1;

@@ -71,8 +71,7 @@ static int ompi_mtl_mxm_component_register(void)
                            &ompi_mtl_mxm.verbose);
 
     mca_base_param_reg_int(c, "np",
-            "[integer] Minimal number of MPI processes in a single job "
-            "required to activate the MXM transport",
+            "[integer] Minimal allowed job's NP to activate MXM",
             false, false,
             128,
             &ompi_mtl_mxm.mxm_np);
@@ -112,28 +111,6 @@ static int ompi_mtl_mxm_component_open(void)
         return OPAL_ERR_NOT_AVAILABLE;
     }
 
-#if MXM_API >= MXM_VERSION(1,5)
-{
-    int rc;
-
-    OBJ_CONSTRUCT(&mca_mtl_mxm_component.mxm_messages, ompi_free_list_t);
-    rc = ompi_free_list_init_new(&mca_mtl_mxm_component.mxm_messages,
-                                  sizeof(ompi_mtl_mxm_message_t),
-                                  opal_cache_line_size,
-                                  OBJ_CLASS(ompi_mtl_mxm_message_t),
-                                  0, opal_cache_line_size,
-                                  32 /* free list num */,
-                                  -1 /* free list max */,
-                                  32 /* free list inc */,
-                                  NULL);
-    if (OMPI_SUCCESS != rc) {
-        orte_show_help("help-mtl-mxm.txt", "mxm init", true,
-                    mxm_error_string(err));
-        return OPAL_ERR_NOT_AVAILABLE;
-    }
-}
-#endif
-
     return OMPI_SUCCESS;
 }
 
@@ -141,11 +118,6 @@ static int ompi_mtl_mxm_component_close(void)
 {
     mxm_cleanup(ompi_mtl_mxm.mxm_context);
     ompi_mtl_mxm.mxm_context = NULL;
-
-#if MXM_API >= MXM_VERSION(1,5)
-    OBJ_DESTRUCT(&mca_mtl_mxm_component.mxm_messages);
-#endif
-
     return OMPI_SUCCESS;
 }
 

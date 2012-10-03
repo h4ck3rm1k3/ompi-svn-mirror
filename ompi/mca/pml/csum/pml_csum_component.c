@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -11,10 +11,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      IBM Corporation.  All rights reserved.
- * Copyright (c) 2009      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2009-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,11 +22,13 @@
  */
 
 #include "ompi_config.h"
-#include "opal/mca/event/event.h"
+#include "opal/event/event.h"
 #include "mpi.h"
 #include "ompi/runtime/params.h"
 #include "ompi/mca/pml/pml.h"
 #include "opal/mca/base/mca_base_param.h"
+
+
 #include "ompi/mca/pml/base/pml_base_bsend.h"
 #include "pml_csum.h"
 #include "pml_csum_hdr.h"
@@ -50,7 +51,6 @@ static mca_pml_base_module_t*
 mca_pml_csum_component_init( int* priority, bool enable_progress_threads,
                             bool enable_mpi_threads );
 static int mca_pml_csum_component_fini(void);
-int mca_pml_csum_output = 0;
 
 mca_pml_base_component_2_0_0_t mca_pml_csum_component = {
 
@@ -96,12 +96,7 @@ static inline int mca_pml_csum_param_register_int(
 
 static int mca_pml_csum_component_open(void)
 {
-    int value;
     mca_allocator_base_component_t* allocator_component;
-
-    value = mca_pml_csum_param_register_int("verbose", 0);
-    mca_pml_csum_output = opal_output_open(NULL);
-    opal_output_set_verbosity(mca_pml_csum_output, value);
 
     mca_pml_csum.free_list_num =
         mca_pml_csum_param_register_int("free_list_num", 4);
@@ -109,14 +104,18 @@ static int mca_pml_csum_component_open(void)
         mca_pml_csum_param_register_int("free_list_max", -1);
     mca_pml_csum.free_list_inc =
         mca_pml_csum_param_register_int("free_list_inc", 64);
-    mca_pml_csum.priority =
-        mca_pml_csum_param_register_int("priority", 0);
     mca_pml_csum.send_pipeline_depth =
         mca_pml_csum_param_register_int("send_pipeline_depth", 3);
     mca_pml_csum.recv_pipeline_depth =
         mca_pml_csum_param_register_int("recv_pipeline_depth", 4);
-    mca_pml_csum.rdma_put_retries_limit =
-        mca_pml_csum_param_register_int("rdma_put_retries_limit", 5);
+
+    /* NTH: we can get into a live-lock situation in the RDMA failure path so disable
+       RDMA retries for now. Falling back to send may suck but it is better than
+       hanging */
+    mca_pml_csum.rdma_put_retries_limit = 0;
+    /*     mca_pml_csum.rdma_put_retries_limit = */
+    /*         mca_pml_csum_param_register_int("rdma_put_retries_limit", 5); */
+
     mca_pml_csum.max_rdma_per_request =
         mca_pml_csum_param_register_int("max_rdma_per_request", 4);
     mca_pml_csum.max_send_per_range =
@@ -146,7 +145,6 @@ static int mca_pml_csum_component_open(void)
         return OMPI_ERROR;
     }
 
-    mca_pml_csum.enabled = false; 
     return mca_bml_base_open(); 
 }
 
@@ -161,7 +159,6 @@ static int mca_pml_csum_component_close(void)
     if (NULL != mca_pml_csum.allocator_name) {
         free(mca_pml_csum.allocator_name);
     }
-    opal_output_close(mca_pml_csum_output);
 
     return OMPI_SUCCESS;
 }
@@ -172,26 +169,26 @@ mca_pml_csum_component_init( int* priority,
                             bool enable_progress_threads,
                             bool enable_mpi_threads )
 {
-    opal_output_verbose( 10, mca_pml_csum_output,
-                         "in csum, my priority is %d\n", mca_pml_csum.priority);
+    opal_output_verbose( 10, 0, "in csum, my priority is 0\n");
 
-    if((*priority) > mca_pml_csum.priority) { 
-        *priority = mca_pml_csum.priority;
+    /* select us only if we are specified */
+    if((*priority) > 0) { 
+        *priority = 0;
         return NULL;
     }
-    *priority = mca_pml_csum.priority;
-
+    *priority = 0;
+    
     if(OMPI_SUCCESS != mca_bml_base_init( enable_progress_threads, 
-                                          enable_mpi_threads)) {
+                                         enable_mpi_threads)) {
         return NULL;
     }
-
+    
     /* Set this here (vs in component_open()) because
-       ompi_mpi_leave_pinned* may have been set after MCA params were
-       read (e.g., by the openib btl) */
+     ompi_mpi_leave_pinned* may have been set after MCA params were
+     read (e.g., by the openib btl) */
     mca_pml_csum.leave_pinned = (1 == ompi_mpi_leave_pinned);
     mca_pml_csum.leave_pinned_pipeline = (int) ompi_mpi_leave_pinned_pipeline;
-
+    
     return &mca_pml_csum.super;
 }
 

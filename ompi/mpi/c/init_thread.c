@@ -86,6 +86,8 @@ int MPI_Init_thread(int *argc, char ***argv, int required,
         err = ompi_mpi_init(0, NULL, required, provided);
     }
 
+    OPAL_CR_INIT_LIBRARY();
+
     /* Since we don't have a communicator to invoke an errorhandler on
        here, don't use the fancy-schmancy ERRHANDLER macros; they're
        really designed for real communicator objects.  Just use the
@@ -96,8 +98,5 @@ int MPI_Init_thread(int *argc, char ***argv, int required,
                                       err < 0 ? ompi_errcode_get_mpi_code(err) :
                                       err, FUNC_NAME);
     }
-
-    OPAL_CR_INIT_LIBRARY();
-
     return MPI_SUCCESS;
 }

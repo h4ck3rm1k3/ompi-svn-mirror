@@ -9,7 +9,6 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2012      Los Alamos National Security, Inc.  All rights reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,7 +24,9 @@ int opal_dss_register(opal_dss_pack_fn_t pack_fn,
                       opal_dss_unpack_fn_t unpack_fn,
                       opal_dss_copy_fn_t copy_fn,
                       opal_dss_compare_fn_t compare_fn,
+                      opal_dss_size_fn_t size_fn,
                       opal_dss_print_fn_t print_fn,
+                      opal_dss_release_fn_t release_fn,
                       bool structured,
                       const char *name, opal_data_type_t *type)
 {
@@ -35,7 +36,7 @@ int opal_dss_register(opal_dss_pack_fn_t pack_fn,
     /* Check for bozo cases */
 
     if (NULL == pack_fn || NULL == unpack_fn || NULL == copy_fn || NULL == compare_fn ||
-        NULL == print_fn || NULL == name || NULL == type) {
+        NULL == size_fn || NULL == print_fn || NULL == name || NULL == type) {
         return OPAL_ERR_BAD_PARAM;
     }
 
@@ -72,7 +73,9 @@ int opal_dss_register(opal_dss_pack_fn_t pack_fn,
     info->odti_unpack_fn = unpack_fn;
     info->odti_copy_fn = copy_fn;
     info->odti_compare_fn = compare_fn;
+    info->odti_size_fn = size_fn;
     info->odti_print_fn = print_fn;
+    info->odti_release_fn = release_fn;
     info->odti_structured = structured;
     
     return opal_pointer_array_set_item(&opal_dss_types, *type, info);

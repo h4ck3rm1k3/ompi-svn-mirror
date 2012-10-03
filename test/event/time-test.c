@@ -34,7 +34,7 @@ void
 timeout_cb(int fd, short event, void *arg)
 {
 	struct timeval tv;
-	opal_event_t *timeout = arg;
+	struct opal_event *timeout = arg;
 	int newtime = time(NULL);
 
 	printf("%s: called at %d: %d\n", __func__, newtime,
@@ -49,7 +49,7 @@ timeout_cb(int fd, short event, void *arg)
 int
 main (int argc, char **argv)
 {
-	opal_event_t timeout;
+	struct opal_event timeout;
 	struct timeval tv;
  
 	/* Initalize the event library */

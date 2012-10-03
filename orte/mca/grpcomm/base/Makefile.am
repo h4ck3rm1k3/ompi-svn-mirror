@@ -9,8 +9,6 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2011-2012 Los Alamos National Security, LLC.
-#                         All rights reserved.
 # $COPYRIGHT$
 #
 # Additional copyrights may follow
@@ -29,8 +27,8 @@ libmca_grpcomm_la_SOURCES += \
 if !ORTE_DISABLE_FULL_SUPPORT
 
 libmca_grpcomm_la_SOURCES += \
+        base/grpcomm_base_allgather.c \
         base/grpcomm_base_modex.c \
-        base/grpcomm_base_receive.c \
-        base/grpcomm_base_xcast.c \
-        base/grpcomm_base_rollup.c
+        base/grpcomm_base_coll.c
+
 endif
