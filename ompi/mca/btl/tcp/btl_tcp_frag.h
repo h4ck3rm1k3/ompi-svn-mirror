@@ -36,9 +36,7 @@
 #include "btl_tcp.h" 
 #include "btl_tcp_hdr.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 #define MCA_BTL_TCP_FRAG_IOVEC_NUMBER  4
 
@@ -117,7 +115,7 @@ do {                                                                       \
     frag->iov_idx = 0;                                                     \
     frag->iov_ptr = frag->iov;                                             \
     frag->base.des_src = NULL;                                             \
-    frag->base.des_dst_cnt = 0;                                            \
+    frag->base.des_src_cnt = 0;                                            \
     frag->base.des_dst = frag->segments;                                   \
     frag->base.des_dst_cnt = 1;                                            \
 } while(0)
@@ -127,7 +125,5 @@ bool mca_btl_tcp_frag_send(mca_btl_tcp_frag_t*, int sd);
 bool mca_btl_tcp_frag_recv(mca_btl_tcp_frag_t*, int sd);
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

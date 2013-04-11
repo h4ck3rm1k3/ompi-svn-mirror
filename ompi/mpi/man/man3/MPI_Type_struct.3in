@@ -1,4 +1,5 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Type_struct 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -13,6 +14,7 @@ int MPI_Type_struct(int \fIcount\fP, int\fI *array_of_blocklengths\fP,
 	MPI_Aint\fI *array_of_displacements\fP, MPI_Datatype\fI *array_of_types\fP,
 	MPI_Datatype\fI *newtype\fP)
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
@@ -24,6 +26,7 @@ MPI_TYPE_STRUCT(\fICOUNT, ARRAY_OF_BLOCKLENGTHS,
 	INTEGER	\fIARRAY_OF_TYPES(*), NEWTYPE, IERROR\fP 
 
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
@@ -98,7 +101,7 @@ defining the extent of a datatype as including an epsilon, which would have allo
 .fi
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler may be changed with MPI_Comm_set_errhandler; the predefined error handler MPI_ERRORS_RETURN may be used to cause error values to be returned. Note that MPI does not guarantee that an MPI program can continue past an error.  

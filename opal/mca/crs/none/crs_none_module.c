@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  *
  * $COPYRIGHT$
@@ -11,15 +11,18 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
 #include <sys/types.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif  /* HAVE_UNISTD_H */
 
 #include "opal/util/opal_environ.h"
 #include "opal/util/output.h"
-#include "opal/util/show_help.h"
 #include "opal/util/argv.h"
+#include "opal/util/show_help.h"
 #include "opal/util/opal_environ.h"
 
 #include "opal/constants.h"
@@ -50,26 +53,34 @@ int opal_crs_none_module_finalize(void)
     return OPAL_SUCCESS;
 }
 
-int opal_crs_none_checkpoint(pid_t pid, opal_crs_base_snapshot_t *snapshot, opal_crs_state_type_t *state)
+int opal_crs_none_checkpoint(pid_t pid,
+                             opal_crs_base_snapshot_t *snapshot,
+                             opal_crs_base_ckpt_options_t *options,
+                             opal_crs_state_type_t *state)
 {
-    int ret;
-
     *state = OPAL_CRS_CONTINUE;
     
     snapshot->component_name  = strdup("none");
-    snapshot->reference_name  = strdup("none");
-    snapshot->local_location  = strdup("");
-    snapshot->remote_location = strdup("");
     snapshot->cold_start      = false;
 
     /*
      * Update the snapshot metadata
      */
-    if( OPAL_SUCCESS != (ret = opal_crs_base_metadata_write_token(NULL, CRS_METADATA_COMP, "none") ) ) {
+    if( NULL == snapshot->metadata ) {
+        if (NULL == (snapshot->metadata = fopen(snapshot->metadata_filename, "a")) ) {
+            opal_output(0,
+                        "crs:none: checkpoint(): Error: Unable to open the file (%s)",
+                        snapshot->metadata_filename);
+            return OPAL_ERROR;
+        }
+    }
+    fprintf(snapshot->metadata, "%s%s\n", CRS_METADATA_COMP, snapshot->component_name);
+    fclose(snapshot->metadata);
+    snapshot->metadata = NULL;
+
+    if( options->stop ) {
         opal_output(0,
-                    "crs:none: checkpoint(): Error: Unable to write component name to the directory for (%s).",
-                    snapshot->reference_name);
-        return ret;
+                    "crs:none: checkpoint(): Error: SIGSTOP Not currently supported!");
     }
 
     return OPAL_SUCCESS;
@@ -77,9 +88,73 @@ int opal_crs_none_checkpoint(pid_t pid, opal_crs_base_snapshot_t *snapshot, opal
 
 int opal_crs_none_restart(opal_crs_base_snapshot_t *base_snapshot, bool spawn_child, pid_t *child_pid)
 {
+    int exit_status = OPAL_SUCCESS;
+    char **tmp_argv = NULL;
+    char **cr_argv = NULL;
+    int status;
+
     *child_pid = getpid();
 
-    return OPAL_SUCCESS;
+    if( NULL == base_snapshot->metadata ) {
+        if (NULL == (base_snapshot->metadata = fopen(base_snapshot->metadata_filename, "a")) ) {
+            opal_output(0,
+                        "crs:none: checkpoint(): Error: Unable to open the file (%s)",
+                        base_snapshot->metadata_filename);
+            exit_status = OPAL_ERROR;
+            goto cleanup;
+        }
+    }
+
+    opal_crs_base_metadata_read_token(base_snapshot->metadata, CRS_METADATA_CONTEXT, &tmp_argv);
+
+    if( NULL == tmp_argv ) {
+        opal_output(opal_crs_base_output,
+                    "crs:none: none_restart: Error: Failed to read the %s token from the local checkpoint in %s",
+                    CRS_METADATA_CONTEXT, base_snapshot->metadata_filename);
+        exit_status = OPAL_ERROR;
+        goto cleanup;
+    }
+
+    if( opal_argv_count(tmp_argv) <= 0 ) {
+        opal_output_verbose(10, opal_crs_base_output,
+                            "crs:none: none_restart: No command line to exec, so just returning");
+        exit_status = OPAL_SUCCESS;
+        goto cleanup;
+    }
+
+    if ( NULL == (cr_argv = opal_argv_split(tmp_argv[0], ' ')) ) {
+        exit_status = OPAL_ERROR;
+        goto cleanup;
+    }
+
+    if( !spawn_child ) {
+        opal_output_verbose(10, opal_crs_base_output,
+                            "crs:none: none_restart: exec :(%s, %s):",
+                            strdup(cr_argv[0]),
+                            opal_argv_join(cr_argv, ' '));
+
+        status = execvp(strdup(cr_argv[0]), cr_argv);
+
+        if(status < 0) {
+            opal_output(opal_crs_base_output,
+                        "crs:none: none_restart: Child failed to execute :(%d):", status);
+        }
+        opal_output(opal_crs_base_output,
+                    "crs:none: none_restart: execvp returned %d", status);
+        exit_status = status;
+        goto cleanup;
+    } else {
+        opal_output(opal_crs_base_output,
+                   "crs:none: none_restart: Spawn not implemented");
+        exit_status = OPAL_ERR_NOT_IMPLEMENTED;
+        goto cleanup;
+    }
+
+ cleanup:
+    fclose(base_snapshot->metadata);
+    base_snapshot->metadata = NULL;
+    
+    return exit_status;
 }
 
 int opal_crs_none_disable_checkpoint(void)

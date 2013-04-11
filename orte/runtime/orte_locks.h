@@ -25,7 +25,6 @@
 #define ORTE_LOCKS_H
 
 #include "orte_config.h"
-#include "orte/types.h"
 
 #include "opal/sys/atomic.h"
 
@@ -36,7 +35,8 @@ ORTE_DECLSPEC extern opal_atomic_lock_t orte_finalize_lock;
 
 /* for HNPs */
 ORTE_DECLSPEC extern opal_atomic_lock_t orte_abort_inprogress_lock;
-
+ORTE_DECLSPEC extern opal_atomic_lock_t orte_jobs_complete_lock;
+ORTE_DECLSPEC extern opal_atomic_lock_t orte_quit_lock;
 
 /**
  * Initialize the locks

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -28,16 +28,10 @@
 
 #include "opal/mca/mca.h"
 #include "ompi/mca/crcp/crcp.h"
-#include "ompi/communicator/communicator.h"
-#include "opal/runtime/opal_cr.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
 #include MCA_timer_IMPLEMENTATION_HEADER
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * Local Component structures
@@ -63,8 +57,12 @@ extern "C" {
     int ompi_crcp_bkmrk_pml_init(void);
     int ompi_crcp_bkmrk_pml_finalize(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+    /*
+     * Quiesce Interface
+     */
+    int ompi_crcp_bkmrk_quiesce_start(MPI_Info *info);
+    int ompi_crcp_bkmrk_quiesce_end(MPI_Info *info);
+
+END_C_DECLS
 
 #endif /* MCA_CRCP_HOKE_EXPORT_H */

@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,32 +17,37 @@
 # $HEADER$
 #
 
-if !OMPI_WANT_SCRIPT_WRAPPER_COMPILERS
+if !OPAL_WANT_SCRIPT_WRAPPER_COMPILERS
 if OMPI_INSTALL_BINARIES
 
 dist_pkgdata_DATA = \
         mpicc-vt-wrapper-data.txt \
 	mpic++-vt-wrapper-data.txt \
-	mpif77-vt-wrapper-data.txt \
-	mpif90-vt-wrapper-data.txt
+	mpifort-vt-wrapper-data.txt
 
 install-exec-hook-always:
-	test -z "$(bindir)" || $(mkdir_p) "$(DESTDIR)$(bindir)"
+	test -z "$(bindir)" || $(MKDIR_P) "$(DESTDIR)$(bindir)"
 	(cd $(DESTDIR)$(bindir); rm -f mpicc-vt$(EXEEXT); $(LN_S) opal_wrapper mpicc-vt)
 	(cd $(DESTDIR)$(bindir); rm -f mpic++-vt$(EXEEXT); $(LN_S) opal_wrapper mpic++-vt)
 	(cd $(DESTDIR)$(bindir); rm -f mpicxx-vt$(EXEEXT); $(LN_S) opal_wrapper mpicxx-vt)
-	(cd $(DESTDIR)$(bindir); rm -f mpif77-vt$(EXEEXT); $(LN_S) opal_wrapper mpif77-vt)
-	(cd $(DESTDIR)$(bindir); rm -f mpif90-vt$(EXEEXT); $(LN_S) opal_wrapper mpif90-vt)
+	(cd $(DESTDIR)$(bindir); rm -f mpifort-vt$(EXEEXT); $(LN_S) opal_wrapper mpifort-vt)
+	(cd $(DESTDIR)$(bindir); rm -f mpif77-vt$(EXEEXT); $(LN_S) mpifort-vt mpif77-vt)
+	(cd $(DESTDIR)$(bindir); rm -f mpif90-vt$(EXEEXT); $(LN_S) mpifort-vt mpif90-vt)
 
 install-data-hook-always:
 	(cd $(DESTDIR)$(pkgdatadir); rm -f mpicxx-vt-wrapper-data.txt; $(LN_S) mpic++-vt-wrapper-data.txt mpicxx-vt-wrapper-data.txt)
+	(cd $(DESTDIR)$(pkgdatadir); rm -f mpif77-vt-wrapper-data.txt; $(LN_S) mpifort-wrapper-data.txt mpif77-vt-wrapper-data.txt)
+	(cd $(DESTDIR)$(pkgdatadir); rm -f mpif90-vt-wrapper-data.txt; $(LN_S) mpifort-wrapper-data.txt mpif90-vt-wrapper-data.txt)
 
 uninstall-local-always:
 	rm -f $(DESTDIR)$(bindir)/mpicc-vt$(EXEEXT) \
 	$(DESTDIR)$(bindir)/mpic++-vt$(EXEEXT) \
 	$(DESTDIR)$(bindir)/mpicxx-vt$(EXEEXT) \
+	$(DESTDIR)$(bindir)/mpifort-vt$(EXEEXT) \
 	$(DESTDIR)$(bindir)/mpif77-vt$(EXEEXT) \
 	$(DESTDIR)$(bindir)/mpif90-vt$(EXEEXT) \
+	$(DESTDIR)$(pkgdatadir)/mpif77-vt-wrapper-data.txt \
+	$(DESTDIR)$(pkgdatadir)/mpif90-vt-wrapper-data.txt \
 	$(DESTDIR)$(pkgdatadir)/mpicxx-vt-wrapper-data.txt
 
 if CASE_SENSITIVE_FS
@@ -64,4 +69,4 @@ uninstall-local: uninstall-local-always
 endif # CASE_SENSITIVE_FS
 
 endif # OMPI_INSTALL_BINARIES
-endif # OMPI_WANT_SCRIPT_WRAPPER_COMPILERS
+endif # OPAL_WANT_SCRIPT_WRAPPER_COMPILERS

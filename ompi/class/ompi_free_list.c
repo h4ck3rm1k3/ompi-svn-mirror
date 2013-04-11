@@ -1,8 +1,9 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,6 +11,10 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
+ * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,9 +25,8 @@
 #include "ompi_config.h"
 
 #include "ompi/class/ompi_free_list.h"
-#include "opal/include/opal/align.h"
-#include "opal/sys/cache.h"
-#include "orte/util/show_help.h"
+#include "opal/align.h"
+#include "opal/util/output.h"
 #include "ompi/mca/mpool/mpool.h"
 
 static void ompi_free_list_construct(ompi_free_list_t* fl);
@@ -60,7 +64,7 @@ static void ompi_free_list_destruct(ompi_free_list_t* fl)
     opal_list_item_t *item;
     ompi_free_list_memory_t *fl_mem;
 
-#if 0 && OMPI_ENABLE_DEBUG
+#if 0 && OPAL_ENABLE_DEBUG
     if(opal_list_get_size(&fl->super) != fl->fl_num_allocated) {
         opal_output(0, "ompi_free_list: %d allocated %d returned: %s:%d\n",
             fl->fl_num_allocated, opal_list_get_size(&fl->super),
@@ -70,11 +74,15 @@ static void ompi_free_list_destruct(ompi_free_list_t* fl)
 
     while(NULL != (item = opal_list_remove_first(&(fl->fl_allocations)))) {
         fl_mem = (ompi_free_list_memory_t*)item;
-        if(fl->fl_mpool != NULL) {
+
+        if( NULL != fl->fl_mpool ) {
             fl->fl_mpool->mpool_free(fl->fl_mpool, fl_mem->ptr,
-                    fl_mem->registration);
+                                     fl_mem->registration);
+        } else if (fl_mem->ptr) {
+            free (fl_mem->ptr);
         }
-       /* destruct the item (we constructed it), then free the memory chunk */
+
+        /* destruct the item (we constructed it), then free the memory chunk */
         OBJ_DESTRUCT(item);
         free(item);
     }
@@ -82,10 +90,6 @@ static void ompi_free_list_destruct(ompi_free_list_t* fl)
     OBJ_DESTRUCT(&fl->fl_allocations);
     OBJ_DESTRUCT(&fl->fl_condition);
     OBJ_DESTRUCT(&fl->fl_lock);
-    if(fl->ctx) { 
-        free(fl->ctx);
-    }
-
 }
 
 int ompi_free_list_init_ex(
@@ -163,9 +167,10 @@ int ompi_free_list_init_ex_new(
         return ompi_free_list_grow(flist, num_elements_to_alloc);
     return OMPI_SUCCESS;
 }
+
 int ompi_free_list_grow(ompi_free_list_t* flist, size_t num_elements)
 {
-    unsigned char *ptr, *mpool_alloc_ptr = NULL;
+    unsigned char *ptr, *mpool_alloc_ptr = NULL, *payload_ptr = NULL;
     ompi_free_list_memory_t *alloc_ptr;
     size_t i, alloc_size, head_size, elem_size = 0;
     mca_mpool_base_registration_t *reg = NULL;
@@ -190,18 +195,38 @@ int ompi_free_list_grow(ompi_free_list_t* flist, size_t num_elements)
     if(NULL == alloc_ptr)
         return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
 
-    /* allocate the rest from the mpool */
-    if(flist->fl_mpool != NULL) {
+    if (0 != flist->fl_payload_buffer_size) {
         elem_size = OPAL_ALIGN(flist->fl_payload_buffer_size, 
-                flist->fl_payload_buffer_alignment, size_t);
-        if(elem_size != 0) {
-            mpool_alloc_ptr = (unsigned char *) flist->fl_mpool->mpool_alloc(flist->fl_mpool,
-                   num_elements * elem_size, flist->fl_payload_buffer_alignment,
-                   MCA_MPOOL_FLAGS_CACHE_BYPASS, &reg);
-            if(NULL == mpool_alloc_ptr) {
-                free(alloc_ptr);
-                return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
-            }
+                               flist->fl_payload_buffer_alignment, size_t);
+
+        /* elem_size should not be 0 here */
+        assert (elem_size > 0);
+
+        /* allocate the rest from the mpool (or use memalign/malloc) */
+        if(flist->fl_mpool != NULL) {
+            payload_ptr = mpool_alloc_ptr =
+                (unsigned char *) flist->fl_mpool->mpool_alloc(flist->fl_mpool,
+                                                               num_elements * elem_size, 
+                                                               flist->fl_payload_buffer_alignment,
+                                                               MCA_MPOOL_FLAGS_CACHE_BYPASS |
+                                                               MCA_MPOOL_FLAGS_CUDA_REGISTER_MEM, &reg);
+        } else {
+#ifdef HAVE_POSIX_MEMALIGN
+            posix_memalign ((void **) &mpool_alloc_ptr, flist->fl_payload_buffer_alignment,
+                            num_elements * elem_size);
+            payload_ptr = mpool_alloc_ptr;
+#else
+            mpool_alloc_ptr = (unsigned char *) malloc (num_elements * elem_size +
+                                      flist->fl_payload_buffer_alignment);
+            payload_ptr = (unsigned char *) OPAL_ALIGN((uintptr_t)mpool_alloc_ptr, 
+                                            flist->fl_payload_buffer_alignment,
+                                            uintptr_t);
+#endif
+        }
+
+        if(NULL == mpool_alloc_ptr) {
+            free(alloc_ptr);
+            return OMPI_ERR_TEMP_OUT_OF_RESOURCE;
         }
     }
 
@@ -219,7 +244,7 @@ int ompi_free_list_grow(ompi_free_list_t* flist, size_t num_elements)
     for(i=0; i<num_elements; i++) {
         ompi_free_list_item_t* item = (ompi_free_list_item_t*)ptr;
         item->registration = reg;
-        item->ptr = mpool_alloc_ptr;
+        item->ptr = payload_ptr;
 
         OBJ_CONSTRUCT_INTERNAL(item, flist->fl_frag_class);
         
@@ -230,7 +255,7 @@ int ompi_free_list_grow(ompi_free_list_t* flist, size_t num_elements)
 
         opal_atomic_lifo_push(&(flist->super), &(item->super));
         ptr += head_size;
-        mpool_alloc_ptr += elem_size;
+        payload_ptr += elem_size;
         
     }
     flist->fl_num_allocated += num_elements;

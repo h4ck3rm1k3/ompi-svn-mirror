@@ -1,14 +1,19 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,7 +31,7 @@
 #include "pml_ob1_hdr.h"
 #include "pml_ob1_rdma.h"
 #include "pml_ob1_rdmafrag.h"
-#include "ompi/datatype/convertor.h"
+#include "opal/datatype/opal_convertor.h"
 #include "ompi/mca/bml/bml.h" 
 
 BEGIN_C_DECLS
@@ -50,6 +55,7 @@ struct mca_pml_ob1_send_request_t {
     mca_pml_ob1_send_pending_t req_pending;
     opal_mutex_t req_send_range_lock; 
     opal_list_t req_send_ranges;
+    mca_btl_base_descriptor_t *src_des;
     mca_pml_ob1_com_btl_t req_rdma[1]; 
 };
 typedef struct mca_pml_ob1_send_request_t mca_pml_ob1_send_request_t;
@@ -125,6 +131,7 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
             OMPI_FREE_LIST_WAIT(&mca_pml_base_send_requests, item, rc); \
             sendreq = (mca_pml_ob1_send_request_t*)item;                \
             sendreq->req_send.req_base.req_proc = proc;                 \
+            sendreq->src_des = NULL;                                    \
         }                                                               \
     }
 
@@ -147,10 +154,18 @@ get_request_from_send_pending(mca_pml_ob1_send_pending_t *type)
                                        tag,                             \
                                        comm,                            \
                                        sendmode,                        \
-                                       persistent, 0);                  \
+                                       persistent,                      \
+                                       0); /* convertor_flags */        \
         (sendreq)->req_recv.pval = NULL;                                \
     }
 
+#define MCA_PML_OB1_SEND_REQUEST_RESET(sendreq)                             \
+{                                                                           \
+    size_t _position = 0;                                                   \
+    opal_convertor_set_position(&sendreq->req_send.req_base.req_convertor,  \
+                                &_position);                                \
+    assert( 0 == _position );                                               \
+}
 
 static inline void mca_pml_ob1_free_rdma_resources(mca_pml_ob1_send_request_t* sendreq)
 {
@@ -188,8 +203,8 @@ do {                                                                            
    (sendreq)->req_send.req_base.req_ompi.req_status.MPI_TAG =                        \
         (sendreq)->req_send.req_base.req_tag;                                        \
    (sendreq)->req_send.req_base.req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;        \
-   (sendreq)->req_send.req_base.req_ompi.req_status._count =                         \
-        (int)(sendreq)->req_send.req_bytes_packed;                                   \
+   (sendreq)->req_send.req_base.req_ompi.req_status._ucount =                        \
+        (sendreq)->req_send.req_bytes_packed;                                        \
    ompi_request_complete( &((sendreq)->req_send.req_base.req_ompi), (with_signal) ); \
                                                                                      \
    PERUSE_TRACE_COMM_EVENT( PERUSE_COMM_REQ_COMPLETE,                                \
@@ -217,14 +232,14 @@ do {                                                                            
  * should only be an internal call to the PML.
  *
  */
-void static inline
+static inline void
 send_request_pml_complete(mca_pml_ob1_send_request_t *sendreq)
 {
     assert(false == sendreq->req_send.req_base.req_pml_complete);
 
     if(sendreq->req_send.req_bytes_packed > 0) {
         PERUSE_TRACE_COMM_EVENT( PERUSE_COMM_REQ_XFER_END,
-                &(sendreq->req_send.req_base), PERUSE_SEND);
+                                 &(sendreq->req_send.req_base), PERUSE_SEND);
     }
 
     /* return mpool resources */
@@ -249,10 +264,12 @@ send_request_pml_complete(mca_pml_ob1_send_request_t *sendreq)
 }
 
 /* returns true if request was completed on PML level */
-bool static inline
+static inline bool
 send_request_pml_complete_check(mca_pml_ob1_send_request_t *sendreq)
 {
+#if OPAL_ENABLE_MULTI_THREADS
     opal_atomic_rmb();
+#endif
     /* if no more events are expected for the request and the whole message is
      * already sent and send fragment scheduling isn't running in another
      * thread then complete the request on PML level. From now on, if user
@@ -305,6 +322,13 @@ mca_pml_ob1_send_request_schedule(mca_pml_ob1_send_request_t* sendreq)
 
     mca_pml_ob1_send_request_schedule_exclusive(sendreq);
 }
+
+#if OMPI_CUDA_SUPPORT
+int mca_pml_ob1_send_request_start_cuda(
+    mca_pml_ob1_send_request_t* sendreq, 
+    mca_bml_base_btl_t* bml_btl,
+    size_t size);
+#endif /* OMPI_CUDA_SUPPORT */
 
 /**
  *  Start the specified request
@@ -371,9 +395,9 @@ mca_pml_ob1_send_request_start_btl( mca_pml_ob1_send_request_t* sendreq,
         if(sendreq->req_send.req_send_mode == MCA_PML_BASE_SEND_BUFFERED) {
             rc = mca_pml_ob1_send_request_start_buffered(sendreq, bml_btl, size);
         } else if
-                (ompi_convertor_need_buffers(&sendreq->req_send.req_base.req_convertor) == false) {
+                (opal_convertor_need_buffers(&sendreq->req_send.req_base.req_convertor) == false) {
             unsigned char *base;
-            ompi_convertor_get_current_pointer( &sendreq->req_send.req_base.req_convertor, (void**)&base );
+            opal_convertor_get_current_pointer( &sendreq->req_send.req_base.req_convertor, (void**)&base );
             
             if( 0 != (sendreq->req_rdma_cnt = (uint32_t)mca_pml_ob1_rdma_btls(
                                                                               sendreq->req_endpoint,
@@ -390,6 +414,11 @@ mca_pml_ob1_send_request_start_btl( mca_pml_ob1_send_request_t* sendreq,
                                                          MCA_PML_OB1_HDR_FLAGS_CONTIG);
             }
         } else {
+#if OMPI_CUDA_SUPPORT
+            if (sendreq->req_send.req_base.req_convertor.flags & CONVERTOR_CUDA) {
+                return mca_pml_ob1_send_request_start_cuda(sendreq, bml_btl, size);
+            }
+#endif /* OMPI_CUDA_SUPPORT */
             rc = mca_pml_ob1_send_request_start_rndv(sendreq, bml_btl, size, 0);
         }
     }

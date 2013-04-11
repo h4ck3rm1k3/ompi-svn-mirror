@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2009 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2010 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -11,14 +11,16 @@ FILE(GLOB_RECURSE ORTE_CHECKPOINT_SOURCE_FILES "*.h" "*.c" "*.cc" "*.cpp")
 
 ADD_EXECUTABLE (orte-checkpoint ${ORTE_CHECKPOINT_SOURCE_FILES})
 
+ADD_DEPENDENCIES(orte-checkpoint libopen-rte libopen-pal)
 IF(BUILD_SHARED_LIBS)
   SET_TARGET_PROPERTIES(orte-checkpoint PROPERTIES
-    COMPILE_FLAGS "-D_USRDLL -DOPAL_IMPORTS -DOMPI_IMPORTS -DORTE_IMPORTS /TP")
+    COMPILE_FLAGS "${OMPI_C_DEF_PRE}_USRDLL ${OMPI_C_DEF_PRE}OPAL_IMPORTS ${OMPI_C_DEF_PRE}OMPI_IMPORTS ${OMPI_C_DEF_PRE}ORTE_IMPORTS ${OMPI_CXX_LAN_FLAG}")
 ENDIF(BUILD_SHARED_LIBS)
 
-TARGET_LINK_LIBRARIES (orte-checkpoint Ws2_32.lib shlwapi.lib)
+SET_TARGET_PROPERTIES(orte-checkpoint PROPERTIES
+  DEBUG_POSTFIX "${OMPI_EXE_DEBUG_POSTFIX}")
 
-ADD_DEPENDENCIES (orte-checkpoint libopen-pal libopen-rte)
+TARGET_LINK_LIBRARIES (orte-checkpoint libopen-pal libopen-rte Ws2_32.lib shlwapi.lib)
 
 ADD_CUSTOM_COMMAND (TARGET orte-checkpoint
   POST_BUILD

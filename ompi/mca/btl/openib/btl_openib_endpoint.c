@@ -10,11 +10,13 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies, Inc.  All rights reserved.
+ * Copyright (c) 2010-2011 IBM Corporation.  All rights reserved.
+ * Copyright (c) 2010-2011 Oracle and/or its affiliates.  All rights reserved
  *
  * $COPYRIGHT$
  *
@@ -25,19 +27,19 @@
 
 #include "ompi_config.h"
 
+#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
+#endif
 #include <time.h>
 #include <errno.h>
 #include <string.h>
 
 #include "opal_stdint.h"
+#include "opal/util/output.h"
 
-#include "orte/mca/oob/base/base.h"
-#include "orte/mca/rml/rml.h"
-#include "orte/mca/errmgr/errmgr.h"
+#include "orte/util/show_help.h"
 
 #include "ompi/types.h"
-#include "ompi/mca/pml/base/pml_base_sendreq.h"
 #include "ompi/class/ompi_free_list.h"
 
 #include "btl_openib_endpoint.h"
@@ -150,7 +152,8 @@ int mca_btl_openib_endpoint_post_send(mca_btl_openib_endpoint_t *endpoint,
         hdr->cm_seen = cm_return;
     }
 
-    ib_rc = post_send(endpoint, frag, do_rdma);
+    qp_reset_signal_count(endpoint, qp);
+    ib_rc = post_send(endpoint, frag, do_rdma, 1);
 
     if(!ib_rc)
         return OMPI_SUCCESS;
@@ -194,7 +197,7 @@ OBJ_CLASS_INSTANCE(mca_btl_openib_endpoint_t,
  */
 static mca_btl_openib_qp_t *endpoint_alloc_qp(void)
 {
-    mca_btl_openib_qp_t *qp = calloc(1, sizeof(mca_btl_openib_qp_t));
+    mca_btl_openib_qp_t *qp = (mca_btl_openib_qp_t *) calloc(1, sizeof(mca_btl_openib_qp_t));
     if(!qp) {
         BTL_ERROR(("Failed to allocate memory for qp"));
         return NULL;
@@ -285,8 +288,11 @@ static void endpoint_init_qp(mca_btl_base_endpoint_t *ep, const int qp)
             break;
         default:
             BTL_ERROR(("Wrong QP type"));
-            break;
+            return;
     }
+
+    ep_qp->qp->sd_wqe_inflight = 0;
+    ep_qp->qp->wqe_count = QP_TX_BATCH_COUNT;
 }
 
 void mca_btl_openib_endpoint_init(mca_btl_openib_module_t *btl,
@@ -307,10 +313,16 @@ void mca_btl_openib_endpoint_init(mca_btl_openib_module_t *btl,
     ep->rem_info.rem_lid = remote_proc_info->pm_port_info.lid;
     ep->rem_info.rem_subnet_id = remote_proc_info->pm_port_info.subnet_id;
     ep->rem_info.rem_mtu = remote_proc_info->pm_port_info.mtu;
-    opal_output(-1, "Got remote LID, subnet, MTU: %d, 0x%" PRIx64 ", %d", 
+    opal_output(-1, "Got remote LID, subnet, MTU: %d, 0x%" PRIx64 ", %d",
                 ep->rem_info.rem_lid,
                 ep->rem_info.rem_subnet_id,
                 ep->rem_info.rem_mtu);
+
+    ep->rem_info.rem_vendor_id = (remote_proc_info->pm_port_info).vendor_id;
+    ep->rem_info.rem_vendor_part_id = (remote_proc_info->pm_port_info).vendor_part_id;
+
+    ep->rem_info.rem_transport_type =
+         (mca_btl_openib_transport_type_t) (remote_proc_info->pm_port_info).transport_type;
 
     for (qp = 0; qp < mca_btl_openib_component.num_qps; qp++) {
         endpoint_init_qp(ep, qp);
@@ -443,6 +455,9 @@ static void mca_btl_openib_endpoint_destruct(mca_btl_base_endpoint_t* endpoint)
     free(endpoint->qps);
     endpoint->qps = NULL;
 
+    free(endpoint->rem_info.rem_qps);
+    free(endpoint->rem_info.rem_srqs);
+
     /* unregister xrc recv qp */
 #if HAVE_XRC
     if (0 != endpoint->xrc_recv_qp_num) {
@@ -499,7 +514,7 @@ static void cts_sent(mca_btl_base_module_t* btl,
 /*
  * Send CTS control fragment
  */
-void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint) 
+void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
 {
     mca_btl_openib_send_control_frag_t *sc_frag;
     mca_btl_base_descriptor_t *base_des;
@@ -530,7 +545,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     base_des->des_cbdata = NULL;
     base_des->des_flags |= MCA_BTL_DES_FLAGS_PRIORITY|MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     base_des->order = mca_btl_openib_component.credits_qp;
-    openib_frag->segment.seg_len = sizeof(mca_btl_openib_control_header_t);
+    openib_frag->segment.base.seg_len = sizeof(mca_btl_openib_control_header_t);
     com_frag->endpoint = endpoint;
 
     sc_frag->hdr->tag = MCA_BTL_TAG_BTL;
@@ -538,7 +553,7 @@ void mca_btl_openib_endpoint_send_cts(mca_btl_openib_endpoint_t *endpoint)
     sc_frag->hdr->credits = 0;
 
     ctl_hdr = (mca_btl_openib_control_header_t*)
-        openib_frag->segment.seg_addr.pval;
+        openib_frag->segment.base.seg_addr.pval;
     ctl_hdr->type = MCA_BTL_OPENIB_CONTROL_CTS;
 
     /* Send the fragment */
@@ -630,7 +645,7 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
     }
 
     /* Run over all qps and load alternative path */
-#if OMPI_HAVE_THREADS
+#if OPAL_HAVE_THREADS
     if (APM_ENABLED) {
         int i;
         if (MCA_BTL_XRC_ENABLED) {
@@ -656,8 +671,8 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         while(master && !opal_list_is_empty(&endpoint->ib_addr->pending_ep)) {
             ep_item = opal_list_remove_first(&endpoint->ib_addr->pending_ep);
             ep = (mca_btl_openib_endpoint_t *)ep_item;
-            if (OMPI_SUCCESS != 
-                ompi_btl_openib_connect_base_start(endpoint->endpoint_local_cpc, 
+            if (OMPI_SUCCESS !=
+                ompi_btl_openib_connect_base_start(endpoint->endpoint_local_cpc,
                                                    ep)) {
                 BTL_ERROR(("Failed to connect pending endpoint\n"));
             }
@@ -666,7 +681,6 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
     }
 
 
-    OPAL_THREAD_UNLOCK(&endpoint->endpoint_lock);
     /* Process pending packet on the endpoint */
 
     /* While there are frags in the list, process them */
@@ -675,9 +689,11 @@ void mca_btl_openib_endpoint_connected(mca_btl_openib_endpoint_t *endpoint)
         frag = to_send_frag(frag_item);
         /* We need to post this one */
 
-        if(OMPI_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag))
-            BTL_ERROR(("Error posting send"));
+        if (OMPI_ERROR == mca_btl_openib_endpoint_post_send(endpoint, frag)) {
+		     BTL_ERROR(("Error posting send"));
+		}
     }
+    OPAL_THREAD_UNLOCK(&endpoint->endpoint_lock);
 
     /* if upper layer called put or get before connection moved to connected
      * state then we restart them here */
@@ -766,14 +782,14 @@ void mca_btl_openib_endpoint_send_credits(mca_btl_openib_endpoint_t* endpoint,
         to_base_frag(frag)->base.des_flags |= MCA_BTL_DES_SEND_ALWAYS_CALLBACK;;
         to_com_frag(frag)->endpoint = endpoint;
         frag->hdr->tag = MCA_BTL_TAG_BTL;
-        to_base_frag(frag)->segment.seg_len =
+        to_base_frag(frag)->segment.base.seg_len =
             sizeof(mca_btl_openib_rdma_credits_header_t);
     }
 
     assert(frag->qp_idx == qp);
     credits_hdr = (mca_btl_openib_rdma_credits_header_t*)
-        to_base_frag(frag)->segment.seg_addr.pval;
-    if(acquire_eager_rdma_send_credit(endpoint) == MPI_SUCCESS) {
+        to_base_frag(frag)->segment.base.seg_addr.pval;
+    if(OMPI_SUCCESS == acquire_eager_rdma_send_credit(endpoint)) {
         do_rdma = true;
     } else {
         if(OPAL_THREAD_ADD32(&endpoint->qps[qp].u.pp_qp.cm_sent, 1) >
@@ -803,7 +819,8 @@ void mca_btl_openib_endpoint_send_credits(mca_btl_openib_endpoint_t* endpoint,
     if(endpoint->nbo)
          BTL_OPENIB_RDMA_CREDITS_HEADER_HTON(*credits_hdr);
 
-    if((rc = post_send(endpoint, frag, do_rdma)) == 0)
+    qp_reset_signal_count(endpoint, qp);
+    if((rc = post_send(endpoint, frag, do_rdma, 1)) == 0)
         return;
 
     if(endpoint->nbo) {
@@ -856,40 +873,41 @@ static int mca_btl_openib_endpoint_send_eager_rdma(
     to_base_frag(frag)->base.des_cbdata = NULL;
     to_base_frag(frag)->base.des_flags |= MCA_BTL_DES_FLAGS_PRIORITY|MCA_BTL_DES_SEND_ALWAYS_CALLBACK;
     to_base_frag(frag)->base.order = mca_btl_openib_component.credits_qp;
-    to_base_frag(frag)->segment.seg_len =
+    to_base_frag(frag)->segment.base.seg_len =
         sizeof(mca_btl_openib_eager_rdma_header_t);
     to_com_frag(frag)->endpoint = endpoint;
 
     frag->hdr->tag = MCA_BTL_TAG_BTL;
-    rdma_hdr = (mca_btl_openib_eager_rdma_header_t*)to_base_frag(frag)->segment.seg_addr.pval;
+    rdma_hdr = (mca_btl_openib_eager_rdma_header_t*)to_base_frag(frag)->segment.base.seg_addr.pval;
     rdma_hdr->control.type = MCA_BTL_OPENIB_CONTROL_RDMA;
     rdma_hdr->rkey = endpoint->eager_rdma_local.reg->mr->rkey;
     rdma_hdr->rdma_start.lval = ompi_ptr_ptol(endpoint->eager_rdma_local.base.pval);
-    BTL_VERBOSE(("sending rkey %lu, rdma_start.lval %llu, pval %p, ival %u type %d and sizeof(rdma_hdr) %d\n",
-               rdma_hdr->rkey,
-               rdma_hdr->rdma_start.lval,
-               rdma_hdr->rdma_start.pval,
-               rdma_hdr->rdma_start.ival,
-               rdma_hdr->control.type,
-               sizeof(mca_btl_openib_eager_rdma_header_t)
-               ));
+    BTL_VERBOSE(("sending rkey %" PRIu32 ", rdma_start.lval %" PRIx64
+                 ", pval %p, ival %" PRIu32 " type %d and sizeof(rdma_hdr) %d\n",
+                 rdma_hdr->rkey,
+                 rdma_hdr->rdma_start.lval,
+                 rdma_hdr->rdma_start.pval,
+                 rdma_hdr->rdma_start.ival,
+                 rdma_hdr->control.type,
+                 (int) sizeof(mca_btl_openib_eager_rdma_header_t)
+                 ));
 
     if(endpoint->nbo) {
         BTL_OPENIB_EAGER_RDMA_CONTROL_HEADER_HTON((*rdma_hdr));
 
-        BTL_VERBOSE(("after HTON: sending rkey %lu, rdma_start.lval %llu, pval %p, ival %u\n",
-                   rdma_hdr->rkey,
-                   rdma_hdr->rdma_start.lval,
-                   rdma_hdr->rdma_start.pval,
-                   rdma_hdr->rdma_start.ival
-                   ));
+        BTL_VERBOSE(("after HTON: sending rkey %" PRIu32 ", rdma_start.lval %" PRIx64 ", pval %p, ival %" PRIu32 "\n",
+                     rdma_hdr->rkey,
+                     rdma_hdr->rdma_start.lval,
+                     rdma_hdr->rdma_start.pval,
+                     rdma_hdr->rdma_start.ival
+                     ));
     }
     rc = mca_btl_openib_endpoint_send(endpoint, frag);
-    if (OMPI_SUCCESS == rc ||OMPI_ERR_RESOURCE_BUSY == rc)
+    if (OMPI_SUCCESS == rc || OMPI_ERR_RESOURCE_BUSY == rc)
         return OMPI_SUCCESS;
 
     MCA_BTL_IB_FRAG_RETURN(frag);
-    BTL_ERROR(("Error sending RDMA buffer", strerror(errno)));
+    BTL_ERROR(("Error sending RDMA buffer: %s", strerror(errno)));
     return rc;
 }
 
@@ -901,6 +919,7 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
     char *buf;
     mca_btl_openib_recv_frag_t *headers_buf;
     int i;
+    uint32_t flag = MCA_MPOOL_FLAGS_CACHE_BYPASS;
 
     /* Set local rdma pointer to 1 temporarily so other threads will not try
      * to enter the function */
@@ -915,11 +934,25 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
     if(NULL == headers_buf)
        goto unlock_rdma_local;
 
-    buf = openib_btl->super.btl_mpool->mpool_alloc(openib_btl->super.btl_mpool,
+#if HAVE_DECL_IBV_ACCESS_SO
+    /* Solaris implements the Relaxed Ordering feature defined in the
+       PCI Specification. With this in mind any memory region which
+       relies on a buffer being written in a specific order, for
+       example the eager rdma connections created in this routinue,
+       must set a strong order flag when registering the memory for
+       rdma operations.
+
+       The following flag will be interpreted and the appropriate
+       steps will be taken when the memory is registered in
+       openib_reg_mr(). */
+    flag |= MCA_MPOOL_FLAGS_SO_MEM;
+#endif
+
+    buf = (char *) openib_btl->super.btl_mpool->mpool_alloc(openib_btl->super.btl_mpool,
             openib_btl->eager_rdma_frag_size *
             mca_btl_openib_component.eager_rdma_num,
             mca_btl_openib_component.buffer_alignment,
-            MCA_MPOOL_FLAGS_CACHE_BYPASS,
+            flag,
             (mca_mpool_base_registration_t**)&endpoint->eager_rdma_local.reg);
 
     if(!buf)
@@ -935,7 +968,7 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
         mca_btl_openib_frag_init_data_t init_data;
 
         item = (ompi_free_list_item_t*)&headers_buf[i];
-        item->registration = (void*)endpoint->eager_rdma_local.reg;
+        item->registration = (mca_mpool_base_registration_t *)endpoint->eager_rdma_local.reg;
         item->ptr = buf + i * openib_btl->eager_rdma_frag_size;
         OBJ_CONSTRUCT(item, mca_btl_openib_recv_frag_t);
 
@@ -947,7 +980,7 @@ void mca_btl_openib_endpoint_connect_eager_rdma(
         to_base_frag(frag)->type = MCA_BTL_OPENIB_FRAG_EAGER_RDMA;
         to_com_frag(frag)->endpoint = endpoint;
         frag->ftr = (mca_btl_openib_footer_t*)
-            ((char*)to_base_frag(frag)->segment.seg_addr.pval +
+            ((char*)to_base_frag(frag)->segment.base.seg_addr.pval +
              mca_btl_openib_component.eager_limit);
 
         MCA_BTL_OPENIB_RDMA_MAKE_REMOTE(frag->ftr);
@@ -1023,7 +1056,7 @@ void *mca_btl_openib_endpoint_invoke_error(void *context)
     }
 
     /* Invoke the callback to the upper layer */
-    btl->error_cb(&(btl->super), MCA_BTL_ERROR_FLAGS_FATAL);
+    btl->error_cb(&(btl->super), MCA_BTL_ERROR_FLAGS_FATAL, NULL, NULL);
 
     /* Will likely never get here */
     return NULL;

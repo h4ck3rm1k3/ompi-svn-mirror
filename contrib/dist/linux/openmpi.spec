@@ -9,7 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -37,7 +37,7 @@
 # token is the name of the variable to define, and all remaining tokens
 # are the value.  For example:
 #
-# shell$ rpmbuild ... --define 'ofed 1' ...
+# shell$ rpmbuild ... --define 'install_in_opt 1' ...
 #
 # Or (a multi-token example):
 #
@@ -46,16 +46,8 @@
 #
 #############################################################################
 
-# Help for OSCAR RPMs
-
-%{!?oscar: %define oscar 0}
-
-# Help for OFED RPMs
-
-%{!?ofed: %define ofed 0}
-
-# Define this if you want to make this SRPM build in /opt/NAME/VERSION-RELEASE
-# instead of the default /usr/
+# Define this if you want to make this SRPM build in
+# /opt/NAME/VERSION-RELEASE instead of the default /usr/.
 # type: bool (0/1)
 %{!?install_in_opt: %define install_in_opt 0}
 
@@ -72,15 +64,16 @@
 # type: bool (0/1)
 %{!?install_modulefile: %define install_modulefile 0}
 # type: string (root path to install modulefiles)
-%{!?modulefile_path: %define modulefile_path /etc/modulefiles}
+%{!?modulefile_path: %define modulefile_path /usr/share/Modules/modulefiles}
 # type: string (subdir to install modulefile)
 %{!?modulefile_subdir: %define modulefile_subdir %{name}}
 # type: string (name of modulefile)
 %{!?modulefile_name: %define modulefile_name %{version}}
 
 # The name of the modules RPM.  Can vary from system to system.
+# RHEL6 calls it "environment-modules".
 # type: string (name of modules RPM)
-%{!?modules_rpm_name: %define modules_rpm_name modules}
+%{!?modules_rpm_name: %define modules_rpm_name environment-modules}
 
 # Should we use the mpi-selector functionality?
 # type: bool (0/1)
@@ -103,18 +96,10 @@
 
 # Should we use the default "check_files" RPM step (i.e., check for
 # unpackaged files)?  It is discouraged to disable this, but some
-# installers need it (e.g., OFED, because it installs lots of other
-# stuff in the BUILD_ROOT before Open MPI).
+# installers need it (e.g., older versions of OFED, because they
+# installed lots of other stuff in the BUILD_ROOT before Open MPI).
 # type: bool (0/1)
 %{!?use_check_files: %define use_check_files 1}
-
-# Should we use the traditional % build and % install sections?  Or
-# should we combine them both into % install?  This is entirely
-# motivated by the OFED installer where, on SLES, the % build macro
-# will completely remove the BUILD_ROOT before building (which breaks
-# some assumptions in the OFED installer).  Ick!
-# type: bool (0/1)
-%{!?munge_build_into_install: %define munge_build_into_install 0}
 
 # By default, RPM supplies a bunch of optimization flags, some of
 # which may not work with non-gcc compilers.  We attempt to weed some
@@ -137,39 +122,15 @@
 # type: bool (0/1)
 %{!?disable_auto_requires: %define disable_auto_requires 0}
 
-#############################################################################
-#
-# OSCAR-specific defaults
-#
-#############################################################################
-
-%if %{oscar}
-%define install_in_opt 1
-%define install_modulefile 1
-%define modulefile_path /opt/modules/modulefiles
-%define modulefile_subdir openmpi
-%define modulefile_name %{name}-%{version}
-%define modules_rpm_name modules-oscar
-%endif
-
-
-#############################################################################
-#
-# OFED-specific defaults
-#
-# Tailored for the peculiar requirements of the OFED installer; not
-# necessary for when building this SRPM outside of the OFED installer.
-#
-#############################################################################
-
-%if %{ofed}
-%define use_check_files 0
-%define install_shell_scripts 1
-%define shell_scripts_basename mpivars
-%define munge_build_into_install 1
-%define use_mpi_selector 1
-%endif
-
+# On some platforms, Open MPI just flat-out doesn't work with
+# -D_FORTIFY_SOURCE (e.g., some users have reported that there are
+# problems on ioa64 platforms).  In this case, just turn it off
+# (meaning: this specfile will strip out that flag from the
+# OS-provided compiler flags).  We already strip out _FORTIFY_SOURCE
+# for non-GCC compilers; setting this option to 0 will *always* strip
+# it out, even if you're using GCC.
+# type: bool (0/1)
+%{!?allow_fortify_source: %define allow_fortify_source 1}
 
 #############################################################################
 #
@@ -221,6 +182,10 @@
 
 %if !%{use_default_rpm_opt_flags}
 %define optflags ""
+%endif
+
+%if %{use_mpi_selector}
+%define install_shell_scripts 1
 %endif
 
 #############################################################################
@@ -353,12 +318,7 @@ rm -rf $RPM_BUILD_ROOT
 #
 #############################################################################
 
-# See note above about %{munge_build_into_install}
-%if %{munge_build_into_install}
-%install
-%else
 %build
-%endif
 
 # rpmbuild processes seem to be geared towards the GNU compilers --
 # they pass in some flags that will only work with gcc.  So if we're
@@ -371,6 +331,7 @@ rm -rf $RPM_BUILD_ROOT
 # examine the basename of the compiler, so search for it in a few
 # places.
 
+%if %{allow_fortify_source}
 using_gcc=1
 if test "$CC" != ""; then
     # Do horrible things to get the basename of just the compiler,
@@ -402,6 +363,11 @@ if test "$using_gcc" = "1"; then
         fi
     fi
 fi
+%else
+# If we're not allowing _FORTIFY_SOURCE, then just set using_gcc to 0 and
+# the logic below will strip _FORTIFY_SOURCE out if it's present.
+using_gcc=0
+%endif
 
 # If we're not using the default RPM_OPT_FLAGS, then wipe them clean
 # (the "optflags" macro has already been wiped clean, above).
@@ -442,11 +408,12 @@ export CFLAGS CXXFLAGS F77FLAGS FCFLAGS
 #
 #############################################################################
 
-# See note above about %{munge_build_into_install}
-%if !%{munge_build_into_install}
 %install
-%endif
 %{__make} install DESTDIR=$RPM_BUILD_ROOT %{?mflags_install}
+
+# We've had cases of config.log being left in the installation tree.
+# We don't need that in an RPM.
+find $RPM_BUILD_ROOT -name config.log -exec rm -f {} \;
 
 # First, the [optional] modulefile
 
@@ -463,7 +430,7 @@ proc ModulesHelp { } {
    puts stderr "This module adds Open MPI v%{version} to various paths"
 }
 
-module-whatis   "Sets up Open MPI v%{version}  in your enviornment"
+module-whatis   "Sets up Open MPI v%{version} in your enviornment"
 
 prepend-path PATH "%{_prefix}/bin/"
 prepend-path LD_LIBRARY_PATH %{_libdir}
@@ -489,7 +456,7 @@ fi
 
 # LD_LIBRARY_PATH
 if test -z "\`echo \$LD_LIBRARY_PATH | grep %{_libdir}\`"; then
-    LD_LIBRARY_PATH=%{_libdir}:\${LD_LIBRARY_PATH}
+    LD_LIBRARY_PATH=%{_libdir}\${LD_LIBRARY_PATH:+:}\${LD_LIBRARY_PATH}
     export LD_LIBRARY_PATH
 fi
 
@@ -498,6 +465,10 @@ if test -z "\`echo \$MANPATH | grep %{_mandir}\`"; then
     MANPATH=%{_mandir}:\${MANPATH}
     export MANPATH
 fi
+
+# MPI_ROOT
+MPI_ROOT=%{_prefix}
+export MPI_ROOT
 EOF
 cat <<EOF > $RPM_BUILD_ROOT/%{shell_scripts_path}/%{shell_scripts_basename}.csh
 # NOTE: This is an automatically-generated file!  (generated by the
@@ -526,6 +497,9 @@ if ("1" == "\$?MANPATH") then
 else
     setenv MANPATH %{_mandir}:
 endif
+
+# MPI_ROOT
+setenv MPI_ROOT %{_prefix}
 EOF
 %endif
 # End of shell_scripts if
@@ -541,15 +515,63 @@ EOF
 # barf.  So be super lame and dump the egrep through /bin/true -- this
 # always gives a 0 exit status.
 
-# Runtime files
+# First, find all the files
+rm -f all.files runtime.files remaining.files devel.files docs.files
 find $RPM_BUILD_ROOT -type f -o -type l | \
-   sed -e "s@$RPM_BUILD_ROOT@@" | \
-   egrep "lib.*.so|mca.*so" > runtime.files | /bin/true
+   sed -e "s@$RPM_BUILD_ROOT@@" \
+   > all.files | /bin/true
 
-# Devel files
-find $RPM_BUILD_ROOT -type f -o -type l | \
-   sed -e "s@$RPM_BUILD_ROOT@@" | \
-   egrep "lib.*\.a|lib.*\.la|mpi.*mod" > devel.files | /bin/true
+# Runtime files.  This should generally be library files and some
+# executables (no man pages, no doc files, no header files).  Do *not*
+# include wrapper compilers.  Note that the VT files are variable; if
+# they're there, then take them (e.g., VT build may have been disabled
+# via a configure option).
+cat all.files | egrep '/lib/|/lib64/|/lib32/|/bin/|/etc/|/help-' > tmp.files | /bin/true
+# Snip out a bunch of executables (e.g., wrapper compilers, pkgconfig
+# files, .la and .a files)
+egrep -vi 'mpic|mpif|ortec|vtc|vtfort|f77|f90|pkgconfig|\.la$|\.a$' tmp.files > runtime.files | /bin/true
+rm -f tmp.files
+
+# Now take the runtime files out of all.files so that we don't get
+# duplicates.
+grep -v -f runtime.files all.files > remaining.files
+
+# Devel files, potentially including VT files.  Basically -- just
+# exclude the man pages and doc files.
+cat remaining.files | \
+   egrep -v '/man/|/doc/' \
+   > devel.files | /bin/true
+
+# Now take those files out of reaming.files so that we don't get
+# duplicates.
+grep -v -f devel.files remaining.files > docs.files
+
+#################################################
+
+# Now that we have a final list of files for each of the runtime,
+# devel, and docs RPMs, snip even a few more files out of those lists
+# because for directories that are wholly in only one RPM, we just
+# list that directory in the file lists below, and RPM will pick up
+# all files in that tree.  We therefore don't want to list any files
+# in those trees in our *.files file lists.  Additionally, the man
+# pages may get compressed by rpmbuild after this "install" step, so we
+# might not even have their final filenames, anyway.
+
+# runtime sub package
+%if !%{sysconfdir_in_prefix}
+grep -v %{_sysconfdir} runtime.files > tmp.files
+mv tmp.files runtime.files
+%endif
+grep -v %{_pkgdatadir} runtime.files > tmp.files
+mv tmp.files runtime.files
+
+# devel sub package
+grep -v %{_includedir} devel.files > tmp.files
+mv tmp.files devel.files
+
+# docs sub package
+grep -v %{_mandir} docs.files > tmp.files
+mv tmp.files docs.files
 
 %endif
 # End of build_all_in_one_rpm
@@ -674,28 +696,16 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 %dir %{_libdir}/openmpi
 %doc README INSTALL LICENSE
 %{_pkgdatadir}
-%{_bindir}/mpirun
-%{_bindir}/mpiexec
-%{_bindir}/ompi_info
-%{_bindir}/orterun
-%{_bindir}/orted
 
 %files devel -f devel.files
 %defattr(-, root, root, -)
 %{_includedir}
-%{_bindir}/mpicc
-%{_bindir}/mpiCC
-%{_bindir}/mpic++
-%{_bindir}/mpicxx
-%{_bindir}/mpif77
-%{_bindir}/mpif90
-%{_bindir}/opal_wrapper
 
 # Note that we list the mandir specifically here, because we want all
 # files found in that tree, because rpmbuild may have compressed them
 # (e.g., foo.1.gz or foo.1.bz2) -- and we therefore don't know the
 # exact filenames.
-%files docs
+%files docs -f docs.files
 %defattr(-, root, root, -)
 %{_mandir}
 
@@ -708,6 +718,43 @@ test "x$RPM_BUILD_ROOT" != "x" && rm -rf $RPM_BUILD_ROOT
 #
 #############################################################################
 %changelog
+* Tue Dec 11 2012 Jeff Squyres <jsquyres@cisco.com>
+- Re-release 1.6.0-1.6.3 SRPMs (with new SRPM Release numbers) with
+  patch for VampirTrace's configure script to make it install the
+  private "libtool" script in the right location (the script is used
+  to build user VT applications).
+- Update the regexps/methodology used to generate the lists of files
+  in the multi-RPM sub-packages; it's been broken for a little while.
+- No longer explicitly list the bin dir executables in the multi-RPM
+  sub-packages
+- Per https://svn.open-mpi.org/trac/ompi/ticket/3382, remove all files
+  named "config.log" from the install tree so that we can use this
+  spec file to re-release all OMPI v1.6.x SRPMs.
+
+* Wed Jun 27 2012 Jeff Squyres <jsquyres@cisco.com>
+- Remove the "ofed" and "munge_build_into_install" options, because
+  OFED no longer distributes MPI implementations.  Yay!
+
+* Mon Jun 04 2012 Jeff Squyres <jsquyres@cisco.com>
+- Didn't change the specfile, but changed the script that generates
+  the SRPM to force the use of MD5 checksums (vs. SHA1 checksums) so
+  that the SRPM is friendly to older versions of RPM, such as that on
+  RHEL 5.x.
+
+* Fri Feb 17 2012 Jeff Squyres <jsquyres@cisco.com>
+- Removed OSCAR define.
+- If use_mpi_selector==1, then also set install_shell_scripts to 1.
+- Change modules default RPM name and modulefiles path to the defaults
+  on RHEL6.
+
+* Mon Dec 14 2009 Jeff Squyres <jsquyres@cisco.com>
+- Add missing executables to specfile (ompi-server, etc.)
+- Fix: pull in VT files when building multiple RPMs (reported by Jim
+  Kusznir).
+- Add allow_fortify_source option to let users selectively disable
+  _FORTIFY_SOURCE processing on platforms where it just doesn't work
+  (even with gcc; also reported by Jim Kusznir).
+
 * Thu Sep  8 2009 Jeff Squyres <jsquyres@cisco.com>
 - Change shell_scripts_basename to not include version number to
   accomodate what mpi-selector expects.

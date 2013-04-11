@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <mpi.h>
 
@@ -12,7 +13,7 @@ int main(int argc, char* argv[])
     pid_t pid;
 
         pid = getpid();
-        printf("Parent [pid %ld] starting up!\n", (long)pid);
+        printf("[pid %ld] starting up!\n", (long)pid);
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 printf("%d completed MPI_Init\n", rank);
@@ -52,5 +53,6 @@ printf("%d completed MPI_Init\n", rank);
     }
 
     MPI_Finalize();
+    fprintf(stderr, "%d: exiting\n", pid);
     return 0;
 }

@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -30,8 +30,7 @@
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "opal/class/opal_object.h"
-
+#include "orte/mca/rml/rml_types.h"
 #include "ompi/info/info.h"
 #include "ompi/communicator/communicator.h"
 
@@ -54,8 +53,16 @@ BEGIN_C_DECLS
 
 /* support for shared memory collectives */
 #define OMPI_RML_TAG_COLL_SM2_BACK_FILE_CREATED     OMPI_RML_TAG_BASE+9
+/* common sm component query result index */
+#define OMPI_RML_TAG_COMMON_SM_COMP_INDEX           OMPI_RML_TAG_BASE+10
+
+/* OFACM RML TAGs */
+#define OMPI_RML_TAG_OFACM                          OMPI_RML_TAG_BASE+11
+#define OMPI_RML_TAG_XOFACM                         OMPI_RML_TAG_BASE+12
 
 #define OMPI_RML_TAG_DYNAMIC                        OMPI_RML_TAG_BASE+200
+
+
 
 
 /*
@@ -116,6 +123,20 @@ typedef void (*ompi_dpm_base_module_mark_dyncomm_fn_t)(ompi_communicator_t *comm
 typedef int (*ompi_dpm_base_module_open_port_fn_t)(char *port_name, orte_rml_tag_t tag);
 
 /*
+ * Converts an opaque port string to a RML process nane and tag.
+ */
+typedef int (*ompi_dpm_base_module_parse_port_name_t)(char *port_name,
+                                                      char **hnp_uri, char **rml_uri,
+                                                      orte_rml_tag_t *tag);
+
+/* 
+ * Update the routed component to make sure that the RML can send messages to
+ * the remote port
+ */
+typedef int (*ompi_dpm_base_module_route_to_port_t)(char *rml_uri, orte_process_name_t *rproc);
+
+
+/*
  * Close a port
  */
 typedef int (*ompi_dpm_base_module_close_port_fn_t)(char *port_name);
@@ -145,6 +166,10 @@ struct ompi_dpm_base_module_1_0_0_t {
     ompi_dpm_base_module_mark_dyncomm_fn_t      mark_dyncomm;
     /* open port */
     ompi_dpm_base_module_open_port_fn_t         open_port;
+    /* parse port string */
+    ompi_dpm_base_module_parse_port_name_t      parse_port;
+    /* update route to a port */
+    ompi_dpm_base_module_route_to_port_t        route_to_port;
     /* close port */
     ompi_dpm_base_module_close_port_fn_t        close_port;
     /* finalize */

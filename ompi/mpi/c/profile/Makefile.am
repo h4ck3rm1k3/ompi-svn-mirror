@@ -10,13 +10,15 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+# Copyright (c)      2012 Oak Rigde National Laboratory. All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
 # 
 # $HEADER$
 #
-
 
 #
 # OMPI_PROFILING_DEFINES flag s enabled when we want our MPI_* symbols
@@ -33,7 +35,7 @@ AM_CPPFLAGS = -DOMPI_PROFILING_DEFINES=1
 #
 
 noinst_LTLIBRARIES =
-if WANT_PMPI_BINDINGS_LAYER
+if BUILD_PMPI_BINDINGS_LAYER
 noinst_LTLIBRARIES += libmpi_c_pmpi.la
 endif
 
@@ -46,17 +48,25 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         padd_error_string.c \
         paddress.c \
         pallgather.c \
+        piallgather.c \
         pallgatherv.c \
+        piallgatherv.c \
         palloc_mem.c \
         pallreduce.c \
+        piallreduce.c \
         palltoall.c \
+        pialltoall.c \
         palltoallv.c \
+        pialltoallv.c \
         palltoallw.c \
+        pialltoallw.c \
         pattr_delete.c \
         pattr_get.c \
         pattr_put.c \
         pbarrier.c \
+        pibarrier.c \
         pbcast.c \
+        pibcast.c \
         pbsend.c \
         pbsend_init.c \
         pbuffer_attach.c \
@@ -101,6 +111,7 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         pcomm_spawn.c \
         pcomm_spawn_multiple.c \
         pcomm_split.c \
+        pcomm_split_type.c \
         pcomm_test_inter.c \
         pdims_create.c \
         perrhandler_c2f.c \
@@ -112,14 +123,18 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         perror_class.c \
         perror_string.c \
         pexscan.c \
+        piexscan.c \
         pfinalize.c \
         pfinalized.c \
         pfree_mem.c \
         pgather.c \
+        pigather.c \
         pgatherv.c \
+        pigatherv.c \
         pget_address.c \
         pget_count.c \
         pget_elements.c \
+        pget_library_version.c \
         pget_processor_name.c \
         pget_version.c \
         pgraph_create.c \
@@ -145,6 +160,8 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         pgroup_translate_ranks.c \
         pgroup_union.c \
         pibsend.c \
+	pimprobe.c \
+	pimrecv.c \
         pinfo_c2f.c \
         pinfo_create.c \
         pinfo_delete.c \
@@ -170,8 +187,13 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         pkeyval_create.c \
         pkeyval_free.c \
         plookup_name.c \
+        pmessage_f2c.c \
+        pmessage_c2f.c \
+        pmprobe.c \
+        pmrecv.c \
         pop_c2f.c \
         pop_create.c \
+        pop_commutative.c \
         pop_f2c.c \
         pop_free.c \
         popen_port.c \
@@ -186,7 +208,12 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         precv_init.c \
         precv.c \
         preduce.c \
+        pireduce.c \
+        preduce_local.c \
         preduce_scatter.c \
+        pireduce_scatter.c \
+        preduce_scatter_block.c \
+        pireduce_scatter_block.c \
         prequest_c2f.c \
         prequest_f2c.c \
         prequest_free.c \
@@ -194,8 +221,11 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         prsend_init.c \
         prsend.c \
         pscan.c \
+        piscan.c \
         pscatter.c \
+        piscatter.c \
         pscatterv.c \
+        piscatterv.c \
         psend.c \
         psend_init.c \
         psendrecv.c \
@@ -224,6 +254,7 @@ nodist_libmpi_c_pmpi_la_SOURCES = \
         ptype_create_hindexed.c \
         ptype_create_hvector.c \
         ptype_create_indexed_block.c \
+        ptype_create_hindexed_block.c \
         ptype_create_keyval.c \
         ptype_create_resized.c \
         ptype_create_struct.c \
@@ -362,10 +393,8 @@ $(nodist_libmpi_c_pmpi_la_SOURCES):
 # Conditionally install the header files
 
 if WANT_INSTALL_HEADERS
-ompidir = $(includedir)/openmpi/ompi/mpi/c/profile
+ompidir = $(includedir)/openmpi/$(subdir)
 ompi_HEADERS = $(headers)
-else
-ompidir = $(includedir)
 endif
 
 # These files were created by targets above

@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2007      High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2008 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      The University of Tennessee and The University of
  *                         Tennessee Research Foundation.  All rights reserved.
  * $COPYRIGHT$
@@ -20,6 +20,8 @@
 #ifndef __MPIDBG_INTERFACE_H__
 #define __MPIDBG_INTERFACE_H__ 1
 
+#include "ompi_config.h"
+
 /*
  * This file provides interface functions for a debugger to gather
  * additional information about MPI handles.
@@ -37,7 +39,7 @@
  **************************************************************************/
 
 enum {
-    MPIDBG_MAX_OBJECT_NAME = 64
+    MPIDBG_MAX_OBJECT_NAME = MPI_MAX_OBJECT_NAME
 };
 enum {
     MPIDBG_MAX_FILENAME = 1024

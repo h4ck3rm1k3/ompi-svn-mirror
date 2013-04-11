@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2006 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,6 +28,12 @@
 
 #ifndef OMPI_MCA_OSC_OSC_H
 #define OMPI_MCA_OSC_OSC_H
+
+#include "opal_config.h"
+
+#ifdef HAVE_STDDEF_H
+#include <stddef.h>
+#endif
 
 #include "opal/mca/mca.h"
 
@@ -62,8 +69,8 @@ struct ompi_op_t;
  * @param[in] enable_mpi_threads  True if the component needs to
  *                                support MPI_THREAD_MULTIPLE
  *
- * @retval ORTE_SUCCESS Component successfully initialized
- * @retval ORTE_ERROR   An unspecified error occurred
+ * @retval OMPI_SUCCESS Component successfully initialized
+ * @retval OMPI_ERROR   An unspecified error occurred
  */
 typedef int (*ompi_osc_base_component_init_fn_t)(bool enable_progress_threads,
                                                  bool enable_mpi_threads);
@@ -77,8 +84,8 @@ typedef int (*ompi_osc_base_component_init_fn_t)(bool enable_progress_threads,
  * should also clean up any data created during the lifetime of the
  * component, including any modules that are outstanding.
  *
- * @retval ORTE_SUCCESS Component successfully finalized
- * @retval ORTE_ERROR   An unspecified error occurred
+ * @retval OMPI_SUCCESS Component successfully finalized
+ * @retval OMPI_ERROR   An unspecified error occurred
  */
 typedef int (*ompi_osc_base_component_finalize_fn_t)(void);
 
@@ -129,8 +136,8 @@ typedef int (*ompi_osc_base_component_query_fn_t)(struct ompi_win_t *win,
  * @param[in]      comm The communicator specified by the user for the
  *                      basis of the group membership for the Window.
  *
- * @retval ORTE_SUCCESS Component successfully selected
- * @retval ORTE_ERROR   An unspecified error occurred
+ * @retval OMPI_SUCCESS Component successfully selected
+ * @retval OMPI_ERROR   An unspecified error occurred
  */
 typedef int (*ompi_osc_base_component_select_fn_t)(struct ompi_win_t *win,
                                                    struct ompi_info_t *info,
@@ -177,8 +184,8 @@ typedef ompi_osc_base_component_2_0_0_t ompi_osc_base_component_t;
  *
  * @param[in]  win  Window to free
  *
- * @retval ORTE_SUCCESS Component successfully selected
- * @retval ORTE_ERROR   An unspecified error occurred
+ * @retval OMPI_SUCCESS Component successfully selected
+ * @retval OMPI_ERROR   An unspecified error occurred
  */
 typedef int (*ompi_osc_base_module_free_fn_t)(struct ompi_win_t *win);
 
@@ -187,7 +194,7 @@ typedef int (*ompi_osc_base_module_put_fn_t)(void *origin_addr,
                                             int origin_count,
                                             struct ompi_datatype_t *origin_dt,
                                             int target,
-                                            int target_disp,
+                                            OPAL_PTRDIFF_TYPE target_disp,
                                             int target_count,
                                             struct ompi_datatype_t *target_dt,
                                             struct ompi_win_t *win);
@@ -197,7 +204,7 @@ typedef int (*ompi_osc_base_module_get_fn_t)(void *origin_addr,
                                             int origin_count,
                                             struct ompi_datatype_t *origin_dt,
                                             int target,
-                                            int target_disp,
+                                            OPAL_PTRDIFF_TYPE target_disp,
                                             int target_count,
                                             struct ompi_datatype_t *target_dt,
                                             struct ompi_win_t *win);
@@ -207,7 +214,7 @@ typedef int (*ompi_osc_base_module_accumulate_fn_t)(void *origin_addr,
                                                    int origin_count,
                                                    struct ompi_datatype_t *origin_dt,
                                                    int target,
-                                                   int target_disp,
+                                                   OPAL_PTRDIFF_TYPE target_disp,
                                                    int target_count,
                                                    struct ompi_datatype_t *target_dt,
                                                    struct ompi_op_t *op,

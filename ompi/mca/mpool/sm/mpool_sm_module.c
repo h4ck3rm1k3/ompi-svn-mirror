@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2011 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -9,7 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  
+ *                         All rights reserved. 
+ * Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,19 +22,17 @@
 
 #include "ompi_config.h"
 #include <string.h>
-#include "orte/util/show_help.h"
 #include "ompi/mca/mpool/sm/mpool_sm.h"
-#include "ompi/mca/common/sm/common_sm_mmap.h"
+#include "ompi/mca/common/sm/common_sm.h"
+#include "ompi/mca/common/cuda/common_cuda.h"
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#include "opal/include/opal/align.h"
-#include "opal/mca/maffinity/maffinity.h"
-#include "opal/mca/maffinity/maffinity_types.h"
-#include "opal/mca/maffinity/base/base.h"
+#include "opal/mca/hwloc/base/base.h"
 #include "orte/util/proc_info.h"
 
-#if OPAL_ENABLE_FT    == 1
+#if OPAL_ENABLE_FT_CR    == 1
+#include "orte/mca/sstore/sstore.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "ompi/runtime/ompi_cr.h"
 #endif
@@ -59,7 +60,7 @@ void mca_mpool_sm_module_init(mca_mpool_sm_module_t* mpool)
     mpool->sm_size = 0;
     mpool->sm_allocator = NULL;
     mpool->sm_mmap = NULL;
-    mpool->sm_common_mmap = NULL;
+    mpool->sm_common_module = NULL;
     mpool->mem_node = -1;
 }
 
@@ -69,8 +70,8 @@ void mca_mpool_sm_module_init(mca_mpool_sm_module_t* mpool)
 void* mca_mpool_sm_base(mca_mpool_base_module_t* mpool)
 {
     mca_mpool_sm_module_t *sm_mpool = (mca_mpool_sm_module_t*) mpool;
-    return (NULL != sm_mpool->sm_common_mmap) ?
-        sm_mpool->sm_common_mmap->map_addr : NULL;
+    return (NULL != sm_mpool->sm_common_module) ?
+        sm_mpool->sm_common_module->module_seg_addr : NULL;
 }
 
 /**
@@ -84,15 +85,24 @@ void* mca_mpool_sm_alloc(
     mca_mpool_base_registration_t** registration)
 {
     mca_mpool_sm_module_t* mpool_sm = (mca_mpool_sm_module_t*)mpool;
-    opal_maffinity_base_segment_t mseg;
+    opal_hwloc_base_memory_segment_t mseg;
 
     mseg.mbs_start_addr =
         mpool_sm->sm_allocator->alc_alloc(mpool_sm->sm_allocator, size, align, registration);
 
     if(mpool_sm->mem_node >= 0) {
         mseg.mbs_len = size;
-        opal_maffinity_base_bind(&mseg, 1, mpool_sm->mem_node);
+#if OPAL_HAVE_HWLOC
+        opal_hwloc_base_membind(&mseg, 1, mpool_sm->mem_node);
+#endif
     }
+
+#if OPAL_CUDA_SUPPORT
+    if (flags & MCA_MPOOL_FLAGS_CUDA_REGISTER_MEM) {
+        mca_common_cuda_register(mseg.mbs_start_addr, size,
+                                 mpool->mpool_component->mpool_version.mca_component_name);
+    }
+#endif
 
     return mseg.mbs_start_addr;
 }
@@ -107,14 +117,16 @@ void* mca_mpool_sm_realloc(
     mca_mpool_base_registration_t** registration)
 {
     mca_mpool_sm_module_t* mpool_sm = (mca_mpool_sm_module_t*)mpool;
-    opal_maffinity_base_segment_t mseg;
+    opal_hwloc_base_memory_segment_t mseg;
 
     mseg.mbs_start_addr =
         mpool_sm->sm_allocator->alc_realloc(mpool_sm->sm_allocator, addr, size,
                                             registration);
     if(mpool_sm->mem_node >= 0) {
         mseg.mbs_len = size;
-        opal_maffinity_base_bind(&mseg, 1, mpool_sm->mem_node);
+#if OPAL_HAVE_HWLOC
+        opal_hwloc_base_membind(&mseg, 1, mpool_sm->mem_node);
+#endif
     }
 
     return mseg.mbs_start_addr;
@@ -134,27 +146,27 @@ static void sm_module_finalize(mca_mpool_base_module_t* module)
 {
     mca_mpool_sm_module_t *sm_module = (mca_mpool_sm_module_t*) module;
 
-    if (NULL != sm_module->sm_common_mmap) {
+    if (NULL != sm_module->sm_common_module) {
         if (OMPI_SUCCESS == 
-            mca_common_sm_mmap_fini(sm_module->sm_common_mmap)) {
-#if OPAL_ENABLE_FT == 1
+            mca_common_sm_fini(sm_module->sm_common_module)) {
+#if OPAL_ENABLE_FT_CR == 1
             /* Only unlink the file if we are *not* restarting.  If we
                are restarting the file will be unlinked at a later
                time. */
             if (OPAL_CR_STATUS_RESTART_PRE  != opal_cr_checkpointing_state &&
                 OPAL_CR_STATUS_RESTART_POST != opal_cr_checkpointing_state ) {
-                unlink(sm_module->sm_common_mmap->map_path);
+                unlink(sm_module->sm_common_module->shmem_ds.seg_name);
             }
 #else
-            unlink(sm_module->sm_common_mmap->map_path);
+            unlink(sm_module->sm_common_module->shmem_ds.seg_name);
 #endif
         }
-        OBJ_RELEASE(sm_module->sm_common_mmap);
-        sm_module->sm_common_mmap = NULL;
+        OBJ_RELEASE(sm_module->sm_common_module);
+        sm_module->sm_common_module = NULL;
     }
 }
 
-#if OPAL_ENABLE_FT    == 0
+#if OPAL_ENABLE_FT_CR    == 0
 int mca_mpool_sm_ft_event(int state) {
     return OMPI_SUCCESS;
 }
@@ -169,19 +181,19 @@ int mca_mpool_sm_ft_event(int state) {
         asprintf( &file_name, "%s"OPAL_PATH_SEP"shared_mem_pool.%s",
                   orte_process_info.job_session_dir,
                   orte_process_info.nodename );
-        opal_crs_base_metadata_write_token(NULL, CRS_METADATA_TOUCH, file_name);
+        orte_sstore.set_attr(orte_sstore_handle_current, SSTORE_METADATA_LOCAL_TOUCH, file_name);
         free(file_name);
         file_name = NULL;
     }
     else if(OPAL_CRS_CONTINUE == state) {
-        if(ompi_cr_continue_like_restart) {
+        if(orte_cr_continue_like_restart) {
             /* Find the sm module */
             self_module = mca_mpool_base_module_lookup("sm");
             self_sm_module = (mca_mpool_sm_module_t*) self_module;
 
             /* Mark the old sm file for eventual removal via CRS */
-            if (NULL != self_sm_module->sm_common_mmap) {
-                opal_crs_base_cleanup_append(self_sm_module->sm_common_mmap->map_path, false);
+            if (NULL != self_sm_module->sm_common_module) {
+                opal_crs_base_cleanup_append(self_sm_module->sm_common_module->shmem_ds.seg_name, false);
             }
 
             /* Remove self from the list of all modules */
@@ -195,8 +207,8 @@ int mca_mpool_sm_ft_event(int state) {
         self_sm_module = (mca_mpool_sm_module_t*) self_module;
 
         /* Mark the old sm file for eventual removal via CRS */
-        if (NULL != self_sm_module->sm_common_mmap) {
-            opal_crs_base_cleanup_append(self_sm_module->sm_common_mmap->map_path, false);
+        if (NULL != self_sm_module->sm_common_module) {
+            opal_crs_base_cleanup_append(self_sm_module->sm_common_module->shmem_ds.seg_name, false);
         }
 
         /* Remove self from the list of all modules */
@@ -211,4 +223,4 @@ int mca_mpool_sm_ft_event(int state) {
 
     return OMPI_SUCCESS;
 }
-#endif /* OPAL_ENABLE_FT */
+#endif /* OPAL_ENABLE_FT_CR */

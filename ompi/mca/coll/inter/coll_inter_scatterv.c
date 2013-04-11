@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 University of Houston. All rights reserved.
+ * Copyright (c) 2006-2010 University of Houston. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,7 +22,7 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
@@ -71,7 +71,7 @@ mca_coll_inter_scatterv_inter(void *sbuf, int *scounts,
 		return err;
 	    }
 	    /* calculate the whole buffer size and recieve it from root */
-	    err = ompi_ddt_get_extent(rdtype, &lb, &extent);
+	    err = ompi_datatype_get_extent(rdtype, &lb, &extent);
 	    if (OMPI_SUCCESS != err) {
 		return OMPI_ERROR;
 	    }
@@ -79,9 +79,11 @@ mca_coll_inter_scatterv_inter(void *sbuf, int *scounts,
 	    for (i = 0; i < size_local; i++) {
 		incr = incr + extent*counts[i];
 	    }
-	    ptmp = (char*)malloc(incr); 
-	    if (NULL == ptmp) {
-		return OMPI_ERR_OUT_OF_RESOURCE;
+	    if ( incr > 0 ) {
+		ptmp = (char*)malloc(incr); 
+		if (NULL == ptmp) {
+		    return OMPI_ERR_OUT_OF_RESOURCE;
+		}
 	    }
 	    total = 0;
 	    for (i = 0; i < size_local; i++) {
@@ -127,8 +129,8 @@ mca_coll_inter_scatterv_inter(void *sbuf, int *scounts,
 	    return err;
 	}
 
-	ompi_ddt_create_indexed(size,scounts,disps,sdtype,&ndtype);
-	ompi_ddt_commit(&ndtype);
+	ompi_datatype_create_indexed(size,scounts,disps,sdtype,&ndtype);
+	ompi_datatype_commit(&ndtype);
 	
 	err = MCA_PML_CALL(send(sbuf, 1, ndtype, 0,
 				MCA_COLL_BASE_TAG_SCATTERV,
@@ -136,7 +138,7 @@ mca_coll_inter_scatterv_inter(void *sbuf, int *scounts,
 	if (OMPI_SUCCESS != err) {
 	    return err;
 	}
-	ompi_ddt_destroy(&ndtype);
+	ompi_datatype_destroy(&ndtype);
 
     }
 

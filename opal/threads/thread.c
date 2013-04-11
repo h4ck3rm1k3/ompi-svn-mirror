@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,6 +22,7 @@
 #include "opal/threads/threads.h"
 #include "opal/constants.h"
 
+bool opal_debug_threads = false;
 
 static void opal_thread_construct(opal_thread_t *t);
 
@@ -37,9 +39,9 @@ static void opal_thread_construct(opal_thread_t *t)
     t->t_run = 0;
 #ifdef __WINDOWS__
     t->t_handle = (HANDLE)NULL;
-#elif OMPI_HAVE_POSIX_THREADS
+#elif OPAL_HAVE_POSIX_THREADS
     t->t_handle = (pthread_t) -1;
-#elif OMPI_HAVE_SOLARIS_THREADS
+#elif OPAL_HAVE_SOLARIS_THREADS
     t->t_handle = (thread_t) -1;
 #endif
 }
@@ -55,7 +57,7 @@ int opal_thread_start(opal_thread_t *t)
 {
     DWORD tid;
 
-    if (OMPI_ENABLE_DEBUG) {
+    if (OPAL_ENABLE_DEBUG) {
         if (NULL == t->t_run || t->t_handle != (HANDLE) -1L) {
             return OPAL_ERR_BAD_PARAM;
         }
@@ -87,7 +89,9 @@ int opal_thread_join(opal_thread_t *t, void **thr_return)
         return OPAL_ERROR;
     }
 
-    *thr_return = (void *)((intptr_t)rc);
+    if( NULL != thr_return ) {
+        *thr_return = (void *)((intptr_t)rc);
+    }
 
     return OPAL_SUCCESS;
 }
@@ -109,8 +113,11 @@ opal_thread_t *opal_thread_get_self(void)
 }
 
 
+void opal_thread_kill(opal_thread_t *t, int sig)
+{
+}
 
-#elif OMPI_HAVE_POSIX_THREADS
+#elif OPAL_HAVE_POSIX_THREADS
 
 /************************************************************************
  * POSIX threads
@@ -120,7 +127,7 @@ int opal_thread_start(opal_thread_t *t)
 {
     int rc;
 
-    if (OMPI_ENABLE_DEBUG) {
+    if (OPAL_ENABLE_DEBUG) {
         if (NULL == t->t_run || t->t_handle != (pthread_t) -1) {
             return OPAL_ERR_BAD_PARAM;
         }
@@ -153,8 +160,13 @@ opal_thread_t *opal_thread_get_self(void)
     return t;
 }
 
+void opal_thread_kill(opal_thread_t *t, int sig)
+{
+    pthread_kill(t->t_handle, sig);
+}
 
-#elif OMPI_HAVE_SOLARIS_THREADS
+
+#elif OPAL_HAVE_SOLARIS_THREADS
 
 /************************************************************************
  * Solaris threads
@@ -164,7 +176,7 @@ int opal_thread_start(opal_thread_t *t)
 {
     int rc;
 
-    if (OMPI_ENABLE_DEBUG) {
+    if (OPAL_ENABLE_DEBUG) {
         if (NULL == t->t_run || t->t_handle != (thread_t) -1) {
             return OPAL_ERR_BAD_PARAM;
         }
@@ -198,6 +210,11 @@ opal_thread_t *opal_thread_get_self(void)
     return t;
 }
 
+void opal_thread_kill(opal_thread_t *t, int sig)
+{
+    thr_kill(t->t_handle, sig);
+}
+
 
 #else
 
@@ -227,5 +244,8 @@ opal_thread_t *opal_thread_get_self(void)
     return NULL;
 }
 
+void opal_thread_kill(opal_thread_t *t, int sig)
+{
+}
 
 #endif

@@ -22,7 +22,7 @@ set srcdir="$1"
 set builddir="`pwd`"
 set distdir="$builddir/$2"
 set OMPI_VERSION="$3"
-set OMPI_SVN_VERSION="$4"
+set OMPI_REPO_REV="$4"
 
 if ("$distdir" == "") then
     echo "Must supply relative distdir as argv[2] -- aborting"
@@ -36,9 +36,9 @@ endif
 # our tree's revision number, but only if we are in the source tree.
 # Otherwise, use what configure told us, at the cost of allowing one
 # or two corner cases in (but otherwise VPATH builds won't work)
-set svn_r=$OMPI_SVN_VERSION
+set repo_rev=$OMPI_REPO_REV
 if (-d .svn) then
-    set svn_r="r`svnversion .`"
+    set repo_rev="r`svnversion .`"
 endif
 
 set start=`date`
@@ -53,6 +53,12 @@ EOF
 
 umask 022
 
+# Some shell startup files alias cp, mv, and rm to have "-i"
+# (interactive).  Unalias here, just so that we don't use that option.
+unalias cp
+unalias rm
+unalias mv
+
 if (! -d "$distdir") then
     echo "*** ERROR: dist dir does not exist"
     echo "*** ERROR:   $distdir"
@@ -65,25 +71,32 @@ endif
 # solve a whole host of problems with VPATH (since srcdir may be
 # relative or absolute)
 #
-set cur_svn_r="`grep '^svn_r' ${distdir}/VERSION | cut -d= -f2`"
-if ("$cur_svn_r" == "-1") then
-    sed -e 's/^svn_r=.*/svn_r='$svn_r'/' "${distdir}/VERSION" > "${distdir}/version.new"
-    cp "${distdir}/version.new" "${distdir}/VERSION"
+set cur_repo_rev="`grep '^repo_rev' ${distdir}/VERSION | cut -d= -f2`"
+if ("$cur_repo_rev" == "-1") then
+    sed -e 's/^repo_rev=.*/repo_rev='$repo_rev'/' "${distdir}/VERSION" > "${distdir}/version.new"
+    cp -f "${distdir}/version.new" "${distdir}/VERSION"
     rm -f "${distdir}/version.new"
     # need to reset the timestamp to not annoy AM dependencies
     touch -r "${srcdir}/VERSION" "${distdir}/VERSION"
-    echo "*** Updated VERSION file with SVN r number"
+    echo "*** Updated VERSION file with repo rev number"
 else
-    echo "*** Did NOT updated VERSION file with SVN r number"
+    echo "*** Did NOT update VERSION file with repo rev number"
 endif
 
 # Copy configure.params and autogen.subdirs files into distribution.
 # This should really be in each component's Makefile.am, but that's
 # never going to happen.  So copy here automagically.
 echo "*** Copying configure.params files"
-find opal orte ompi -name "configure.params" -exec cp -f -p "{}" "$distdir/{}" \; >& /dev/null
+set dirs=opal
+if (-d orte) then
+    set dirs="$dirs orte"
+endif
+if (-d ompi) then
+    set dirs="$dirs ompi"
+endif
+find $dirs -name "configure.params" -exec cp -f -p "{}" "$distdir/{}" \; >& /dev/null
 echo "*** Copying autogen.subdirs files"
-find opal orte ompi -name "autogen.subdirs" -exec cp -f -p "{}" "$distdir/{}" \; >& /dev/null
+find $dirs -name "autogen.subdirs" -exec cp -f -p "{}" "$distdir/{}" \; >& /dev/null
 
 #########################################################
 # VERY IMPORTANT: Now go into the new distribution tree #
@@ -133,7 +146,7 @@ else
                 echo " - WARNING: Got bad config.sub from ftp.gnu.org (not executable)"
             else
                 echo " - Got good config.guess and config.sub from ftp.gnu.org"
-                cp config.sub config.guess ..
+                cp -f config.sub config.guess ..
                 set happy=1
             endif
         endif
@@ -157,10 +170,12 @@ echo "*** Now in: `pwd`"
 echo "*** Replacing config.sub/config.guess with latest from ftp.gnu.org..."
 foreach file (config.guess config.sub)
     foreach dir (opal orte ompi)
-        find $dir -name $file \
-            -exec chmod +w {} \; \
-            -exec cp -f $configdir/$file {} \; \
-            -print
+        if (-d $dir) then
+            find $dir -name $file \
+                -exec chmod +w {} \; \
+                -exec cp -f $configdir/$file {} \; \
+                -print
+        endif
     end
 end
 

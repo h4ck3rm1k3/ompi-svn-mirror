@@ -2,14 +2,14 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Sun Microsystems, Inc.  All rights reserverd.
+ * Copyright (c) 2007-2010 Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,7 +24,7 @@
  * On ia32, we use cmpxchg.
  */
 
-#if OMPI_WANT_SMP_LOCKS
+#if OPAL_WANT_SMP_LOCKS
 #define SMPLOCK "lock; "
 #define MB() __asm__ __volatile__("": : :"memory")
 #else
@@ -91,11 +91,11 @@ static inline int opal_atomic_cmpset_32(volatile int32_t *addr,
 {
    unsigned char ret;
    __asm__ __volatile__ (
-                       SMPLOCK "cmpxchgl %1,%2   \n\t"
+                       SMPLOCK "cmpxchgl %3,%2   \n\t"
                                "sete     %0      \n\t"
-                       : "=qm" (ret)
-                       : "q"(newval), "m"(*((volatile long*)addr)), "a"(oldval)
-                       : "memory");
+                       : "=qm" (ret), "+a" (oldval), "+m" (*addr)
+                       : "q"(newval)
+                       : "memory", "cc");
    
    return (int)ret;
 }
@@ -164,11 +164,14 @@ static inline int opal_atomic_cmpset_64(volatile int64_t *addr,
  */
 static inline int32_t opal_atomic_add_32(volatile int32_t* v, int i)
 {
+    int ret = i;
    __asm__ __volatile__(
-                        SMPLOCK "addl %1,%0"
-                        :"=m" (*v)
-                        :"ir" (i), "m" (*v));
-   return (*v);  /* should be an atomic operation */
+                        SMPLOCK "xaddl %1,%0"
+                        :"=m" (*v), "+r" (ret)
+                        :"m" (*v)
+                        :"memory", "cc"
+                        );
+   return (ret+i);
 }
 
 
@@ -181,11 +184,14 @@ static inline int32_t opal_atomic_add_32(volatile int32_t* v, int i)
  */
 static inline int32_t opal_atomic_sub_32(volatile int32_t* v, int i)
 {
+    int ret = -i;
    __asm__ __volatile__(
-                        SMPLOCK "subl %1,%0"
-                        :"=m" (*v)
-                        :"ir" (i), "m" (*v));
-   return (*v);  /* should be an atomic operation */
+                        SMPLOCK "xaddl %1,%0"
+                        :"=m" (*v), "+r" (ret)
+                        :"m" (*v)
+                        :"memory", "cc"
+                        );
+   return (ret-i);
 }
 
 #endif /* OMPI_GCC_INLINE_ASSEMBLY */

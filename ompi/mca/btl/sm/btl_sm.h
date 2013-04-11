@@ -1,9 +1,8 @@
-
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -11,6 +10,10 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire. All rights reserved.
+ * Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Los Alamos National Security, LLC.  
+ *                         All rights reserved. 
+ * Copyright (c) 2010-2012 IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -23,35 +26,26 @@
 #ifndef MCA_BTL_SM_H
 #define MCA_BTL_SM_H
 
+#include "ompi_config.h"
+#include <stddef.h>
 #include <stdlib.h>
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
-#endif  /* HAVE_SYS_TYPES_H */
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif  /* HAVE_SYS_SOCKET_H */
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif  /* HAVE_NETINET_IN_H */
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif  /* HAVE_UNISTD_H */
+#include <string.h>
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif  /* HAVE_STDINT_H */
+#ifdef HAVE_SCHED_H
+#include <sched.h>
+#endif  /* HAVE_SCHED_H */
+#if OMPI_BTL_SM_HAVE_KNEM
+#include "knem_io.h"
+#endif  /* OMPI_BTL_SM_HAVE_KNEM */
+
+#include "opal/util/bit_ops.h"
 #include "opal/class/opal_free_list.h"
-#include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
-#include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
-#include "ompi/mca/btl/base/base.h"
+#include "ompi/mca/common/sm/common_sm.h"
 
-#include "ompi/mca/mpool/mpool.h"
-#include "ompi/mca/common/sm/common_sm_mmap.h"
-
-#include "opal/mca/maffinity/base/base.h"
-
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * Shared Memory FIFOs
@@ -82,26 +76,37 @@ extern "C" {
  */
 
 #define SM_FIFO_FREE  (void *) (-2)
+/* We can't use opal_cache_line_size here because we need a
+   compile-time constant for padding the struct.  We can't really have
+   a compile-time constant that is portable, either (e.g., compile on
+   one machine and run on another).  So just use a big enough cache
+   line that should hopefully be good in most places. */
+#define SM_CACHE_LINE_PAD 128
 
-struct mca_btl_sm_fifo_t {
+struct sm_fifo_t {
     /* This queue pointer is used only by the heads. */
-    volatile void **queue;           char pad0[CACHE_LINE_SIZE - sizeof(void **)           ];
+    volatile void **queue;           
+    char pad0[SM_CACHE_LINE_PAD - sizeof(void **)];
     /* This lock is used by the heads. */
-    opal_atomic_lock_t head_lock;    char pad1[CACHE_LINE_SIZE - sizeof(opal_atomic_lock_t)];
+    opal_atomic_lock_t head_lock;    
+    char pad1[SM_CACHE_LINE_PAD - sizeof(opal_atomic_lock_t)];
     /* This index is used by the head holding the head lock. */
-    volatile int head;               char pad2[CACHE_LINE_SIZE - sizeof(int)               ];
+    volatile int head;               
+    char pad2[SM_CACHE_LINE_PAD - sizeof(int)];
     /* This mask is used "read only" by all processes. */
-    unsigned int mask;               char pad3[CACHE_LINE_SIZE - sizeof(int)               ];
+    unsigned int mask;               
+    char pad3[SM_CACHE_LINE_PAD - sizeof(int)];
     /* The following are used only by the tail. */
     volatile void **queue_recv;
     opal_atomic_lock_t tail_lock;
     volatile int tail;
     int num_to_clear;
-    int lazy_free;                   char pad4[CACHE_LINE_SIZE - sizeof(void **)
-                                                               - sizeof(opal_atomic_lock_t)
-                                                               - sizeof(int) * 3           ];
+    int lazy_free;                   
+    char pad4[SM_CACHE_LINE_PAD - sizeof(void **) -
+              sizeof(opal_atomic_lock_t) -
+              sizeof(int) * 3];
 };
-typedef struct mca_btl_sm_fifo_t mca_btl_sm_fifo_t;
+typedef struct sm_fifo_t sm_fifo_t;
 
 /*
  * Shared Memory resource managment
@@ -127,19 +132,17 @@ struct mca_btl_sm_component_t {
     int32_t sm_max_procs;              /**< upper limit on the number of processes using the shared memory pool */
     int sm_extra_procs;                /**< number of extra procs to allow */
     char* sm_mpool_name;               /**< name of shared memory pool module */
-    mca_mpool_base_module_t **sm_mpools; /**< shared memory pools (one for each memory node */
+    mca_mpool_base_module_t **sm_mpools; /**< shared memory pools (one for each memory node) */
     mca_mpool_base_module_t *sm_mpool; /**< mpool on local node */
     void* sm_mpool_base;               /**< base address of shared memory pool */
     size_t eager_limit;                /**< first fragment size */
     size_t max_frag_size;              /**< maximum (second and beyone) fragment size */
     opal_mutex_t sm_lock;
-    mca_common_sm_mmap_t *mmap_file;   /**< description of mmap'ed file */
-    mca_common_sm_file_header_t *sm_ctl_header;  /* control header in
-                                                    shared memory */
-    mca_btl_sm_fifo_t **shm_fifo;      /**< pointer to fifo 2D array in shared memory */
+    mca_common_sm_module_t *sm_seg;   /**< description of shared memory segment */
+    volatile sm_fifo_t **shm_fifo;     /**< pointer to fifo 2D array in shared memory */
     char **shm_bases;                  /**< pointer to base pointers in shared memory */
     uint16_t *shm_mem_nodes;           /**< pointer to mem noded in shared memory */
-    mca_btl_sm_fifo_t **fifo;          /**< cached copy of the pointer to the 2D
+    sm_fifo_t **fifo;                  /**< cached copy of the pointer to the 2D
                                           fifo array.  The address in the shared
                                           memory segment sm_ctl_header is a relative,
                                           but this one, in process private memory, is
@@ -148,13 +151,12 @@ struct mca_btl_sm_component_t {
     size_t fifo_size;                  /**< number of FIFO queue entries */
     size_t fifo_lazy_free;             /**< number of reads before lazy fifo free is triggered */
     int nfifos;                        /**< number of FIFOs per receiver */
-    ptrdiff_t *sm_offset;              /**< offset to be applied to shared memory
-                                          addresses, per local process value */
     int32_t num_smp_procs;             /**< current number of smp procs on this host */
     int32_t my_smp_rank;               /**< My SMP process rank.  Used for accessing
                                         *   SMP specfic data structures. */
     ompi_free_list_t sm_frags_eager;   /**< free list of sm first */
     ompi_free_list_t sm_frags_max;     /**< free list of sm second */
+    ompi_free_list_t sm_frags_user;
     ompi_free_list_t sm_first_frags_to_progress;  /**< list of first
                                                     fragments that are
                                                     awaiting resources */
@@ -171,16 +173,82 @@ struct mca_btl_sm_component_t {
     int  sm_fifo_fd;               /**< file descriptor corresponding to opened fifo */
     opal_thread_t sm_fifo_thread;
 #endif
+    struct mca_btl_sm_t      **sm_btls;
+    struct mca_btl_sm_frag_t **table;
+    size_t sm_num_btls;
+    size_t sm_max_btls;
+
+#if OMPI_BTL_SM_HAVE_KNEM
+    /* Knem capabilities info */
+    struct knem_cmd_info knem_info;
+#endif
+
+    /** MCA: should we be using knem or not?  neg=try but continue if
+        not available, 0=don't try, 1=try and fail if not available */
+    int use_knem;
+
+    /** MCA: minimal message size (bytes) to offload on DMA engine
+        when using knem */
+    uint32_t knem_dma_min;
+
+    /** MCA: how many simultaneous ongoing knem operations to
+        support */
+    int knem_max_simultaneous;
+
+    /** If we want DMA and DMA is supported, this will be loaded with
+        KNEM_FLAG_DMA.  Otherwise, it'll be 0. */
+    int knem_dma_flag;
+
+    /** MCA: should we be using CMA or not?
+        0 = no, 1 = yes */
+    int use_cma;
 };
 typedef struct mca_btl_sm_component_t mca_btl_sm_component_t;
 OMPI_MODULE_DECLSPEC extern mca_btl_sm_component_t mca_btl_sm_component;
 
-struct mca_btl_sm_pending_send_item_t
+/**
+ * SM BTL Interface
+ */
+struct mca_btl_sm_t {
+    mca_btl_base_module_t  super;       /**< base BTL interface */
+    bool btl_inited;  /**< flag indicating if btl has been inited */
+    mca_btl_base_module_error_cb_fn_t error_cb;
+
+#if OMPI_BTL_SM_HAVE_KNEM
+
+    /* File descriptor for knem */
+    int knem_fd;
+
+    /* Array of knem status items for non-blocking knem requests */
+    knem_status_t *knem_status_array;
+
+    /* Array of fragments currently being moved by knem non-blocking
+       operations */
+    struct mca_btl_sm_frag_t **knem_frag_array;
+
+    /* First free/available location in knem_status_array */
+    int knem_status_first_avail;
+
+    /* First currently-being used location in the knem_status_array */
+    int knem_status_first_used;
+
+    /* Number of status items currently in use */
+    int knem_status_num_used;
+#endif
+};
+typedef struct mca_btl_sm_t mca_btl_sm_t;
+OMPI_MODULE_DECLSPEC extern mca_btl_sm_t mca_btl_sm;
+
+
+
+
+
+struct btl_sm_pending_send_item_t
 {
     opal_free_list_item_t super;
     void *data;
 };
-typedef struct mca_btl_sm_pending_send_item_t mca_btl_sm_pending_send_item_t;
+typedef struct btl_sm_pending_send_item_t btl_sm_pending_send_item_t;
 
 /***
  * FIFO support for sm BTL.
@@ -197,23 +265,17 @@ typedef struct mca_btl_sm_pending_send_item_t mca_btl_sm_pending_send_item_t;
 #define VIRTUAL2RELATIVE(VADDR ) ((long)(VADDR)  - (long)mca_btl_sm_component.shm_bases[mca_btl_sm_component.my_smp_rank])
 #define RELATIVE2VIRTUAL(OFFSET) ((long)(OFFSET) + (long)mca_btl_sm_component.shm_bases[mca_btl_sm_component.my_smp_rank])
 
-/* ================================================== */
-/* ================================================== */
-/* ================================================== */
-
 static inline int sm_fifo_init(int fifo_size, mca_mpool_base_module_t *mpool,
-                               mca_btl_sm_fifo_t *fifo, int lazy_free)
+                               sm_fifo_t *fifo, int lazy_free)
 {
     int i, qsize;
 
     /* figure out the queue size (a power of two that is at least 1) */
-    qsize = 1;
-    while ( qsize < fifo_size )
-        qsize <<= 1;
+    qsize = opal_next_poweroftwo_inclusive (fifo_size);
 
     /* allocate the queue in the receiver's address space */
     fifo->queue_recv = (volatile void **)mpool->mpool_alloc(
-            mpool, sizeof(void *) * qsize, CACHE_LINE_SIZE, 0, NULL);
+            mpool, sizeof(void *) * qsize, opal_cache_line_size, 0, NULL);
     if(NULL == fifo->queue_recv) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
@@ -242,24 +304,24 @@ static inline int sm_fifo_init(int fifo_size, mca_mpool_base_module_t *mpool,
 }
 
 
-static inline int sm_fifo_write(void *value, mca_btl_sm_fifo_t *fifo)
+static inline int sm_fifo_write(void *value, sm_fifo_t *fifo)
 {
     volatile void **q = (volatile void **) RELATIVE2VIRTUAL(fifo->queue);
 
     /* if there is no free slot to write, report exhausted resource */
+    opal_atomic_rmb();
     if ( SM_FIFO_FREE != q[fifo->head] )
         return OMPI_ERR_OUT_OF_RESOURCE;
 
     /* otherwise, write to the slot and advance the head index */
-    opal_atomic_rmb();
     q[fifo->head] = value;
+    opal_atomic_wmb();
     fifo->head = (fifo->head + 1) & fifo->mask;
-    opal_atomic_wmb(); 
     return OMPI_SUCCESS;
 }
 
 
-static inline void *sm_fifo_read(mca_btl_sm_fifo_t *fifo)
+static inline void *sm_fifo_read(sm_fifo_t *fifo)
 {
     void *value;
 
@@ -291,45 +353,11 @@ static inline void *sm_fifo_read(mca_btl_sm_fifo_t *fifo)
 }
 
 /**
- * Register shared memory module parameters with the MCA framework
- */
-extern int mca_btl_sm_component_open(void);
-
-/**
- * Any final cleanup before being unloaded.
- */
-extern int mca_btl_sm_component_close(void);
-
-/**
- * SM module initialization.
- *
- * @param num_btls (OUT)                  Number of BTLs returned in BTL array.
- * @param enable_progress_threads (IN)    Flag indicating whether BTL is allowed to have progress threads
- * @param enable_mpi_threads (IN)         Flag indicating whether BTL must support multilple simultaneous invocations from different threads
- *
- */
-extern mca_btl_base_module_t** mca_btl_sm_component_init(
-    int *num_btls,
-    bool enable_progress_threads,
-    bool enable_mpi_threads
-);
-
-/**
  * shared memory component progress.
  */
 extern int mca_btl_sm_component_progress(void);
 
-/**
- * SM BTL Interface
- */
-struct mca_btl_sm_t {
-    mca_btl_base_module_t  super;       /**< base BTL interface */
-    bool btl_inited;  /**< flag indicating if btl has been inited */
-    mca_btl_base_module_error_cb_fn_t error_cb;
-};
-typedef struct mca_btl_sm_t mca_btl_sm_t;
 
-extern mca_btl_sm_t mca_btl_sm;
 
 /**
  * Register a callback function that is called on error..
@@ -374,7 +402,7 @@ extern int mca_btl_sm_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    struct ompi_bitmap_t* reachability
+    struct opal_bitmap_t* reachability
 );
 
 
@@ -431,7 +459,7 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* endpoint,
     mca_mpool_base_registration_t* registration,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -447,7 +475,7 @@ struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_src(
  */
 extern int mca_btl_sm_sendi( struct mca_btl_base_module_t* btl,
                              struct mca_btl_base_endpoint_t* endpoint,
-                             struct ompi_convertor_t* convertor,
+                             struct opal_convertor_t* convertor,
                              void* header,
                              size_t header_size,
                              size_t payload_size,
@@ -468,6 +496,37 @@ extern int mca_btl_sm_send(
     struct mca_btl_base_descriptor_t* descriptor,
     mca_btl_base_tag_t tag
 );
+
+#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA
+/*
+ * Synchronous knem/cma get
+ */
+extern int mca_btl_sm_get_sync(
+		struct mca_btl_base_module_t* btl,
+		struct mca_btl_base_endpoint_t* endpoint,
+		struct mca_btl_base_descriptor_t* des );
+
+extern struct mca_btl_base_descriptor_t* mca_btl_sm_prepare_dst(
+		struct mca_btl_base_module_t* btl,
+		struct mca_btl_base_endpoint_t* endpoint,
+		struct mca_mpool_base_registration_t* registration,
+		struct opal_convertor_t* convertor,
+		uint8_t order,
+		size_t reserve,
+		size_t* size,
+		uint32_t flags);
+#endif
+
+#if OMPI_BTL_SM_HAVE_KNEM
+/*
+ * Asynchronous knem get
+ */
+extern int mca_btl_sm_get_async(
+                struct mca_btl_base_module_t* btl,
+                struct mca_btl_base_endpoint_t* endpoint,
+                struct mca_btl_base_descriptor_t* des );
+
+#endif
 
 /**
  * Fault Tolerance Event Notification Function
@@ -492,9 +551,7 @@ void mca_btl_sm_component_event_thread(opal_object_t*);
 #define MCA_BTL_SM_SIGNAL_PEER(peer)
 #endif
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif
 

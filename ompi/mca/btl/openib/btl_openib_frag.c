@@ -12,6 +12,7 @@
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
+ * Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,7 +26,7 @@
 
 void mca_btl_openib_frag_init(ompi_free_list_item_t* item, void* ctx)
 {
-    mca_btl_openib_frag_init_data_t* init_data = ctx;
+    mca_btl_openib_frag_init_data_t* init_data = (mca_btl_openib_frag_init_data_t *) ctx;
     mca_btl_openib_frag_t *frag = to_base_frag(item);
 
     if(MCA_BTL_OPENIB_FRAG_RECV == frag->type) {
@@ -58,15 +59,16 @@ static void com_constructor(mca_btl_openib_com_frag_t *frag)
 
     if(reg) {
         frag->sg_entry.lkey = reg->mr->lkey;
-        base_frag->segment.seg_key.key32[0] = reg->mr->lkey;
+        base_frag->segment.key = reg->mr->lkey;
     }
+    frag->n_wqes_inflight = 0;
 }
 
 static void out_constructor(mca_btl_openib_out_frag_t *frag)
 {
     mca_btl_openib_frag_t *base_frag = to_base_frag(frag);
 
-    base_frag->base.des_src = &base_frag->segment;
+    base_frag->base.des_src = &base_frag->segment.base;
     base_frag->base.des_src_cnt = 1;
     base_frag->base.des_dst = NULL;
     base_frag->base.des_dst_cnt = 0;
@@ -83,7 +85,7 @@ static void in_constructor(mca_btl_openib_in_frag_t *frag)
 {
     mca_btl_openib_frag_t *base_frag = to_base_frag(frag);
 
-    base_frag->base.des_dst = &base_frag->segment;
+    base_frag->base.des_dst = &base_frag->segment.base;
     base_frag->base.des_dst_cnt = 1;
     base_frag->base.des_src = NULL;
     base_frag->base.des_src_cnt = 0;
@@ -100,7 +102,7 @@ static void send_constructor(mca_btl_openib_send_frag_t *frag)
         (((unsigned char*)base_frag->base.super.ptr) +
         sizeof(mca_btl_openib_header_coalesced_t) +
         sizeof(mca_btl_openib_control_header_t));
-    base_frag->segment.seg_addr.pval = frag->hdr + 1;
+    base_frag->segment.base.seg_addr.pval = frag->hdr + 1;
     to_com_frag(frag)->sg_entry.addr = (uint64_t)(uintptr_t)frag->hdr;
     frag->coalesced_length = 0;
     OBJ_CONSTRUCT(&frag->coalesced_frags, opal_list_t);
@@ -113,7 +115,7 @@ static void recv_constructor(mca_btl_openib_recv_frag_t *frag)
     base_frag->type = MCA_BTL_OPENIB_FRAG_RECV;
 
     frag->hdr = (mca_btl_openib_header_t*)base_frag->base.super.ptr;
-    base_frag->segment.seg_addr.pval =
+    base_frag->segment.base.seg_addr.pval =
         ((unsigned char* )frag->hdr) + sizeof(mca_btl_openib_header_t);
     to_com_frag(frag)->sg_entry.addr = (uint64_t)(uintptr_t)frag->hdr;
 
@@ -126,6 +128,10 @@ static void recv_constructor(mca_btl_openib_recv_frag_t *frag)
 static void send_control_constructor(mca_btl_openib_send_control_frag_t *frag)
 {
     to_base_frag(frag)->type = MCA_BTL_OPENIB_FRAG_CONTROL;
+    /* adjusting headers because there is no coalesce header in control messages */
+    frag->hdr = frag->chdr;
+    to_base_frag(frag)->segment.base.seg_addr.pval = frag->hdr + 1;
+    to_com_frag(frag)->sg_entry.addr = (uint64_t)(uintptr_t)frag->hdr;
 }
 
 static void put_constructor(mca_btl_openib_put_frag_t *frag)
@@ -152,7 +158,7 @@ static void coalesced_constructor(mca_btl_openib_coalesced_frag_t *frag)
 
     base_frag->type = MCA_BTL_OPENIB_FRAG_COALESCED;
 
-    base_frag->base.des_src = &base_frag->segment;
+    base_frag->base.des_src = &base_frag->segment.base;
     base_frag->base.des_src_cnt = 1;
     base_frag->base.des_dst = NULL;
     base_frag->base.des_dst_cnt = 0;

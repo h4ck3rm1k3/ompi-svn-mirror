@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 University of Houston. All rights reserved.
+ * Copyright (c) 2006-2010 University of Houston. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,7 +24,9 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/request/request.h"
+#include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -54,23 +56,25 @@ mca_coll_inter_allgather_inter(void *sbuf, int scount,
     rsize = ompi_comm_remote_size(comm);
 
     /* Perform the gather locally at the root */
-    err = ompi_ddt_get_extent(sdtype, &slb, &sextent);
+    err = ompi_datatype_get_extent(sdtype, &slb, &sextent);
     if (OMPI_SUCCESS != err) {
 	return OMPI_ERROR;
     }
     
-    incr = sextent * scount;
-    ptmp = (char*)malloc(size * incr); 
-    if (NULL == ptmp) {
-	return OMPI_ERR_OUT_OF_RESOURCE;
-    }
+    if ( scount > 0 ) {
+	incr = sextent * scount;
+	ptmp = (char*)malloc(size * incr); 
+	if (NULL == ptmp) {
+	    return OMPI_ERR_OUT_OF_RESOURCE;
+	}
 
-    err = comm->c_local_comm->c_coll.coll_gather(sbuf, scount, sdtype, 
-						 ptmp, scount, sdtype, 
-						 0, comm->c_local_comm,
-                                                 comm->c_local_comm->c_coll.coll_gather_module);
-    if (OMPI_SUCCESS != err) {
-	goto exit;
+	err = comm->c_local_comm->c_coll.coll_gather(sbuf, scount, sdtype, 
+						     ptmp, scount, sdtype, 
+						     0, comm->c_local_comm,
+						     comm->c_local_comm->c_coll.coll_gather_module);
+	if (OMPI_SUCCESS != err) {
+	    goto exit;
+	}
     }
 
     if (rank == root) {
@@ -96,11 +100,13 @@ mca_coll_inter_allgather_inter(void *sbuf, int scount,
         }
     }
     /* bcast the message to all the local processes */
-    err = comm->c_local_comm->c_coll.coll_bcast(rbuf, rcount*rsize, rdtype, 
-						root, comm->c_local_comm,
-                                                comm->c_local_comm->c_coll.coll_bcast_module);
-    if (OMPI_SUCCESS != err) {
-        goto exit;
+    if ( rcount > 0 ) {
+	err = comm->c_local_comm->c_coll.coll_bcast(rbuf, rcount*rsize, rdtype, 
+						    root, comm->c_local_comm,
+						    comm->c_local_comm->c_coll.coll_bcast_module);
+	if (OMPI_SUCCESS != err) {
+	    goto exit;
+	}
     }
 
  exit:

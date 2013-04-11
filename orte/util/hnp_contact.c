@@ -3,7 +3,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -40,11 +40,11 @@
 #include "opal/util/os_dirpath.h"
 
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/runtime/runtime.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/base/rml_contact.h"
 #include "orte/mca/routed/routed.h"
 
+#include "orte/util/proc_info.h"
 #include "orte/util/hnp_contact.h"
 
 #define ORTE_HNP_CONTACT_FILE_MAX_LINE_LENGTH 1024
@@ -54,6 +54,7 @@ static void orte_hnp_contact_construct(orte_hnp_contact_t *ptr)
 {
     ptr->name.jobid = ORTE_JOBID_INVALID;
     ptr->name.vpid = ORTE_VPID_INVALID;
+
     ptr->rml_uri = NULL;
 }
 static void orte_hnp_contact_destruct(orte_hnp_contact_t *ptr)
@@ -236,7 +237,10 @@ int orte_list_local_hnps(opal_list_t *hnps, bool connect)
      * should end with the "*". Otherwise we will only open the directory
      * structure (and not the content).
      */
-    hFind = FindFirstFile( headdir, &file_data );
+    char *subdirs = opal_os_path(false, orte_process_info.tmpdir_base, orte_process_info.top_session_dir, "*", NULL);
+    headdir = opal_os_path(false, orte_process_info.tmpdir_base, orte_process_info.top_session_dir, NULL);
+
+    hFind = FindFirstFile( subdirs, &file_data );
     if( INVALID_HANDLE_VALUE == hFind ) {
         goto cleanup;
     }
@@ -257,7 +261,7 @@ int orte_list_local_hnps(opal_list_t *hnps, bool connect)
          * See if a contact file exists in this directory and read it
          */
         contact_filename = opal_os_path( false, headdir,
-                                         file_data, "contact.txt", NULL );
+                                         file_data.cFileName, "contact.txt", NULL );
         
         hnp = OBJ_NEW(orte_hnp_contact_t);
         if (ORTE_SUCCESS == (ret = orte_read_hnp_contact_file(contact_filename, hnp, connect))) {

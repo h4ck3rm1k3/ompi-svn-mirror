@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2006 The University of Tennessee and The University
@@ -23,12 +23,11 @@
 #ifndef MCA_RML_FTRM_H
 #define MCA_RML_FTRM_H
 
+#include "orte_config.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/rml_types.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     extern int rml_ftrm_output_handle;
 
@@ -65,8 +64,6 @@ extern "C" {
      * Set URI
      */
     int orte_rml_ftrm_set_contact_info(const char* uri);
-
-    int orte_rml_ftrm_get_new_name(orte_process_name_t *name);
 
     /*
      * Ping
@@ -164,8 +161,8 @@ extern "C" {
      */
     int orte_rml_ftrm_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+    int orte_rml_ftrm_purge(orte_process_name_t *peer);
+
+END_C_DECLS
 
 #endif

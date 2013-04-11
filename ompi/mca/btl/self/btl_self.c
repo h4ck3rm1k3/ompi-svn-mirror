@@ -25,16 +25,9 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "opal/threads/mutex.h"
-#include "ompi/datatype/convertor.h"
-#include "ompi/datatype/datatype.h"
+#include "opal/class/opal_bitmap.h"
+#include "opal/datatype/opal_convertor.h"
 #include "opal/sys/atomic.h"
-#include "orte/util/show_help.h"
-#include "opal/util/if.h"
-#include "orte/util/proc_info.h"
-#include "opal/util/printf.h"
-#include "ompi/class/ompi_free_list.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/mpool/base/base.h"
 #include "btl_self.h"
@@ -53,6 +46,7 @@ mca_btl_base_module_t mca_btl_self = {
     0, /* btl_latency */
     0, /* btl_bandwidth */
     0, /* btl flags */
+    0, /* btl segment size */
     mca_btl_self_add_procs,
     mca_btl_self_del_procs,
     NULL,
@@ -76,13 +70,13 @@ int mca_btl_self_add_procs( struct mca_btl_base_module_t* btl,
                             size_t nprocs, 
                             struct ompi_proc_t **procs, 
                             struct mca_btl_base_endpoint_t **peers,
-                            ompi_bitmap_t* reachability )
+                            opal_bitmap_t* reachability )
 {
     int i;
 
     for( i = 0; i < (int)nprocs; i++ ) {
         if( procs[i] == ompi_proc_local_proc ) {
-            ompi_bitmap_set_bit( reachability, i );
+            opal_bitmap_set_bit( reachability, i );
             break;  /* there will always be only one ... */
         }
     }
@@ -185,7 +179,7 @@ struct mca_btl_base_descriptor_t*
 mca_btl_self_prepare_src( struct mca_btl_base_module_t* btl,
                           struct mca_btl_base_endpoint_t* endpoint,
                           mca_mpool_base_registration_t* registration,
-                          struct ompi_convertor_t* convertor,
+                          struct opal_convertor_t* convertor,
                           uint8_t order,
                           size_t reserve,
                           size_t* size,
@@ -198,7 +192,7 @@ mca_btl_self_prepare_src( struct mca_btl_base_module_t* btl,
     int rc;
 
     /* non-contigous data */
-    if( ompi_convertor_need_buffers(convertor) ||
+    if( opal_convertor_need_buffers(convertor) ||
         max_data < mca_btl_self.btl_max_send_size ||
         reserve != 0 ) {
 
@@ -213,7 +207,7 @@ mca_btl_self_prepare_src( struct mca_btl_base_module_t* btl,
         iov.iov_len = max_data;
         iov.iov_base = (IOVBASE_TYPE*)((unsigned char*)(frag+1) + reserve);
 
-        rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data );
+        rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
         if(rc < 0) {
             MCA_BTL_SELF_FRAG_RETURN_SEND(frag);
             return NULL;
@@ -230,19 +224,19 @@ mca_btl_self_prepare_src( struct mca_btl_base_module_t* btl,
         iov.iov_base = NULL;
 
         /* convertor should return offset into users buffer */
-        rc = ompi_convertor_pack(convertor, &iov, &iov_count, &max_data );
+        rc = opal_convertor_pack(convertor, &iov, &iov_count, &max_data );
         if(rc < 0) {
             MCA_BTL_SELF_FRAG_RETURN_RDMA(frag);
             return NULL;
         }
-        frag->segment.seg_addr.pval = iov.iov_base;
+        frag->segment.seg_addr.lval = (uint64_t)(uintptr_t) iov.iov_base;
         frag->segment.seg_len = max_data;
         *size = max_data;
     }
     frag->base.des_flags = flags;
     frag->base.des_src          = &frag->segment;
     frag->base.des_src_cnt      = 1;
-    frag->segment.seg_key.key64 = (uint64_t)(intptr_t)convertor;
+
     return &frag->base;
 }
 
@@ -253,7 +247,7 @@ struct mca_btl_base_descriptor_t*
 mca_btl_self_prepare_dst( struct mca_btl_base_module_t* btl,
                           struct mca_btl_base_endpoint_t* endpoint,
                           mca_mpool_base_registration_t* registration,
-                          struct ompi_convertor_t* convertor,
+                          struct opal_convertor_t* convertor,
                           uint8_t order,
                           size_t reserve,
                           size_t* size,
@@ -261,6 +255,7 @@ mca_btl_self_prepare_dst( struct mca_btl_base_module_t* btl,
 {
     mca_btl_self_frag_t* frag;
     size_t max_data = *size;
+    void *ptr;
     int rc;
 
     MCA_BTL_SELF_FRAG_ALLOC_RDMA(frag, rc);
@@ -269,9 +264,10 @@ mca_btl_self_prepare_dst( struct mca_btl_base_module_t* btl,
     }
 
     /* setup descriptor to point directly to user buffer */
-    ompi_convertor_get_current_pointer( convertor, (void**)&(frag->segment.seg_addr.pval) );
+    opal_convertor_get_current_pointer( convertor, &ptr );
+    frag->segment.seg_addr.lval = (uint64_t)(uintptr_t) ptr;
+
     frag->segment.seg_len = reserve + max_data;
-    frag->segment.seg_key.key64 = (uint64_t)(intptr_t)convertor;
     frag->base.des_dst = &frag->segment;
     frag->base.des_dst_cnt = 1;
     frag->base.des_flags = flags;
@@ -329,9 +325,9 @@ int mca_btl_self_rdma( struct mca_btl_base_module_t* btl,
     mca_btl_base_segment_t* dst = des->des_dst;
     size_t src_cnt = des->des_src_cnt;
     size_t dst_cnt = des->des_dst_cnt;
-    unsigned char* src_addr = (unsigned char*)src->seg_addr.pval;
+    unsigned char* src_addr = (unsigned char *)(uintptr_t) src->seg_addr.lval;
     size_t src_len = src->seg_len;
-    unsigned char* dst_addr = (unsigned char*)ompi_ptr_ltop(dst->seg_addr.lval);
+    unsigned char* dst_addr = (unsigned char *)(uintptr_t) dst->seg_addr.lval;
     size_t dst_len = dst->seg_len;
     int btl_ownership = (des->des_flags & MCA_BTL_DES_FLAGS_BTL_OWNERSHIP);
 

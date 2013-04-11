@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 University of Houston. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,7 +27,7 @@
 #include "mpi.h"
 #include "ompi/file/file.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_object.h"
 #include "opal/mca/mca.h"
@@ -34,7 +35,14 @@
 #include "ompi/mca/io/io.h"
 #include "ompi/mca/io/base/base.h"
 #include "ompi/mca/io/base/io_base_request.h"
-
+#include "ompi/mca/fs/fs.h"
+#include "ompi/mca/fs/base/base.h"
+#include "ompi/mca/fcoll/fcoll.h"
+#include "ompi/mca/fcoll/base/base.h"
+#include "ompi/mca/fbtl/fbtl.h"
+#include "ompi/mca/fbtl/base/base.h"
+#include "ompi/mca/sharedfp/sharedfp.h"
+#include "ompi/mca/sharedfp/base/base.h"
 
 /*
  * Local types
@@ -180,8 +188,8 @@ int mca_io_base_file_select(ompi_file_t *file,
 
 #if 1
     /* For the moment, just take the top module off the list */
-
-    item = opal_list_remove_first(selectable);
+    /* MSC actually take the buttom */
+    item = opal_list_remove_last(selectable);
     avail = (avail_io_t *) item;
     selected = *avail;
     OBJ_RELEASE(avail);
@@ -209,16 +217,49 @@ int mca_io_base_file_select(ompi_file_t *file,
     file->f_io_selected_module = selected.ai_module;
     file->f_io_selected_data = selected.ai_module_data;
 
+    if (!strcmp (selected.ai_component.v2_0_0.io_version.mca_component_name,
+                 "ompio")) {
+        int ret;
+
+        if (OMPI_SUCCESS != (ret = mca_fs_base_open())) {
+            return err;
+        }
+        if (OMPI_SUCCESS != (ret = mca_fcoll_base_open())) {
+            return err;
+        }
+        if (OMPI_SUCCESS != (ret = mca_fbtl_base_open())) {
+            return err;
+        }
+        if (OMPI_SUCCESS != (ret = mca_sharedfp_base_open())) {
+            return err;
+        }
+
+        if (OMPI_SUCCESS != 
+            (ret = mca_fs_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+                                              OMPI_ENABLE_THREAD_MULTIPLE))) {
+            return err;
+        }
+        if (OMPI_SUCCESS != 
+            (ret = mca_fcoll_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+                                                 OMPI_ENABLE_THREAD_MULTIPLE))) {
+            return err;
+        }
+        if (OMPI_SUCCESS != 
+            (ret = mca_fbtl_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+                                                OMPI_ENABLE_THREAD_MULTIPLE))) {
+            return err;
+        }
+        if (OMPI_SUCCESS != 
+            (ret = mca_sharedfp_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
+                                                    OMPI_ENABLE_THREAD_MULTIPLE))) {
+            return err;
+        }
+    }
     /* Finally -- intialize the selected module. */
         
     if (OMPI_SUCCESS != (err = module_init(file))) {
         return err;
     }
-
-    /* Add the component to the list of components that the io
-       framework is maintaining */
-
-    mca_io_base_component_add(&selected.ai_component);
 
     /* Announce the winner */
   
@@ -284,7 +325,24 @@ static opal_list_t *check_components(opal_list_t *components,
 
                 /* Put this item on the list in priority order
                    (highest priority first).  Should it go first? */
+                /* MSC actually put it Lowest priority first */
 
+                for(item2 = opal_list_get_first(selectable);
+                    item2 != opal_list_get_end(selectable);
+                    item2 = opal_list_get_next(item2)) {
+                    avail2 = (avail_io_t*)item2;
+                    if(avail->ai_priority < avail2->ai_priority) {
+                        opal_list_insert_pos(selectable,
+                                             item2, (opal_list_item_t*)avail);
+                        break;
+                    }
+                }
+
+                if(opal_list_get_end(selectable) == item2) {
+                    opal_list_append(selectable, (opal_list_item_t*)avail);
+                }
+
+                /*
                 item2 = opal_list_get_first(selectable); 
                 avail2 = (avail_io_t *) item2;
                 if (opal_list_get_end(selectable) == item2 ||
@@ -300,16 +358,16 @@ static opal_list_t *check_components(opal_list_t *components,
                             break;
                         }
                     }
-
+                */
                     /* If we didn't find a place to put it in the
                        list, then append it (because it has the lowest
                        priority found so far) */
-
+                /*
                     if (opal_list_get_end(selectable) == item2) {
                         opal_list_append(selectable, 
                                          (opal_list_item_t *) avail);
                     }
-                }
+                    }*/
             }
         }
     }

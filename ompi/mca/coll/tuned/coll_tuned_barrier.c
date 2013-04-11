@@ -20,13 +20,12 @@
 #include "ompi_config.h"
 
 #include "mpi.h"
+#include "opal/util/bit_ops.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/op/op.h"
 #include "coll_tuned.h"
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
@@ -51,12 +50,9 @@
  *
  */
 int ompi_coll_tuned_barrier_intra_doublering(struct ompi_communicator_t *comm,
-					     mca_coll_base_module_t *module)
+                                             mca_coll_base_module_t *module)
 {
-    int rank, size;
-    int err=0, line=0;
-    int left, right;
-
+    int rank, size, err = 0, line = 0, left, right;
 
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
@@ -123,11 +119,9 @@ int ompi_coll_tuned_barrier_intra_doublering(struct ompi_communicator_t *comm,
  */
 
 int ompi_coll_tuned_barrier_intra_recursivedoubling(struct ompi_communicator_t *comm,
-						    mca_coll_base_module_t *module)
+                                                    mca_coll_base_module_t *module)
 {
-    int rank, size, adjsize;
-    int err, line;
-    int mask, remote;
+    int rank, size, adjsize, err, line, mask, remote;
 
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
@@ -136,7 +130,7 @@ int ompi_coll_tuned_barrier_intra_recursivedoubling(struct ompi_communicator_t *
                  rank));
 
     /* do nearest power of 2 less than size calc */
-    for( adjsize = 1; adjsize <= size; adjsize <<= 1 );
+    adjsize = opal_next_poweroftwo(size);
     adjsize >>= 1;
 
     /* if size is not exact power of two, perform an extra step */
@@ -207,11 +201,9 @@ int ompi_coll_tuned_barrier_intra_recursivedoubling(struct ompi_communicator_t *
  */
 
 int ompi_coll_tuned_barrier_intra_bruck(struct ompi_communicator_t *comm,
-					mca_coll_base_module_t *module)
+                                        mca_coll_base_module_t *module)
 {
-    int rank, size;
-    int distance, to, from;
-    int err, line = 0;
+    int rank, size, distance, to, from, err, line = 0;
 
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
@@ -246,7 +238,7 @@ int ompi_coll_tuned_barrier_intra_bruck(struct ompi_communicator_t *comm,
  */
 /* special case for two processes */
 int ompi_coll_tuned_barrier_intra_two_procs(struct ompi_communicator_t *comm,
-					    mca_coll_base_module_t *module)
+                                            mca_coll_base_module_t *module)
 {
     int remote, err;
 
@@ -279,14 +271,14 @@ int ompi_coll_tuned_barrier_intra_two_procs(struct ompi_communicator_t *comm,
 /* copied function (with appropriate renaming) starts here */
 
 static int ompi_coll_tuned_barrier_intra_basic_linear(struct ompi_communicator_t *comm,
-						      mca_coll_base_module_t *module)
+                                                      mca_coll_base_module_t *module)
 {
-    int i, err;
-    int size = ompi_comm_size(comm);
-    int rank = ompi_comm_rank(comm);
+    int i, err, rank, size;
+
+    rank = ompi_comm_rank(comm);
+    size = ompi_comm_size(comm);
 
     /* All non-root send & receive zero-length message. */
-
     if (rank > 0) {
         err = MCA_PML_CALL(send (NULL, 0, MPI_BYTE, 0, 
                                  MCA_COLL_BASE_TAG_BARRIER,
@@ -346,8 +338,7 @@ static int ompi_coll_tuned_barrier_intra_basic_linear(struct ompi_communicator_t
 int ompi_coll_tuned_barrier_intra_tree(struct ompi_communicator_t *comm,
                                        mca_coll_base_module_t *module)
 {
-    int rank, size, depth;
-    int err, jump, partner;
+    int rank, size, depth, err, jump, partner;
 
     rank = ompi_comm_rank(comm);
     size = ompi_comm_size(comm);
@@ -356,7 +347,7 @@ int ompi_coll_tuned_barrier_intra_tree(struct ompi_communicator_t *comm,
                  rank));
 
     /* Find the nearest power of 2 of the communicator size. */
-    for(depth = 1; depth < size; depth <<= 1 );
+    depth = opal_next_poweroftwo_inclusive(size);
 
     for (jump=1; jump<depth; jump<<=1) {
         partner = rank ^ jump;
@@ -377,7 +368,7 @@ int ompi_coll_tuned_barrier_intra_tree(struct ompi_communicator_t *comm,
         }
     }
     
-    depth>>=1;
+    depth >>= 1;
     for (jump = depth; jump>0; jump>>=1) {
         partner = rank ^ jump;
         if (!(partner & (jump-1)) && partner < size) {
@@ -414,23 +405,26 @@ int ompi_coll_tuned_barrier_intra_tree(struct ompi_communicator_t *comm,
 
 int ompi_coll_tuned_barrier_intra_check_forced_init (coll_tuned_force_algorithm_mca_param_indices_t *mca_param_indices)
 {
-    int rc, max_alg = 6, requested_alg;
+    int max_alg = 6, requested_alg;
 
     ompi_coll_tuned_forced_max_algorithms[BARRIER] = max_alg;
 
-    rc = mca_base_param_reg_int (&mca_coll_tuned_component.super.collm_version,
-                                 "barrier_algorithm_count",
-                                 "Number of barrier algorithms available",
-                                 false, true, max_alg, NULL);
+    mca_base_param_reg_int (&mca_coll_tuned_component.super.collm_version,
+                            "barrier_algorithm_count",
+                            "Number of barrier algorithms available",
+                            false, true, max_alg, NULL);
 
     mca_param_indices->algorithm_param_index = 
-       mca_base_param_reg_int(&mca_coll_tuned_component.super.collm_version,
-                              "barrier_algorithm",
-                              "Which barrier algorithm is used. Can be locked down to choice of: 0 ignore, 1 linear, 2 double ring, 3: recursive doubling 4: bruck, 5: two proc only, 6: tree",
-                              false, false, 0, NULL);
+        mca_base_param_reg_int(&mca_coll_tuned_component.super.collm_version,
+                               "barrier_algorithm",
+                               "Which barrier algorithm is used. Can be locked down to choice of: 0 ignore, 1 linear, 2 double ring, 3: recursive doubling 4: bruck, 5: two proc only, 6: tree",
+                               false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, 
                               &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
             opal_output( 0, "Barrier algorithm #%d is not available (range [0..%d]). Switching back to ignore(0)\n",
                          requested_alg, max_alg );
@@ -444,7 +438,7 @@ int ompi_coll_tuned_barrier_intra_check_forced_init (coll_tuned_force_algorithm_
 
 
 int ompi_coll_tuned_barrier_intra_do_forced(struct ompi_communicator_t *comm,
-					    mca_coll_base_module_t *module)
+                                            mca_coll_base_module_t *module)
 {
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
     mca_coll_tuned_comm_t *data = tuned_module->tuned_data;
@@ -472,8 +466,8 @@ int ompi_coll_tuned_barrier_intra_do_forced(struct ompi_communicator_t *comm,
 
 
 int ompi_coll_tuned_barrier_intra_do_this (struct ompi_communicator_t *comm,
-					   mca_coll_base_module_t *module,
-					   int algorithm, int faninout, int segsize)
+                                           mca_coll_base_module_t *module,
+                                           int algorithm, int faninout, int segsize)
 {
     OPAL_OUTPUT((ompi_coll_tuned_stream,"coll:tuned:barrier_intra_do_this selected algorithm %d topo fanin/out%d", algorithm, faninout));
 

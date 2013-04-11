@@ -23,6 +23,7 @@ int main(int argc, char *argv[])
     if (2 == argc) {
         /* a reader was specified */
         reader = strtol(argv[1], NULL, 10);
+        fprintf(stderr, "reading from %d\n", reader);
     }
     
     MPI_Init(NULL, NULL);
@@ -40,8 +41,8 @@ int main(int argc, char *argv[])
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
         while (NULL != fgets(line, sizeof(line), stdin)) {
-            fprintf(stderr, line);
-            fprintf(file, line);
+            fprintf(stderr, "%s", line);
+            fprintf(file, "%s", line);
             bytes += strlen(line) + 1;
         }
         fclose(file);

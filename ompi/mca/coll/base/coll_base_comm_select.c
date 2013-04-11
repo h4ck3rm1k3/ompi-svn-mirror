@@ -13,6 +13,7 @@
  *                         rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Rigde National Laboratory.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,7 +29,7 @@
 
 #include "mpi.h"
 #include "ompi/communicator/communicator.h"
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "orte/util/show_help.h"
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_object.h"
@@ -36,11 +37,6 @@
 #include "opal/mca/base/base.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
-
-
-/*
- * Local variables
- */
 
 
 /*
@@ -58,20 +54,20 @@ typedef struct avail_coll_t avail_coll_t;
 /*
  * Local functions
  */
-static opal_list_t *check_components(opal_list_t *components, 
-                                     ompi_communicator_t *comm, 
-                                     char **names, int num_names);
-static int check_one_component(ompi_communicator_t *comm, 
-                               const mca_base_component_t *component,
-                               mca_coll_base_module_2_0_0_t **module);
+static opal_list_t *check_components(opal_list_t * components,
+                                     ompi_communicator_t * comm);
+static int check_one_component(ompi_communicator_t * comm,
+                               const mca_base_component_t * component,
+                               mca_coll_base_module_2_0_0_t ** module);
 
-static int query(const mca_base_component_t *component, 
-                 ompi_communicator_t *comm, int *priority,
-                 mca_coll_base_module_2_0_0_t **module);
+static int query(const mca_base_component_t * component,
+                 ompi_communicator_t * comm, int *priority,
+                 mca_coll_base_module_2_0_0_t ** module);
 
-static int query_2_0_0(const mca_coll_base_component_2_0_0_t *coll_component, 
-                       ompi_communicator_t *comm, int *priority,
-                       mca_coll_base_module_2_0_0_t **module);
+static int query_2_0_0(const mca_coll_base_component_2_0_0_t *
+                       coll_component, ompi_communicator_t * comm,
+                       int *priority,
+                       mca_coll_base_module_2_0_0_t ** module);
 
 /*
  * Stuff for the OBJ interface
@@ -98,49 +94,24 @@ static OBJ_CLASS_INSTANCE(avail_coll_t, opal_list_item_t, NULL, NULL);
  *
  * This selection logic is not for the weak.
  */
-int mca_coll_base_comm_select(ompi_communicator_t *comm)
+int mca_coll_base_comm_select(ompi_communicator_t * comm)
 {
-    int ret, num_names;
-    char name[MPI_MAX_OBJECT_NAME + 32];
-    char *names, **name_array;
     opal_list_t *selectable;
     opal_list_item_t *item;
+    int ret;
 
     /* Announce */
-    snprintf(name, sizeof(name), "%s (cid %d)", comm->c_name, 
-             comm->c_contextid);
-    name[sizeof(name) - 1] = '\0';
     opal_output_verbose(10, mca_coll_base_output,
-                        "coll:base:comm_select: new communicator: %s", 
-                        name);
-  
+                        "coll:base:comm_select: new communicator: %s (cid %d)",
+                        comm->c_name, comm->c_contextid);
+
     /* Initialize all the relevant pointers, since they're used as
-       sentinel values */
+     * sentinel values */
     memset(&comm->c_coll, 0, sizeof(mca_coll_base_comm_coll_t));
-  
-    /* See if a set of component was requested by the MCA parameter.
-       Don't check for error. */
-    names = NULL;
-    mca_base_param_lookup_string(mca_coll_base_param, &names);
 
-    if (NULL != names && 0 < strlen(names)) {
-        /* mca param based */
-        name_array = opal_argv_split(names, ',');
-        num_names = opal_argv_count(name_array);
-
-        opal_output_verbose(10, mca_coll_base_output, 
-                            "coll:base:comm_select: Checking specific modules: %s",
-                            names);
-        selectable = check_components(&mca_coll_base_components_available, 
-                                      comm, name_array, num_names);
-        opal_argv_free(name_array);
-    } else {
-        /* no specific components given -- try all */
-        opal_output_verbose(10, mca_coll_base_output, 
-                            "coll:base:comm_select: Checking all available modules");
-        selectable = check_components(&mca_coll_base_components_available, 
-                                      comm, NULL, 0);
-    }
+    opal_output_verbose(10, mca_coll_base_output,
+                        "coll:base:comm_select: Checking all available modules");
+    selectable = check_components(&mca_coll_base_components_available, comm);
 
     /* Upon return from the above, the modules list will contain the
        list of modules that returned (priority >= 0).  If we have no
@@ -157,10 +128,9 @@ int mca_coll_base_comm_select(ompi_communicator_t *comm)
 
     /* do the selection loop */
     for (item = opal_list_remove_first(selectable);
-         NULL != item; 
-         item = opal_list_remove_first(selectable)) {
+         NULL != item; item = opal_list_remove_first(selectable)) {
 
-        avail_coll_t *avail = (avail_coll_t*) item;
+        avail_coll_t *avail = (avail_coll_t *) item;
 
         /* initialize the module */
         ret = avail->ac_module->coll_module_enable(avail->ac_module, comm);
@@ -170,23 +140,41 @@ int mca_coll_base_comm_select(ompi_communicator_t *comm)
         }
 
         /* copy over any of the pointers */
-        COPY(avail->ac_module, comm, allgather); 
-        COPY(avail->ac_module, comm, allgatherv); 
-        COPY(avail->ac_module, comm, allreduce); 
-        COPY(avail->ac_module, comm, alltoall); 
-        COPY(avail->ac_module, comm, alltoallv); 
-        COPY(avail->ac_module, comm, alltoallw); 
-        COPY(avail->ac_module, comm, barrier); 
-        COPY(avail->ac_module, comm, bcast); 
-        COPY(avail->ac_module, comm, exscan); 
-        COPY(avail->ac_module, comm, gather); 
-        COPY(avail->ac_module, comm, gatherv); 
-        COPY(avail->ac_module, comm, reduce); 
-        COPY(avail->ac_module, comm, reduce_scatter); 
-        COPY(avail->ac_module, comm, scan); 
-        COPY(avail->ac_module, comm, scatter); 
-        COPY(avail->ac_module, comm, scatterv); 
+        COPY(avail->ac_module, comm, allgather);
+        COPY(avail->ac_module, comm, allgatherv);
+        COPY(avail->ac_module, comm, allreduce);
+        COPY(avail->ac_module, comm, alltoall);
+        COPY(avail->ac_module, comm, alltoallv);
+        COPY(avail->ac_module, comm, alltoallw);
+        COPY(avail->ac_module, comm, barrier);
+        COPY(avail->ac_module, comm, bcast);
+        COPY(avail->ac_module, comm, exscan);
+        COPY(avail->ac_module, comm, gather);
+        COPY(avail->ac_module, comm, gatherv);
+        COPY(avail->ac_module, comm, reduce);
+        COPY(avail->ac_module, comm, reduce_scatter_block);
+        COPY(avail->ac_module, comm, reduce_scatter);
+        COPY(avail->ac_module, comm, scan);
+        COPY(avail->ac_module, comm, scatter);
+        COPY(avail->ac_module, comm, scatterv);
 
+        COPY(avail->ac_module, comm, iallgather);
+        COPY(avail->ac_module, comm, iallgatherv);
+        COPY(avail->ac_module, comm, iallreduce);
+        COPY(avail->ac_module, comm, ialltoall);
+        COPY(avail->ac_module, comm, ialltoallv);
+        COPY(avail->ac_module, comm, ialltoallw);
+        COPY(avail->ac_module, comm, ibarrier);
+        COPY(avail->ac_module, comm, ibcast);
+        COPY(avail->ac_module, comm, iexscan);
+        COPY(avail->ac_module, comm, igather);
+        COPY(avail->ac_module, comm, igatherv);
+        COPY(avail->ac_module, comm, ireduce);
+        COPY(avail->ac_module, comm, ireduce_scatter_block);
+        COPY(avail->ac_module, comm, ireduce_scatter);
+        COPY(avail->ac_module, comm, iscan);
+        COPY(avail->ac_module, comm, iscatter);
+        COPY(avail->ac_module, comm, iscatterv);
         /* release the original module reference and the list item */
         OBJ_RELEASE(avail->ac_module);
         OBJ_RELEASE(avail);
@@ -208,92 +196,91 @@ int mca_coll_base_comm_select(ompi_communicator_t *comm)
         (NULL == comm->c_coll.coll_gather) ||
         (NULL == comm->c_coll.coll_gatherv) ||
         (NULL == comm->c_coll.coll_reduce) ||
+        (NULL == comm->c_coll.coll_reduce_scatter_block) ||
         (NULL == comm->c_coll.coll_reduce_scatter) ||
         ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_scan)) ||
         (NULL == comm->c_coll.coll_scatter) ||
-        (NULL == comm->c_coll.coll_scatterv)) {
+        (NULL == comm->c_coll.coll_scatterv) ||
+        (NULL == comm->c_coll.coll_iallgather) ||
+        (NULL == comm->c_coll.coll_iallgatherv) ||
+        (NULL == comm->c_coll.coll_iallreduce) ||
+        (NULL == comm->c_coll.coll_ialltoall) ||
+        (NULL == comm->c_coll.coll_ialltoallv) ||
+        (NULL == comm->c_coll.coll_ialltoallw) ||
+        (NULL == comm->c_coll.coll_ibarrier) ||
+        (NULL == comm->c_coll.coll_ibcast) ||
+        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_iexscan)) ||
+        (NULL == comm->c_coll.coll_igather) ||
+        (NULL == comm->c_coll.coll_igatherv) ||
+        (NULL == comm->c_coll.coll_ireduce) ||
+        (NULL == comm->c_coll.coll_ireduce_scatter_block) ||
+        (NULL == comm->c_coll.coll_ireduce_scatter) ||
+        ((OMPI_COMM_IS_INTRA(comm)) && (NULL == comm->c_coll.coll_iscan)) ||
+        (NULL == comm->c_coll.coll_iscatter) ||
+        (NULL == comm->c_coll.coll_iscatterv)
+        ) {
         mca_coll_base_comm_unselect(comm);
         return OMPI_ERR_NOT_FOUND;
     }
-
     return OMPI_SUCCESS;
 }
 
 
 /*
- * For each module in the list, if it is in the list of names (or the
- * list of names is NULL), then check and see if it wants to run, and
+ * For each module in the list, check and see if it wants to run, and
  * do the resulting priority comparison.  Make a list of modules to be
  * only those who returned that they want to run, and put them in
  * priority order.
  */
-static opal_list_t *check_components(opal_list_t *components, 
-                                     ompi_communicator_t *comm, 
-                                     char **names, int num_names)
+static opal_list_t *check_components(opal_list_t * components,
+                                     ompi_communicator_t * comm)
 {
-    int i, priority;
+    int priority;
     const mca_base_component_t *component;
     opal_list_item_t *item, *item2;
     mca_coll_base_module_2_0_0_t *module;
-    bool want_to_check;
     opal_list_t *selectable;
     avail_coll_t *avail, *avail2;
-  
+
     /* Make a list of the components that query successfully */
     selectable = OBJ_NEW(opal_list_t);
 
-    /* Scan through the list of components.  This nested loop is O(N^2),
-       but we should never have too many components and/or names, so this
+    /* Scan through the list of components.  This nested loop is
+       O(N^2), but we should never have too many components, so this
        *hopefully* shouldn't matter... */
-  
-    for (item = opal_list_get_first(components); 
-         item != opal_list_get_end(components); 
+
+    for (item = opal_list_get_first(components);
+         item != opal_list_get_end(components);
          item = opal_list_get_next(item)) {
-        component = ((mca_base_component_priority_list_item_t *) 
+        component = ((mca_base_component_priority_list_item_t *)
                      item)->super.cli_component;
 
-        /* If we have a list of names, scan through it */
+        priority = check_one_component(comm, component, &module);
+        if (priority >= 0) {
 
-        if (0 == num_names) {
-            want_to_check = true;
-        } else {
-            want_to_check = false;
-            for (i = 0; i < num_names; ++i) {
-                if (0 == strcmp(names[i], component->mca_component_name)) {
-                    want_to_check = true;
+            /* We have a component that indicated that it wants to run
+               by giving us a module */
+            avail = OBJ_NEW(avail_coll_t);
+            avail->ac_priority = priority;
+            avail->ac_module = module;
+
+            /* Put this item on the list in priority order (lowest
+               priority first).  Should it go first? */
+            for (item2 = opal_list_get_first(selectable);
+                 item2 != opal_list_get_end(selectable);
+                 item2 = opal_list_get_next(item2)) {
+                avail2 = (avail_coll_t *) item2;
+                if (avail->ac_priority < avail2->ac_priority) {
+                    opal_list_insert_pos(selectable,
+                                         item2,
+                                         (opal_list_item_t *) avail);
+                    break;
                 }
             }
-        }
-
-        /* If we determined that we want to check this component, then do
-           so */
-
-        if (want_to_check) {
-            priority = check_one_component(comm, component, &module);
-            if (priority >= 0) {
-
-                /* We have a component that indicated that it wants to run by
-                   giving us a module */
-                avail = OBJ_NEW(avail_coll_t);
-                avail->ac_priority = priority;
-                avail->ac_module = module;
-
-                /* Put this item on the list in priority order (lowest
-                   priority first).  Should it go first? */
-                for(item2 = opal_list_get_first(selectable);
-                    item2 != opal_list_get_end(selectable);
-                    item2 = opal_list_get_next(item2)) {
-                    avail2 = (avail_coll_t*)item2;
-                    if(avail->ac_priority < avail2->ac_priority) {
-                        opal_list_insert_pos(selectable,
-                                             item2, (opal_list_item_t*)avail);
-                        break;
-                    }
-                }
-
-                if(opal_list_get_end(selectable) == item2) {
-                    opal_list_append(selectable, (opal_list_item_t*)avail);
-                }
+            
+            if (opal_list_get_end(selectable) == item2) {
+                opal_list_append(selectable,
+                                 (opal_list_item_t *) avail);
             }
         }
     }
@@ -312,9 +299,9 @@ static opal_list_t *check_components(opal_list_t *components,
 /*
  * Check a single component
  */
-static int check_one_component(ompi_communicator_t *comm, 
-                               const mca_base_component_t *component,
-                               mca_coll_base_module_2_0_0_t **module)
+static int check_one_component(ompi_communicator_t * comm,
+                               const mca_base_component_t * component,
+                               mca_coll_base_module_2_0_0_t ** module)
 {
     int err;
     int priority = -1;
@@ -323,13 +310,13 @@ static int check_one_component(ompi_communicator_t *comm,
 
     if (OMPI_SUCCESS == err) {
         priority = (priority < 100) ? priority : 100;
-        opal_output_verbose(10, mca_coll_base_output, 
-                            "coll:base:comm_select: component available: %s, priority: %d", 
+        opal_output_verbose(10, mca_coll_base_output,
+                            "coll:base:comm_select: component available: %s, priority: %d",
                             component->mca_component_name, priority);
 
     } else {
         priority = -1;
-        opal_output_verbose(10, mca_coll_base_output, 
+        opal_output_verbose(10, mca_coll_base_output,
                             "coll:base:comm_select: component not available: %s",
                             component->mca_component_name);
     }
@@ -346,19 +333,19 @@ static int check_one_component(ompi_communicator_t *comm,
  * Take any version of a coll module, query it, and return the right
  * module struct
  */
-static int query(const mca_base_component_t *component, 
-                 ompi_communicator_t *comm, 
-                 int *priority, mca_coll_base_module_2_0_0_t **module)
+static int query(const mca_base_component_t * component,
+                 ompi_communicator_t * comm,
+                 int *priority, mca_coll_base_module_2_0_0_t ** module)
 {
     *module = NULL;
     if (2 == component->mca_type_major_version &&
         0 == component->mca_type_minor_version &&
         0 == component->mca_type_release_version) {
-        const mca_coll_base_component_2_0_0_t *coll100 = 
+        const mca_coll_base_component_2_0_0_t *coll100 =
             (mca_coll_base_component_2_0_0_t *) component;
 
         return query_2_0_0(coll100, comm, priority, module);
-    } 
+    }
 
     /* Unknown coll API version -- return error */
 
@@ -366,9 +353,9 @@ static int query(const mca_base_component_t *component,
 }
 
 
-static int query_2_0_0(const mca_coll_base_component_2_0_0_t *component,
-                       ompi_communicator_t *comm, int *priority,
-                       mca_coll_base_module_2_0_0_t **module)
+static int query_2_0_0(const mca_coll_base_component_2_0_0_t * component,
+                       ompi_communicator_t * comm, int *priority,
+                       mca_coll_base_module_2_0_0_t ** module)
 {
     mca_coll_base_module_2_0_0_t *ret;
 

@@ -3,18 +3,19 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2006-2009 Mellanox Technologies. All rights reserved.
  * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
+ * Copyright (c) 2009-2010 Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -27,19 +28,19 @@
 #ifndef MCA_BTL_IB_H
 #define MCA_BTL_IB_H
 
-/* Standard system includes */
+#include "ompi_config.h"
 #include <sys/types.h>
 #include <string.h>
 #include <infiniband/verbs.h>
 
 /* Open MPI includes */
 #include "ompi/class/ompi_free_list.h"
-#include "ompi/class/ompi_bitmap.h"
 #include "opal/class/opal_pointer_array.h"
-#include "opal/event/event.h"
-#include "ompi/mca/pml/pml.h"
+#include "opal/class/opal_hash_table.h"
+#include "opal/util/output.h"
+#include "opal/mca/event/event.h"
+#include "opal/threads/threads.h"
 #include "ompi/mca/btl/btl.h"
-#include "orte/util/show_help.h"
 #include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/btl/base/btl_base_error.h"
 
@@ -51,15 +52,17 @@
 BEGIN_C_DECLS
 
 #define HAVE_XRC (1 == OMPI_HAVE_CONNECTX_XRC)
+#define ENABLE_DYNAMIC_SL (1 == OMPI_ENABLE_DYNAMIC_SL)
 
 #define MCA_BTL_IB_LEAVE_PINNED 1
 #define IB_DEFAULT_GID_PREFIX 0xfe80000000000000ll
 #define MCA_BTL_IB_PKEY_MASK 0x7fff
+#define MCA_BTL_OPENIB_CQ_POLL_BATCH_DEFAULT (256)
 
 
 /*--------------------------------------------------------------------*/
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
 #define ATTACH() do { \
   int i = 0; \
   opal_output(0, "WAITING TO DEBUG ATTACH"); \
@@ -76,6 +79,14 @@ BEGIN_C_DECLS
  */
 
 typedef enum {
+    MCA_BTL_OPENIB_TRANSPORT_IB,
+    MCA_BTL_OPENIB_TRANSPORT_IWARP,
+    MCA_BTL_OPENIB_TRANSPORT_RDMAOE,
+    MCA_BTL_OPENIB_TRANSPORT_UNKNOWN,
+    MCA_BTL_OPENIB_TRANSPORT_SIZE
+} mca_btl_openib_transport_type_t;
+
+typedef enum {
     MCA_BTL_OPENIB_PP_QP,
     MCA_BTL_OPENIB_SRQ_QP,
     MCA_BTL_OPENIB_XRC_QP
@@ -88,6 +99,12 @@ struct mca_btl_openib_pp_qp_info_t {
 
 struct mca_btl_openib_srq_qp_info_t {
     int32_t sd_max;
+    /* The init value for rd_curr_num variables of all SRQs */
+    int32_t rd_init;
+    /* The watermark, threshold - if the number of WQEs in SRQ is less then this value =>
+       the SRQ limit event (IBV_EVENT_SRQ_LIMIT_REACHED) will be generated on corresponding SRQ.
+       As result the maximal number of pre-posted WQEs on the SRQ will be increased */
+    int32_t srq_limit;
 }; typedef struct mca_btl_openib_srq_qp_info_t mca_btl_openib_srq_qp_info_t;
 
 struct mca_btl_openib_qp_info_t {
@@ -95,8 +112,6 @@ struct mca_btl_openib_qp_info_t {
     size_t size;
     int32_t rd_num;
     int32_t rd_low;
-    ompi_free_list_t send_free;     /**< free lists of send buffer descriptors */
-    ompi_free_list_t recv_free;     /**< free lists of receive buffer descriptors */
     union {
         mca_btl_openib_pp_qp_info_t pp_qp;
         mca_btl_openib_srq_qp_info_t srq_qp;
@@ -123,6 +138,17 @@ typedef enum {
     BTL_OPENIB_DT_IWARP,
     BTL_OPENIB_DT_ALL
 } btl_openib_device_type_t;
+
+#if OPAL_HAVE_THREADS
+/* The structer for manage all BTL SRQs */
+typedef struct mca_btl_openib_srq_manager_t {
+    opal_mutex_t lock;
+    /* The keys of this hash table are addresses of
+       SRQs structures, and the elements are BTL modules
+       pointers that associated with these SRQs */
+    opal_hash_table_t srq_addr_table;
+} mca_btl_openib_srq_manager_t;
+#endif
 
 struct mca_btl_openib_component_t {
     mca_btl_base_component_2_0_0_t          super;  /**< base BTL component */
@@ -174,6 +200,7 @@ struct mca_btl_openib_component_t {
 
     size_t eager_limit;      /**< Eager send limit of first fragment, in Bytes */
     size_t max_send_size;    /**< Maximum send size, in Bytes */
+    uint32_t max_hw_msg_size;/**< Maximum message size for RDMA protocols in Bytes */
     uint32_t reg_mru_len;    /**< Length of the registration cache most recently used list */
     uint32_t use_srq;        /**< Use the Shared Receive Queue (SRQ mode) */
 
@@ -190,6 +217,9 @@ struct mca_btl_openib_component_t {
     uint32_t ib_rnr_retry;
     uint32_t ib_max_rdma_dst_ops;
     uint32_t ib_service_level;
+#if (ENABLE_DYNAMIC_SL)
+    uint32_t ib_path_record_service_level;
+#endif
     int32_t use_eager_rdma;
     int32_t eager_rdma_threshold; /**< After this number of msg, use RDMA for short messages, always */
     int32_t eager_rdma_num;
@@ -199,12 +229,16 @@ struct mca_btl_openib_component_t {
     int32_t apm_lmc;
     int32_t apm_ports;
     uint32_t buffer_alignment;    /**< Preferred communication buffer alignment in Bytes (must be power of two) */
-#if OMPI_HAVE_THREADS
-    int32_t fatal_counter;           /**< Counts number on fatal events that we got on all devices */
+#if OPAL_HAVE_THREADS
+    int32_t error_counter;           /**< Counts number on error events that we got on all devices */
     int async_pipe[2];               /**< Pipe for comunication with async event thread */
     int async_comp_pipe[2];          /**< Pipe for async thread comunication with main thread */
     pthread_t   async_thread;        /**< Async thread that will handle fatal errors */
     uint32_t use_async_event_thread; /**< Use the async event handler */
+    mca_btl_openib_srq_manager_t srq_manager;     /**< Hash table for all BTL SRQs */
+#if BTL_OPENIB_FAILOVER_ENABLED
+    uint32_t port_error_failover;    /**< Report port errors to speed up failover */
+#endif
 #endif
     btl_openib_device_type_t device_type;
     char *if_include;
@@ -241,6 +275,7 @@ struct mca_btl_openib_component_t {
     bool use_message_coalescing;
     uint32_t cq_poll_ratio;
     uint32_t cq_poll_progress;
+    uint32_t cq_poll_batch;
     uint32_t eager_rdma_poll_ratio;
 #ifdef HAVE_IBV_FORK_INIT
     /** Whether we want fork support or not */
@@ -255,6 +290,20 @@ struct mca_btl_openib_component_t {
     ompi_free_list_t recv_user_free;
     /**< frags for coalesced massages */
     ompi_free_list_t send_free_coalesced;
+    /** Default receive queues */
+    char* default_recv_qps;
+    /** GID index to use */
+    int gid_index;
+    /** Whether we want a dynamically resizing srq, enabled by default */
+    bool enable_srq_resize;
+#if BTL_OPENIB_FAILOVER_ENABLED
+    int verbose_failover;
+#endif
+#if BTL_OPENIB_MALLOC_HOOKS_ENABLED
+    int use_memalign;
+    size_t memalign_threshold;
+    void* (*previous_malloc_hook)(size_t __size, const void*);
+#endif
 }; typedef struct mca_btl_openib_component_t mca_btl_openib_component_t;
 
 OMPI_MODULE_DECLSPEC extern mca_btl_openib_component_t mca_btl_openib_component;
@@ -273,6 +322,12 @@ typedef struct mca_btl_openib_modex_message_t {
     uint16_t apm_lid;
     /** The MTU used by this port */
     uint8_t mtu;
+    /** vendor id define device type and tuning */
+    uint32_t vendor_id;
+    /** vendor part id define device type and tuning */
+    uint32_t vendor_part_id;
+    /** Transport type of remote port */
+    uint8_t transport_type;
     /** Dummy field used to calculate the real length */
     uint8_t end;
 } mca_btl_openib_modex_message_t;
@@ -320,8 +375,9 @@ typedef struct mca_btl_openib_device_t {
     uint16_t hp_cq_polls;
     uint16_t eager_rdma_polls;
     bool pollme;
-#if OMPI_HAVE_THREADS
+#if OPAL_HAVE_THREADS
     volatile bool got_fatal_event;
+    volatile bool got_port_event;
 #endif
 #if HAVE_XRC
     struct ibv_xrc_domain *xrc_domain;
@@ -349,6 +405,25 @@ struct mca_btl_openib_module_srq_qp_t {
     int32_t sd_credits;  /* the max number of outstanding sends on a QP when using SRQ */
                          /*  i.e. the number of frags that  can be outstanding (down counter) */
     opal_list_t pending_frags[2];    /**< list of high/low prio frags */
+    /** The number of receive buffers that can be post in the current time.
+        The value may be increased in the IBV_EVENT_SRQ_LIMIT_REACHED
+        event handler. The value starts from (rd_num / 4) and increased up to rd_num */
+    int32_t rd_curr_num;
+    /** We post additional WQEs only if a number of WQEs (in specific SRQ) is less of this value.
+         The value increased together with rd_curr_num. The value is unique for every SRQ. */
+    int32_t rd_low_local;
+    /** The flag points if we want to get the
+         IBV_EVENT_SRQ_LIMIT_REACHED events for dynamically resizing SRQ */
+    bool srq_limit_event_flag;
+    /**< In difference of the "--mca enable_srq_resize" parameter that says, if we want(or no)
+         to start with small num of pre-posted receive buffers (rd_curr_num) and to increase this number by needs
+         (the max of this value is rd_num * the whole size of SRQ), the "srq_limit_event_flag" says if we want to get limit event
+         from device if the defined srq limit was reached (signal to the main thread) and we put off this flag if the rd_curr_num
+         was increased up to rd_num.
+         In order to prevent lock/unlock operation in the critical path we prefer only put-on
+         the srq_limit_event_flag in asynchronous thread, because in this way we post receive buffers
+         in the main thread only and only after posting we set (if srq_limit_event_flag is true)
+         the limit for IBV_EVENT_SRQ_LIMIT_REACHED event. */
 }; typedef struct mca_btl_openib_module_srq_qp_t mca_btl_openib_module_srq_qp_t;
 
 struct mca_btl_openib_module_qp_t {
@@ -452,7 +527,7 @@ extern int mca_btl_openib_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    ompi_bitmap_t* reachable
+    opal_bitmap_t* reachable
 );
 
 /**
@@ -504,7 +579,7 @@ extern int mca_btl_openib_send(
  */
 extern int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* ep,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     void* header,
     size_t header_size,
     size_t payload_size,
@@ -512,7 +587,7 @@ extern int mca_btl_openib_sendi( struct mca_btl_base_module_t* btl,
     uint32_t flags,
     mca_btl_base_tag_t tag,
     mca_btl_base_descriptor_t** descriptor
-); 
+);
 
 /**
  * PML->BTL Initiate a put of the specified size.
@@ -577,7 +652,7 @@ mca_btl_base_descriptor_t* mca_btl_openib_prepare_src(
                                                       struct mca_btl_base_module_t* btl,
                                                       struct mca_btl_base_endpoint_t* peer,
                                                       mca_mpool_base_registration_t* registration,
-                                                      struct ompi_convertor_t* convertor,
+                                                      struct opal_convertor_t* convertor,
                                                       uint8_t order,
                                                       size_t reserve,
                                                       size_t* size,
@@ -594,7 +669,7 @@ extern mca_btl_base_descriptor_t* mca_btl_openib_prepare_dst(
                                                              struct mca_btl_base_module_t* btl,
                                                              struct mca_btl_base_endpoint_t* peer,
                                                              mca_mpool_base_registration_t* registration,
-                                                             struct ompi_convertor_t* convertor,
+                                                             struct opal_convertor_t* convertor,
                                                              uint8_t order,
                                                              size_t reserve,
                                                              size_t* size,
@@ -634,6 +709,18 @@ void mca_btl_openib_show_init_error(const char *file, int line,
 
 int mca_btl_openib_post_srr(mca_btl_openib_module_t* openib_btl, const int qp);
 
+/**
+ * Get a transport name of btl by its transport type.
+ */
+
+const char* btl_openib_get_transport_name(mca_btl_openib_transport_type_t transport_type);
+
+/**
+ * Get a transport type of btl.
+ */
+
+mca_btl_openib_transport_type_t mca_btl_openib_get_transport_type(mca_btl_openib_module_t* openib_btl);
+
 static inline int qp_cq_prio(const int qp)
 {
     if(0 == qp)
@@ -649,9 +736,6 @@ static inline int qp_cq_prio(const int qp)
 #define BTL_OPENIB_RDMA_QP(QP) \
     ((QP) == mca_btl_openib_component.rdma_qp)
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
 END_C_DECLS
 
 #endif /* MCA_BTL_IB_H */

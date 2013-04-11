@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,18 +28,20 @@
 #ifndef MCA_BML_H
 #define MCA_BML_H
 
+#include "ompi_config.h"
 #include "opal/mca/mca.h"
-#include "ompi/mca/btl/btl.h"
-
-#include "ompi/mca/bml/base/bml_base_btl.h"
-
-#include "ompi/types.h"
-#include "ompi/class/ompi_free_list.h"
-
+#include "opal/datatype/opal_convertor.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 
-#define OMPI_ENABLE_DEBUG_RELIABILITY 0
+#include "ompi/mca/btl/btl.h"
+
+#include "ompi/mca/bml/base/bml_base_btl.h"
+#include "ompi/types.h"
+
+#include "ompi/constants.h"
+
+#define OPAL_ENABLE_DEBUG_RELIABILITY 0
 
 /*
  * BML types
@@ -110,7 +114,7 @@ static inline void mca_bml_base_btl_array_set_size(mca_bml_base_btl_array_t* arr
  */
 static inline mca_bml_base_btl_t* mca_bml_base_btl_array_insert(mca_bml_base_btl_array_t* array)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(array->arr_size >= array->arr_reserve) {
         opal_output(0, "mca_bml_base_btl_array_insert: invalid array index %lu >= %lu", 
                     (unsigned long)array->arr_size, (unsigned long)array->arr_reserve);
@@ -156,7 +160,7 @@ static inline bool mca_bml_base_btl_array_remove( mca_bml_base_btl_array_t* arra
  */
 static inline mca_bml_base_btl_t* mca_bml_base_btl_array_get_index(mca_bml_base_btl_array_t* array, size_t item_index)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(item_index >= array->arr_size) {
         opal_output(0, "mca_bml_base_btl_array_get_index: invalid array index %lu >= %lu",
                     (unsigned long)item_index, (unsigned long)array->arr_size);
@@ -175,7 +179,7 @@ static inline mca_bml_base_btl_t* mca_bml_base_btl_array_get_index(mca_bml_base_
  */
 static inline mca_bml_base_btl_t* mca_bml_base_btl_array_get_next(mca_bml_base_btl_array_t* array)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(array->arr_size == 0) {
         opal_output(0, "mca_bml_base_btl_array_get_next: invalid array size");
         return 0;
@@ -252,7 +256,7 @@ static inline void mca_bml_base_free( mca_bml_base_btl_t* bml_btl,
      */
 }
 
-#if OMPI_ENABLE_DEBUG_RELIABILITY
+#if OPAL_ENABLE_DEBUG_RELIABILITY
 
 int mca_bml_base_send( mca_bml_base_btl_t* bml_btl, 
                        mca_btl_base_descriptor_t* des, 
@@ -270,7 +274,7 @@ static inline int mca_bml_base_send( mca_bml_base_btl_t* bml_btl,
 
     des->des_context = (void*) bml_btl;
     rc = btl->btl_send(btl, bml_btl->btl_endpoint, des, tag);
-    if(rc == OMPI_ERR_RESOURCE_BUSY)
+    if (rc == OMPI_ERR_RESOURCE_BUSY)
         rc = OMPI_SUCCESS;
 
     return rc;
@@ -289,7 +293,7 @@ static inline int mca_bml_base_send_status( mca_bml_base_btl_t* bml_btl,
 }
 
 static inline int  mca_bml_base_sendi( mca_bml_base_btl_t* bml_btl,
-                                       struct ompi_convertor_t* convertor,
+                                       struct opal_convertor_t* convertor,
                                        void* header,
                                        size_t header_size,
                                        size_t payload_size,
@@ -325,7 +329,7 @@ static inline int mca_bml_base_get( mca_bml_base_btl_t* bml_btl,
 
 static inline void mca_bml_base_prepare_src(mca_bml_base_btl_t* bml_btl, 
                                             mca_mpool_base_registration_t* reg, 
-                                            struct ompi_convertor_t* conv, 
+                                            struct opal_convertor_t* conv, 
                                             uint8_t order,
                                             size_t reserve, 
                                             size_t *size,
@@ -343,7 +347,7 @@ static inline void mca_bml_base_prepare_src(mca_bml_base_btl_t* bml_btl,
 
 static inline void mca_bml_base_prepare_dst(mca_bml_base_btl_t* bml_btl, 
                                             mca_mpool_base_registration_t* reg, 
-                                            struct ompi_convertor_t* conv, 
+                                            struct opal_convertor_t* conv, 
                                             uint8_t order,
                                             size_t reserve, 
                                             size_t *size,
@@ -457,7 +461,7 @@ typedef int (*mca_bml_base_module_finalize_fn_t)( void );
 typedef int (*mca_bml_base_module_add_procs_fn_t)(
                                                   size_t nprocs,
                                                   struct ompi_proc_t** procs, 
-                                                  struct ompi_bitmap_t* reachable
+                                                  struct opal_bitmap_t* reachable
                                                   );
 
 /**

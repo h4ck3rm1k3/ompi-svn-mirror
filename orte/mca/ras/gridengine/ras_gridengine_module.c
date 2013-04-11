@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,7 +27,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "orte/util/show_help.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/runtime/orte_globals.h"
@@ -64,6 +64,8 @@ static int orte_ras_gridengine_allocate(opal_list_t *nodelist)
     int rc;
     FILE *fp;
     orte_node_t *node;
+    opal_list_item_t *item;
+    bool found;
 
     /* show the Grid Engine's JOB_ID */
     if (mca_ras_gridengine_component.show_jobid ||
@@ -83,8 +85,8 @@ static int orte_ras_gridengine_allocate(opal_list_t *nodelist)
     /* parse the pe_hostfile for hostname, slots, etc, then compare the
      * current node with a list of hosts in the nodelist, if the current
      * node is not found in nodelist, add it in */
-    opal_output(mca_ras_gridengine_component.verbose,  
-                "ras:gridengine: PE_HOSTFILE: %s", pe_hostfile); 
+    opal_output(mca_ras_gridengine_component.verbose, 
+		"ras:gridengine: PE_HOSTFILE: %s", pe_hostfile);
 
     while (fgets(buf, sizeof(buf), fp)) {
         ptr = strtok_r(buf, " \n", &tok);
@@ -92,22 +94,36 @@ static int orte_ras_gridengine_allocate(opal_list_t *nodelist)
         queue = strtok_r(NULL, " \n", &tok);
         arch = strtok_r(NULL, " \n", &tok);
 
-        /* create a new node entry */
-        node = OBJ_NEW(orte_node_t);
-        if (NULL == node) {
-            fclose(fp);
-            return ORTE_ERR_OUT_OF_RESOURCE;
+        /* see if we already have this node */
+        found = false;
+        for (item = opal_list_get_first(nodelist);
+             item != opal_list_get_end(nodelist);
+             item = opal_list_get_next(item)) {
+            node = (orte_node_t*)item;
+            if (0 == strcmp(ptr, node->name)) {
+                /* just add the slots */
+                node->slots += (int)strtol(num, (char **)NULL, 10);
+                found = true;
+                break;
+            }
         }
-        node->name = strdup(ptr);
-        node->state = ORTE_NODE_STATE_UP;
-        node->slots_inuse = 0;
-        node->slots_max = 0;
-        node->slots = (int)strtol(num, (char **)NULL, 10);
-        opal_output(mca_ras_gridengine_component.verbose,
-            "ras:gridengine: %s: PE_HOSTFILE shows slots=%d",
-            node->name, node->slots);
-        opal_list_append(nodelist, &node->super);
-
+        if (!found) {
+            /* create a new node entry */
+            node = OBJ_NEW(orte_node_t);
+            if (NULL == node) {
+                fclose(fp);
+                return ORTE_ERR_OUT_OF_RESOURCE;
+            }
+            node->name = strdup(ptr);
+            node->state = ORTE_NODE_STATE_UP;
+            node->slots_inuse = 0;
+            node->slots_max = 0;
+            node->slots = (int)strtol(num, (char **)NULL, 10);
+            opal_output(mca_ras_gridengine_component.verbose,
+                        "ras:gridengine: %s: PE_HOSTFILE shows slots=%d",
+                        node->name, node->slots);
+            opal_list_append(nodelist, &node->super);
+        }
     } /* finished reading the $PE_HOSTFILE */
 
 cleanup:

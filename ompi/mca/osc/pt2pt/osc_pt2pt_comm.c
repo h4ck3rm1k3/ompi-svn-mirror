@@ -7,6 +7,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,10 +20,15 @@
 
 #include <stdio.h>
 
+#include "opal/class/opal_list.h"
+#include "opal/threads/mutex.h"
 #include "osc_pt2pt.h"
 #include "osc_pt2pt_sendreq.h"
 #include "osc_pt2pt_header.h"
 #include "osc_pt2pt_data_move.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/op/op.h"
+#include "ompi/win/win.h"
 #include "ompi/memchecker.h"
 
 static int
@@ -43,7 +49,8 @@ enqueue_sendreq(ompi_osc_pt2pt_module_t *module,
 int
 ompi_osc_pt2pt_module_accumulate(void *origin_addr, int origin_count,
                                  struct ompi_datatype_t *origin_dt,
-                                 int target, int target_disp, int target_count,
+                                 int target, OPAL_PTRDIFF_TYPE target_disp, 
+                                 int target_count,
                                  struct ompi_datatype_t *target_dt,
                                  struct ompi_op_t *op, ompi_win_t *win)
 {
@@ -97,7 +104,7 @@ ompi_osc_pt2pt_module_get(void *origin_addr,
                           int origin_count,
                           struct ompi_datatype_t *origin_dt,
                           int target,
-                          int target_disp,
+                          OPAL_PTRDIFF_TYPE target_disp,
                           int target_count,
                           struct ompi_datatype_t *target_dt,
                           ompi_win_t *win)
@@ -148,7 +155,8 @@ ompi_osc_pt2pt_module_get(void *origin_addr,
 int
 ompi_osc_pt2pt_module_put(void *origin_addr, int origin_count,
                           struct ompi_datatype_t *origin_dt,
-                          int target, int target_disp, int target_count,
+                          int target, OPAL_PTRDIFF_TYPE target_disp, 
+                          int target_count,
                           struct ompi_datatype_t *target_dt, ompi_win_t *win)
 {
     int ret;

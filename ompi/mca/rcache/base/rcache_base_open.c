@@ -32,11 +32,7 @@
  * component's public mca_base_component_t struct.
  */
 
-#ifdef __WINDOWS__
-    const mca_base_component_t *mca_rcache_base_static_components[] = {NULL};
-#else 
 #include "ompi/mca/rcache/base/static-components.h"
-#endif
 
 
 /*
@@ -65,8 +61,7 @@ int mca_rcache_base_open(void)
   }
 
   /* Initialize the list so that in mca_rcache_base_close(), we can
-     iterate over it (even if it's empty, as in the case of
-     ompi_info) */
+     iterate over it (even if it's empty, as in the case of the ompi_info-tool) */
 
   OBJ_CONSTRUCT(&mca_rcache_base_modules, opal_list_t);
 

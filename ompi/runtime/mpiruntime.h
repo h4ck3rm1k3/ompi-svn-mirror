@@ -9,10 +9,11 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2009      University of Houston.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -40,9 +41,13 @@ BEGIN_C_DECLS
 struct ompi_communicator_t;
 /** forward type declaration */
 struct opal_thread_t;
+/** forward type declaration */
+struct ompi_predefined_datatype_t;
 
 /* Global variables and symbols for the MPI layer */
 
+/** Did mpi start to initialize? */
+OMPI_DECLSPEC extern bool ompi_mpi_init_started;
 /** Is mpi initialized? */
 OMPI_DECLSPEC extern bool ompi_mpi_initialized;
 /** Has mpi been finalized? */
@@ -57,9 +62,61 @@ OMPI_DECLSPEC extern int ompi_mpi_thread_provided;
 /** Identifier of the main thread */
 OMPI_DECLSPEC extern struct opal_thread_t *ompi_mpi_main_thread;
 
-/** Did we setup maffinity in MPI_INIT (and therefore need to shut
-    it down during MPI_FINALIZE)? */
-OMPI_DECLSPEC extern bool ompi_mpi_maffinity_setup;
+/*
+ * These variables are for the MPI F03 bindings (F03 must bind Fortran
+ * varaiables to symbols; it cannot bind Fortran variables to the
+ * address of a C variable).
+ */
+
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_character_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_logical_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_logical1_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_logical2_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_logical4_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_logical8_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer1_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer2_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer4_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer8_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_integer16_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_real_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_real4_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_real8_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_real16_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_dblprec_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_cplex_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_complex8_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_complex16_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_complex32_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_dblcplex_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_2real_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_2dblprec_addr;
+OMPI_DECLSPEC extern struct ompi_predefined_datatype_t *ompi_mpi_2integer_addr;
+
+OMPI_DECLSPEC extern struct ompi_status_public_t *ompi_mpi_status_ignore_addr;
+OMPI_DECLSPEC extern struct ompi_status_public_t *ompi_mpi_statuses_ignore_addr;
+
+/** Bitflags to be used for the modex exchange for the various thread
+ *  levels. Required to support heterogeneous environments */
+#define OMPI_THREADLEVEL_SINGLE_BF     0x00000001
+#define OMPI_THREADLEVEL_FUNNELED_BF   0x00000002
+#define OMPI_THREADLEVEL_SERIALIZED_BF 0x00000004
+#define OMPI_THREADLEVEL_MULTIPLE_BF   0x00000008
+
+#define OMPI_THREADLEVEL_SET_BITFLAG(threadlevelin,threadlevelout) { \
+    if ( MPI_THREAD_SINGLE == threadlevelin ) {                 \
+        threadlevelout |= OMPI_THREADLEVEL_SINGLE_BF;           \
+    } else if ( MPI_THREAD_FUNNELED == threadlevelin ) {        \
+        threadlevelout |= OMPI_THREADLEVEL_FUNNELED_BF;         \
+    } else if ( MPI_THREAD_SERIALIZED == threadlevelin ) {      \
+        threadlevelout |= OMPI_THREADLEVEL_SERIALIZED_BF;       \
+    } else if ( MPI_THREAD_MULTIPLE == threadlevelin ) {       \
+        threadlevelout |= OMPI_THREADLEVEL_MULTIPLE_BF;         \
+    }}
+
+
+#define OMPI_THREADLEVEL_IS_MULTIPLE(threadlevel) (threadlevel & OMPI_THREADLEVEL_MULTIPLE_BF)
 
 /** Do we want to be warned on fork or not? */
 OMPI_DECLSPEC extern bool ompi_warn_on_fork;

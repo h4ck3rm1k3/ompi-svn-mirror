@@ -10,8 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 University of Houston. All rights reserved.
- * Copyright (c) 2007      Cisco, Inc. All rights reserved.
+ * Copyright (c) 2006-2010 University of Houston. All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
@@ -32,7 +32,6 @@
 #include "ompi/runtime/params.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/attribute/attribute.h"
-#include "ompi/mca/topo/topo.h"
 #include "ompi/mca/dpm/dpm.h"
 #include "ompi/memchecker.h"
 
@@ -49,6 +48,13 @@ ompi_predefined_communicator_t  ompi_mpi_comm_self;
 ompi_predefined_communicator_t  ompi_mpi_comm_null;
 ompi_communicator_t  *ompi_mpi_comm_parent;
 
+ompi_predefined_communicator_t *ompi_mpi_comm_world_addr = 
+    &ompi_mpi_comm_world;
+ompi_predefined_communicator_t *ompi_mpi_comm_self_addr =
+    &ompi_mpi_comm_self;
+ompi_predefined_communicator_t *ompi_mpi_comm_null_addr =
+    &ompi_mpi_comm_null;
+
 static void ompi_comm_construct(ompi_communicator_t* comm);
 static void ompi_comm_destruct(ompi_communicator_t* comm);
 
@@ -58,7 +64,6 @@ OBJ_CLASS_INSTANCE(ompi_communicator_t,opal_object_t,ompi_comm_construct,ompi_co
    process with more than one jobid. This counter is a usefull 
    shortcut for finalize and abort. */
 int ompi_comm_num_dyncomm=0;
-
 
 /*
  * Initialize comm world/self/null/parent.
@@ -224,25 +229,25 @@ int ompi_comm_finalize(void)
            is because a parent communicator is created dynamically
            during init, and we just set this pointer to it.  Hence, we
            just pass in the pointer here. */
-       OBJ_DESTRUCT (ompi_mpi_comm_parent);
+        OBJ_DESTRUCT (ompi_mpi_comm_parent);
 
-       /* Please note, that the we did increase the reference count
-          for ompi_mpi_comm_null, ompi_mpi_group_null, and 
-          ompi_mpi_errors_are_fatal in ompi_comm_init because of 
-          ompi_mpi_comm_parent.  In case a 
-          parent communicator is really created, the ref. counters
-          for these objects are decreased again by one. However, in a 
-          static scenario, we should ideally decrease the ref. counter
-          for these objects by one here. The problem just is, that 
-          if the app had a parent_comm, and this has been freed/disconnected,
-          ompi_comm_parent points again to ompi_comm_null, the reference count 
-          for these objects has not been increased again.
-          So the point is, if ompi_mpi_comm_parent == &ompi_mpi_comm_null
-          we do not know whether we have to decrease the ref count for
-          those three objects or not. Since this is a constant, non-increasing
-          amount of memory, we stick with the current solution for now, 
-          namely don't do anything.
-       */  
+        /* Please note, that the we did increase the reference count
+           for ompi_mpi_comm_null, ompi_mpi_group_null, and 
+           ompi_mpi_errors_are_fatal in ompi_comm_init because of 
+           ompi_mpi_comm_parent.  In case a 
+           parent communicator is really created, the ref. counters
+           for these objects are decreased again by one. However, in a 
+           static scenario, we should ideally decrease the ref. counter
+           for these objects by one here. The problem just is, that 
+           if the app had a parent_comm, and this has been freed/disconnected,
+           ompi_comm_parent points again to ompi_comm_null, the reference count 
+           for these objects has not been increased again.
+           So the point is, if ompi_mpi_comm_parent == &ompi_mpi_comm_null
+           we do not know whether we have to decrease the ref count for
+           those three objects or not. Since this is a constant, non-increasing
+           amount of memory, we stick with the current solution for now, 
+           namely don't do anything.
+        */  
     }
 
     /* Shut down MPI_COMM_NULL */
@@ -258,10 +263,22 @@ int ompi_comm_finalize(void)
             comm=(ompi_communicator_t *)opal_pointer_array_get_item(&ompi_mpi_communicators, i);
             if ( NULL != comm ) {
                 /* Still here ? */
-                if ( ompi_debug_show_handle_leaks && !(OMPI_COMM_IS_FREED(comm)) ){
-                    opal_output(0,"WARNING: MPI_Comm still allocated in MPI_Finalize\n");
-                    ompi_comm_dump ( comm);
-                    OBJ_RELEASE(comm);
+                if ( !OMPI_COMM_IS_EXTRA_RETAIN(comm)) {
+
+                    /* For communicator that have been marked as "extra retain", we do not further
+                     * enforce to decrease the reference counter once more. These "extra retain"
+                     * communicators created e.g. by the hierarch or inter module did increase
+                     * the reference count by one more than other communicators, on order to
+                     * allow for deallocation with the parent communicator. Note, that
+                     * this only occurs if the cid of the local_comm is lower than of its
+                     * parent communicator. Read the comment in comm_activate for
+                     * a full explanation.
+                     */
+                    if ( ompi_debug_show_handle_leaks && !(OMPI_COMM_IS_FREED(comm)) ){
+                        opal_output(0,"WARNING: MPI_Comm still allocated in MPI_Finalize\n");
+                        ompi_comm_dump ( comm);
+                        OBJ_RELEASE(comm);
+                    }
                 }
             }
         }
@@ -281,7 +298,7 @@ int ompi_comm_finalize(void)
  */
 int ompi_comm_link_function(void)
 {
-  return OMPI_SUCCESS;
+    return OMPI_SUCCESS;
 }
 
 /********************************************************************************/
@@ -388,7 +405,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
     if ( MPI_COMM_NULL != comm && OMPI_COMM_IS_PML_ADDED(comm) ) {
         MCA_PML_CALL(del_comm (comm));
     }
-    
 
     /* Release topology information */
     mca_topo_base_comm_unselect(comm);
@@ -423,9 +439,6 @@ static void ompi_comm_destruct(ompi_communicator_t* comm)
         opal_pointer_array_set_item ( &ompi_mpi_communicators,
                                       comm->c_f_to_c_index, NULL);
 
-	if ( MPI_UNDEFINED != comm->c_id_start_index ) {
-	    ompi_comm_checkfor_blockreset ( comm );
-	}
     }
 
 

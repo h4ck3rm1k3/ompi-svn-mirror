@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2009 Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,8 +21,11 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_create_f90_integer = PMPI_Type_create_f90_integer
 #endif
 
@@ -57,7 +60,7 @@ int MPI_Type_create_f90_integer(int r, MPI_Datatype *newtype)
      */
 
     if      (r > 38) *newtype = &ompi_mpi_datatype_null.dt;
-#if OMPI_HAVE_F90_INTEGER16
+#if OMPI_HAVE_FORTRAN_INTEGER16
     else if (r > 18) *newtype = &ompi_mpi_long_long_int.dt;
 #else
     else if (r > 18) *newtype = &ompi_mpi_datatype_null.dt;
@@ -87,17 +90,20 @@ int MPI_Type_create_f90_integer(int r, MPI_Datatype *newtype)
         /* Create the duplicate type corresponding to selected type, then
          * set the argument to be a COMBINER with the correct value of r
          * and add it to the hash table. */
-        if (OMPI_SUCCESS != ompi_ddt_duplicate( *newtype, &datatype)) {
+        if (OMPI_SUCCESS != ompi_datatype_duplicate( *newtype, &datatype)) {
             OMPI_ERRHANDLER_RETURN (MPI_ERR_INTERN, MPI_COMM_WORLD,
                                     MPI_ERR_INTERN, FUNC_NAME );
         }
         /* Make sure the user is not allowed to free this datatype as specified
          * in the MPI standard.
          */
-        datatype->flags |= DT_FLAG_PREDEFINED;
+        datatype->super.flags |= OMPI_DATATYPE_FLAG_PREDEFINED;
+        /* Mark the datatype as a special F90 convenience type */
+        snprintf(datatype->name, MPI_MAX_OBJECT_NAME, "COMBINER %s",
+                 (*newtype)->name);
 
         a_i[0] = &r;
-        ompi_ddt_set_args( datatype, 1, a_i, 0, NULL, 0, NULL, MPI_COMBINER_F90_INTEGER );
+        ompi_datatype_set_args( datatype, 1, a_i, 0, NULL, 0, NULL, MPI_COMBINER_F90_INTEGER );
 
         rc = opal_hash_table_set_value_uint32( &ompi_mpi_f90_integer_hashtable, r, datatype );
         if (OMPI_SUCCESS != rc) {

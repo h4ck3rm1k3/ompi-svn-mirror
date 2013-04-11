@@ -2,13 +2,15 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,14 +22,11 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
-
 #include "orte/mca/ess/base/base.h"
-
 
 /*
  * The following file was created by configure.  It contains extern
@@ -39,16 +38,25 @@
 
 opal_list_t orte_ess_base_components_available;
 orte_ess_base_module_t orte_ess = {
-    NULL, /* init     */
-    NULL, /* finalize */
-    NULL, /* abort    */
-    NULL  /* ft_event */
+    NULL,  /* init */
+    NULL,  /* finalize */
+    NULL,  /* abort */
+    NULL   /* ft_event */
 };
 int orte_ess_base_output;
+int orte_ess_base_std_buffering = -1;
 
 int
 orte_ess_base_open(void)
 {
+    mca_base_param_reg_int_name("ess_base",
+                                "stream_buffering",
+                                "Adjust buffering for stdout/stderr "
+                                "[-1 system default] [0 unbuffered] [1 line buffered] [2 fully buffered] "
+                                "(Default: -1)",
+                                false, false,
+                                -1, &orte_ess_base_std_buffering);
+
     orte_ess_base_output = opal_output_open(NULL);
     
     OBJ_CONSTRUCT(&orte_ess_base_components_available, opal_list_t);
@@ -58,7 +66,8 @@ orte_ess_base_open(void)
         mca_base_components_open("ess", orte_ess_base_output, mca_ess_base_static_components, 
                                  &orte_ess_base_components_available,
                                  true)) {
-        return ORTE_ERROR;
+        /* error message emitted by fn above */
+        return ORTE_ERR_SILENT;
     }
 
     return ORTE_SUCCESS;

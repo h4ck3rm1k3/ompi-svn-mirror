@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -17,18 +18,17 @@
  */
 
 #include "orte_config.h"
-
-#include "orte/util/show_help.h"
+#include "opal/types.h"
 
 #include "orte/mca/routed/routed.h"
 #include "opal/dss/dss.h"
+#include "opal/util/output.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/rml/base/base.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 
-#include "orte/mca/oob/oob.h"
-#include "orte/mca/oob/base/base.h"
 #include "rml_oob.h"
 
 static void
@@ -44,6 +44,7 @@ orte_rml_send_msg_callback(int status,
             (orte_rml_oob_msg_header_t*) iov[0].iov_base;
 
     if (msg->msg_type == ORTE_RML_BLOCKING_SEND) {
+	OPAL_THREAD_LOCK(&msg->msg_lock);
         /* blocking send */
         if (status > 0) {
             msg->msg_status = status - sizeof(orte_rml_oob_msg_header_t);
@@ -52,6 +53,7 @@ orte_rml_send_msg_callback(int status,
         }
         msg->msg_complete = true;
         opal_condition_broadcast(&msg->msg_cond);
+	OPAL_THREAD_UNLOCK(&msg->msg_lock);
     } else if (msg->msg_type == ORTE_RML_NONBLOCKING_IOV_SEND) {
         /* non-blocking iovec send */
         if (status > 0) {
@@ -144,7 +146,8 @@ orte_rml_oob_send(orte_process_name_t* peer,
                                                       msg);
     if (ret < 0) {
         ORTE_ERROR_LOG(ret);
-        opal_output(0, "%s attempted to send to %s", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&next));
+        opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                                             ORTE_NAME_PRINT(&next), (int)real_tag);
         goto cleanup;
     }
 
@@ -233,7 +236,8 @@ orte_rml_oob_send_nb(orte_process_name_t* peer,
                                                       msg);
     if (ret < 0) {
         ORTE_ERROR_LOG(ret);
-        opal_output(0, "%s attempted to send to %s", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), ORTE_NAME_PRINT(&next));
+        opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                                             ORTE_NAME_PRINT(&next), (int)real_tag);
         OBJ_RELEASE(msg);
     }
 
@@ -355,6 +359,9 @@ orte_rml_oob_send_buffer_nb(orte_process_name_t* peer,
                                                       msg);
 
     if (ret < 0) {
+        ORTE_ERROR_LOG(ret);
+        opal_output(0, "%s attempted to send to %s: tag %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                                                             ORTE_NAME_PRINT(&next), (int)real_tag);
         OBJ_RELEASE(msg);
         OBJ_RELEASE(buffer);
     }

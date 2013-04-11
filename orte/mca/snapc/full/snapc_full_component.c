@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -15,9 +15,7 @@
  */
 
 #include "orte_config.h"
-
-#include "orte/util/name_fns.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
@@ -27,7 +25,7 @@
  * Public string for version number
  */
 const char *orte_snapc_full_component_version_string = 
-"ORTE SNAPC full MCA component version " OMPI_VERSION;
+"ORTE SNAPC full MCA component version " ORTE_VERSION;
 
 /*
  * Local functionality
@@ -35,7 +33,10 @@ const char *orte_snapc_full_component_version_string =
 static int snapc_full_open(void);
 static int snapc_full_close(void);
 
-bool orte_snapc_full_skip_filem = false;
+bool orte_snapc_full_skip_app   = false;
+bool orte_snapc_full_timing_enabled = false;
+int orte_snapc_full_progress_meter = 0;
+int orte_snapc_full_max_wait_time = 20;
 
 /*
  * Instantiate the public struct with all of our public information
@@ -51,9 +52,9 @@ orte_snapc_full_component_t mca_snapc_full_component = {
             ORTE_SNAPC_BASE_VERSION_2_0_0,
             /* Component name and version */
             "full",
-            OMPI_MAJOR_VERSION,
-            OMPI_MINOR_VERSION,
-            OMPI_RELEASE_VERSION,
+            ORTE_MAJOR_VERSION,
+            ORTE_MINOR_VERSION,
+            ORTE_RELEASE_VERSION,
             
             /* Component open and close functions */
             snapc_full_open,
@@ -107,12 +108,35 @@ static int snapc_full_open(void)
     }
 
     mca_base_param_reg_int(&mca_snapc_full_component.super.base_version,
-                           "skip_filem",
-                           "Not for general use! For debugging only! Pretend to move files. [Default = disabled]",
+                           "skip_app",
+                           "Not for general use! For debugging only! Shortcut app level coord. [Default = disabled]",
                            false, false,
                            0,
                            &value);
-    orte_snapc_full_skip_filem = OPAL_INT_TO_BOOL(value);
+    orte_snapc_full_skip_app = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int(&mca_snapc_full_component.super.base_version,
+                           "enable_timing",
+                           "Enable timing information. [Default = disabled]",
+                           false, false,
+                           0,
+                           &value);
+    orte_snapc_full_timing_enabled = OPAL_INT_TO_BOOL(value);
+
+    mca_base_param_reg_int(&mca_snapc_full_component.super.base_version,
+                           "max_wait_time",
+                           "Wait time before orted gives up on checkpoint (seconds)",
+                           false, false,
+                           20,
+                           &orte_snapc_full_max_wait_time);
+
+    mca_base_param_reg_int(&mca_snapc_full_component.super.base_version,
+                           "progress_meter",
+                           "Display Progress every X percentage done. [Default = 0/off]",
+                           false, false,
+                           0,
+                           &value);
+    orte_snapc_full_progress_meter = (value % 101);
 
     /*
      * Debug Output
@@ -126,8 +150,11 @@ static int snapc_full_open(void)
                         "snapc:full: open: verbosity   = %d", 
                         mca_snapc_full_component.super.verbose);
     opal_output_verbose(20, mca_snapc_full_component.super.output_handle,
-                        "snapc:full: open: skip_filem  = %s", 
-                        (orte_snapc_full_skip_filem == true ? "True" : "False"));
+                        "snapc:full: open: max_wait_time  = %d", 
+                        orte_snapc_full_max_wait_time);
+    opal_output_verbose(20, mca_snapc_full_component.super.output_handle,
+                        "snapc:full: open: progress_meter = %d", 
+                        orte_snapc_full_progress_meter);
 
     return ORTE_SUCCESS;
 }

@@ -9,6 +9,8 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,8 +41,9 @@
 #define OMPI_OSC_RDMA_HDR_MULTI_END     0x0B
 #define OMPI_OSC_RDMA_HDR_RDMA_INFO     0x0C
 
-#define OMPI_OSC_RDMA_HDR_FLAG_NBO      0x01
-#define OMPI_OSC_RDMA_HDR_FLAG_MULTI    0x02
+#define OMPI_OSC_RDMA_HDR_FLAG_ALIGN_MASK 0x0F
+#define OMPI_OSC_RDMA_HDR_FLAG_NBO        0x10
+#define OMPI_OSC_RDMA_HDR_FLAG_MULTI      0x20
 
 struct ompi_osc_rdma_base_header_t {
     uint8_t hdr_type;
@@ -60,7 +63,7 @@ struct ompi_osc_rdma_send_header_t {
     ompi_ptr_t hdr_origin_sendreq;
     int32_t hdr_origin_tag;
 
-    int32_t hdr_target_disp;
+    uint64_t hdr_target_disp;
     int32_t hdr_target_count;
     int32_t hdr_target_op;
 
@@ -74,7 +77,7 @@ typedef struct ompi_osc_rdma_send_header_t ompi_osc_rdma_send_header_t;
         (hdr).hdr_windx = htons((hdr).hdr_windx); \
         (hdr).hdr_origin = htonl((hdr).hdr_origin); \
         (hdr).hdr_origin_tag = htonl((hdr).hdr_origin_tag); \
-        (hdr).hdr_target_disp = htonl((hdr).hdr_target_disp); \
+        (hdr).hdr_target_disp = hton64((hdr).hdr_target_disp); \
         (hdr).hdr_target_count = htonl((hdr).hdr_target_count); \
         (hdr).hdr_target_op = htonl((hdr).hdr_target_op); \
         (hdr).hdr_msg_length = htonl((hdr).hdr_msg_length); \
@@ -86,7 +89,7 @@ typedef struct ompi_osc_rdma_send_header_t ompi_osc_rdma_send_header_t;
         (hdr).hdr_windx = ntohs((hdr).hdr_windx); \
         (hdr).hdr_origin = ntohl((hdr).hdr_origin); \
         (hdr).hdr_origin_tag = ntohl((hdr).hdr_origin_tag); \
-        (hdr).hdr_target_disp = ntohl((hdr).hdr_target_disp); \
+        (hdr).hdr_target_disp = ntoh64((hdr).hdr_target_disp); \
         (hdr).hdr_target_count = ntohl((hdr).hdr_target_count); \
         (hdr).hdr_target_op = ntohl((hdr).hdr_target_op); \
         (hdr).hdr_msg_length = ntohl((hdr).hdr_msg_length); \
@@ -146,7 +149,6 @@ struct ompi_osc_rdma_rdma_info_header_t {
     ompi_osc_rdma_base_header_t hdr_base;
     int16_t  hdr_windx;
     int32_t  hdr_origin;
-    uint64_t hdr_segkey;
 };
 typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t;
 
@@ -155,7 +157,6 @@ typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t
         OMPI_OSC_RDMA_BASE_HDR_HTON((hdr).hdr_base);    \
         (hdr).hdr_windx = htons((hdr).hdr_windx);       \
         (hdr).hdr_origin = htonl((hdr).hdr_origin);     \
-        (hdr).hdr_segkey = hton64((hdr).hdr_segkey);    \
     } while (0)
 
 #define OMPI_OSC_RDMA_RDMA_INFO_HDR_NTOH(hdr)           \
@@ -163,7 +164,6 @@ typedef struct ompi_osc_rdma_rdma_info_header_t ompi_osc_rdma_rdma_info_header_t
         OMPI_OSC_RDMA_BASE_HDR_NTOH((hdr).hdr_base);    \
         (hdr).hdr_windx = ntohs((hdr).hdr_windx);       \
         (hdr).hdr_origin = ntohl((hdr).hdr_origin);     \
-        (hdr).hdr_segkey = ntoh64((hdr).hdr_segkey);    \
     } while (0)
 
 

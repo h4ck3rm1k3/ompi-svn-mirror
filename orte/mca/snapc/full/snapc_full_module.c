@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
@@ -21,16 +21,14 @@
 #include <unistd.h>
 #endif  /* HAVE_UNISTD_H */
 
-#include "orte/util/name_fns.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
 #include "opal/mca/base/mca_base_param.h"
 
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
 
-#include "orte/util/show_help.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
 
@@ -46,30 +44,33 @@ static orte_snapc_base_module_t loc_module = {
     orte_snapc_full_module_finalize,
     orte_snapc_full_setup_job,
     orte_snapc_full_release_job,
-    orte_snapc_full_ft_event
+    orte_snapc_full_ft_event,
+    orte_snapc_full_start_ckpt,
+    orte_snapc_full_end_ckpt,
+    orte_snapc_full_request_op
 };
 
 /*
  * Global Snapshot structure
  */
-void orte_snapc_full_global_construct(orte_snapc_full_global_snapshot_t *obj);
-void orte_snapc_full_global_destruct( orte_snapc_full_global_snapshot_t *obj);
+void orte_snapc_full_orted_construct(orte_snapc_full_orted_snapshot_t *obj);
+void orte_snapc_full_orted_destruct( orte_snapc_full_orted_snapshot_t *obj);
 
-OBJ_CLASS_INSTANCE(orte_snapc_full_global_snapshot_t,
-                   orte_snapc_base_snapshot_t,
-                   orte_snapc_full_global_construct,
-                   orte_snapc_full_global_destruct);
+OBJ_CLASS_INSTANCE(orte_snapc_full_orted_snapshot_t,
+                   orte_snapc_base_global_snapshot_t,
+                   orte_snapc_full_orted_construct,
+                   orte_snapc_full_orted_destruct);
 
 /*
  * Local Snapshot structure
  */
-void orte_snapc_full_local_construct(orte_snapc_full_local_snapshot_t *obj);
-void orte_snapc_full_local_destruct( orte_snapc_full_local_snapshot_t *obj);
+void orte_snapc_full_app_construct(orte_snapc_full_app_snapshot_t *obj);
+void orte_snapc_full_app_destruct( orte_snapc_full_app_snapshot_t *obj);
 
-OBJ_CLASS_INSTANCE(orte_snapc_full_local_snapshot_t,
-                   orte_snapc_base_snapshot_t,
-                   orte_snapc_full_local_construct,
-                   orte_snapc_full_local_destruct);
+OBJ_CLASS_INSTANCE(orte_snapc_full_app_snapshot_t,
+                   orte_snapc_base_local_snapshot_t,
+                   orte_snapc_full_app_construct,
+                   orte_snapc_full_app_destruct);
 
 /************************************
  * Locally Global vars & functions :)
@@ -79,45 +80,59 @@ OBJ_CLASS_INSTANCE(orte_snapc_full_local_snapshot_t,
 /************************
  * Function Definitions
  ************************/
-void orte_snapc_full_global_construct(orte_snapc_full_global_snapshot_t *snapshot) {
-    snapshot->local_coord.vpid  = 0;
-    snapshot->local_coord.jobid = 0;
+void orte_snapc_full_orted_construct(orte_snapc_full_orted_snapshot_t *snapshot) {
+    snapshot->process_name.jobid  = 0;
+    snapshot->process_name.vpid   = 0;
+
+    snapshot->state = ORTE_SNAPC_CKPT_STATE_NONE;
 }
 
-void orte_snapc_full_global_destruct( orte_snapc_full_global_snapshot_t *snapshot) {
-    snapshot->local_coord.vpid  = 0;
-    snapshot->local_coord.jobid = 0;
+void orte_snapc_full_orted_destruct( orte_snapc_full_orted_snapshot_t *snapshot) {
+    snapshot->process_name.jobid  = 0;
+    snapshot->process_name.vpid   = 0;
+
+    snapshot->state = ORTE_SNAPC_CKPT_STATE_NONE;
 }
 
-void orte_snapc_full_local_construct(orte_snapc_full_local_snapshot_t *obj) {
-    obj->comm_pipe_r = NULL;
-    obj->comm_pipe_w = NULL;
+void orte_snapc_full_app_construct(orte_snapc_full_app_snapshot_t *app_snapshot) {
+    app_snapshot->comm_pipe_r = NULL;
+    app_snapshot->comm_pipe_w = NULL;
 
-    obj->comm_pipe_r_fd = -1;
-    obj->comm_pipe_w_fd = -1;
+    app_snapshot->comm_pipe_r_fd = -1;
+    app_snapshot->comm_pipe_w_fd = -1;
 
-    obj->ckpt_state = ORTE_SNAPC_CKPT_STATE_NONE;
+    app_snapshot->is_eh_active = false;
+    app_snapshot->unique_pipe_id = 0;
 
-    obj->is_eh_active = false;
+    app_snapshot->process_pid  = 0;
+
+    app_snapshot->migrating = false;
+
+    app_snapshot->finished = false;
 }
 
-void orte_snapc_full_local_destruct( orte_snapc_full_local_snapshot_t *obj) {
-    if( NULL != obj->comm_pipe_r ) {
-        free(obj->comm_pipe_r);
-        obj->comm_pipe_r = NULL;
+void orte_snapc_full_app_destruct( orte_snapc_full_app_snapshot_t *app_snapshot) {
+    if( NULL != app_snapshot->comm_pipe_r ) {
+        free(app_snapshot->comm_pipe_r);
+        app_snapshot->comm_pipe_r = NULL;
     }
 
-    if( NULL != obj->comm_pipe_w ) {
-        free(obj->comm_pipe_w);
-        obj->comm_pipe_w = NULL;
+    if( NULL != app_snapshot->comm_pipe_w ) {
+        free(app_snapshot->comm_pipe_w);
+        app_snapshot->comm_pipe_w = NULL;
     }
 
-    obj->comm_pipe_r_fd = -1;
-    obj->comm_pipe_w_fd = -1;
+    app_snapshot->comm_pipe_r_fd = -1;
+    app_snapshot->comm_pipe_w_fd = -1;
 
-    obj->ckpt_state = ORTE_SNAPC_CKPT_STATE_NONE;
+    app_snapshot->is_eh_active = false;
+    app_snapshot->unique_pipe_id = 0;
 
-    obj->is_eh_active = false;
+    app_snapshot->process_pid  = 0;
+
+    app_snapshot->migrating = false;
+
+    app_snapshot->finished = false;
 }
 
 /*
@@ -274,6 +289,66 @@ int orte_snapc_full_ft_event(int state) {
             break;
         case ORTE_SNAPC_APP_COORD_TYPE:
             return app_coord_ft_event(state);
+            break;
+        default:
+            break;
+        }
+
+    return ORTE_SUCCESS;
+}
+
+int orte_snapc_full_start_ckpt(orte_snapc_base_quiesce_t *datum)
+{
+    switch(orte_snapc_coord_type) 
+        {
+        case ORTE_SNAPC_GLOBAL_COORD_TYPE:
+            return global_coord_start_ckpt(datum);
+            break;
+        case ORTE_SNAPC_LOCAL_COORD_TYPE:
+            ; /* Do nothing */
+            break;
+        case ORTE_SNAPC_APP_COORD_TYPE:
+            ; /* Do nothing. Use app_coord_request_op() instead */
+            break;
+        default:
+            break;
+        }
+
+    return ORTE_SUCCESS;
+}
+
+int orte_snapc_full_end_ckpt(orte_snapc_base_quiesce_t *datum)
+{
+    switch(orte_snapc_coord_type) 
+        {
+        case ORTE_SNAPC_GLOBAL_COORD_TYPE:
+            return global_coord_end_ckpt(datum);
+            break;
+        case ORTE_SNAPC_LOCAL_COORD_TYPE:
+            ; /* Do nothing */
+            break;
+        case ORTE_SNAPC_APP_COORD_TYPE:
+            ; /* Do nothing. Use app_coord_request_op() instead */
+            break;
+        default:
+            break;
+        }
+
+    return ORTE_SUCCESS;
+}
+
+int orte_snapc_full_request_op(orte_snapc_base_request_op_t *datum)
+{
+    switch(orte_snapc_coord_type) 
+        {
+        case ORTE_SNAPC_GLOBAL_COORD_TYPE:
+            ; /* Do nothing */
+            break;
+        case ORTE_SNAPC_LOCAL_COORD_TYPE:
+            ; /* Do nothing */
+            break;
+        case ORTE_SNAPC_APP_COORD_TYPE:
+            return app_coord_request_op(datum);
             break;
         default:
             break;

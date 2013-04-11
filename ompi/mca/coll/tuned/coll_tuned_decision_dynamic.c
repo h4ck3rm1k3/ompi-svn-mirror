@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2009 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -21,15 +21,13 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "ompi/mca/coll/base/base.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "coll_tuned.h"
-#include "ompi/mca/pml/pml.h"
-#include "opal/util/bit_ops.h"
 
 #include "coll_tuned.h"
 
@@ -71,7 +69,7 @@ ompi_coll_tuned_allreduce_intra_dec_dynamic (void *sbuf, void *rbuf, int count,
         int alg, faninout, segsize, ignoreme;
         size_t dsize;
 
-        ompi_ddt_type_size (dtype, &dsize);
+        ompi_datatype_type_size (dtype, &dsize);
         dsize *= count;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[ALLREDUCE], 
@@ -120,9 +118,9 @@ int ompi_coll_tuned_alltoall_intra_dec_dynamic(void *sbuf, int scount,
         int alg, faninout, segsize, max_requests;
         size_t dsize;
 
-        ompi_ddt_type_size (sdtype, &dsize);
+        ompi_datatype_type_size (sdtype, &dsize);
         comsize = ompi_comm_size(comm);
-        dsize *= comsize * scount;
+        dsize *= (ptrdiff_t)comsize * (ptrdiff_t)scount;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[ALLTOALL], 
                                                         dsize, &faninout, &segsize, &max_requests);
@@ -254,7 +252,7 @@ int ompi_coll_tuned_bcast_intra_dec_dynamic(void *buff, int count,
         int alg, faninout, segsize, ignoreme;
         size_t dsize;
 
-        ompi_ddt_type_size (datatype, &dsize);
+        ompi_datatype_type_size (datatype, &dsize);
         dsize *= count;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[BCAST], 
@@ -303,7 +301,7 @@ int ompi_coll_tuned_reduce_intra_dec_dynamic( void *sendbuf, void *recvbuf,
         int alg, faninout, segsize, max_requests;
         size_t dsize;
 
-        ompi_ddt_type_size (datatype, &dsize);
+        ompi_datatype_type_size (datatype, &dsize);
         dsize *= count;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[REDUCE], 
@@ -359,7 +357,7 @@ int ompi_coll_tuned_reduce_scatter_intra_dec_dynamic(void *sbuf, void *rbuf,
         size_t dsize;
         size = ompi_comm_size(comm);
         for (i = 0, count = 0; i < size; i++) { count += rcounts[i];}
-        ompi_ddt_type_size (dtype, &dsize);
+        ompi_datatype_type_size (dtype, &dsize);
         dsize *= count;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[REDUCESCATTER], 
@@ -414,9 +412,9 @@ int ompi_coll_tuned_allgather_intra_dec_dynamic(void *sbuf, int scount,
         int alg, faninout, segsize, ignoreme;
         size_t dsize;
       
-        ompi_ddt_type_size (sdtype, &dsize);
+        ompi_datatype_type_size (sdtype, &dsize);
         comsize = ompi_comm_size(comm);
-        dsize *= comsize * scount;
+        dsize *= (ptrdiff_t)comsize * (ptrdiff_t)scount;
       
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[ALLGATHER], 
                                                         dsize, &faninout, &segsize, &ignoreme);
@@ -475,7 +473,7 @@ int ompi_coll_tuned_allgatherv_intra_dec_dynamic(void *sbuf, int scount,
         size_t dsize, total_size;
 
         comsize = ompi_comm_size(comm);      
-        ompi_ddt_type_size (sdtype, &dsize);
+        ompi_datatype_type_size (sdtype, &dsize);
         total_size = 0;
         for (i = 0; i < comsize; i++) { total_size += dsize * rcounts[i]; }
       
@@ -530,7 +528,7 @@ int ompi_coll_tuned_gather_intra_dec_dynamic(void *sbuf, int scount,
         size_t dsize;
 
         comsize = ompi_comm_size(comm);      
-        ompi_ddt_type_size (sdtype, &dsize);
+        ompi_datatype_type_size (sdtype, &dsize);
         dsize *= comsize;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[GATHER], 
@@ -577,7 +575,7 @@ int ompi_coll_tuned_scatter_intra_dec_dynamic(void *sbuf, int scount,
         size_t dsize;
 
         comsize = ompi_comm_size(comm);      
-        ompi_ddt_type_size (sdtype, &dsize);
+        ompi_datatype_type_size (sdtype, &dsize);
         dsize *= comsize;
 
         alg = ompi_coll_tuned_get_target_method_params (data->com_rules[SCATTER], 

@@ -20,11 +20,14 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/request/request.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Send_init = PMPI_Send_init
 #endif
 
@@ -43,7 +46,7 @@ int MPI_Send_init(void *buf, int count, MPI_Datatype type,
 
     MEMCHECKER(
         memchecker_datatype(type);
-        memchecker_call(&opal_memchecker_base_isdefined, buf, count, type);
+        memchecker_call(&opal_memchecker_base_isaddressable, buf, count, type);
         memchecker_comm(comm);
     );
 

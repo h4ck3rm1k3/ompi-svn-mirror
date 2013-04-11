@@ -24,10 +24,9 @@
 #include <stdlib.h>
 
 #include "mpi.h"
-#include "ompi/file/file.h"
 #include "opal/class/opal_list.h"
 #include "opal/util/argv.h"
-#include "orte/util/show_help.h"
+#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "ompi/mca/io/io.h"
@@ -134,14 +133,12 @@ int mca_io_base_delete(char *filename, struct ompi_info_t *info)
         /* show_help */
         return OMPI_ERROR;
     }
-
     /* Do some kind of collective operation to find a module that
        everyone has available */
-
 #if 1
     /* For the moment, just take the top module off the list */
-
-    item = opal_list_remove_first(selectable);
+    /* MSC actually take the buttom */
+    item = opal_list_remove_last(selectable);
     avail = (avail_io_t *) item;
     selected = *avail;
     OBJ_RELEASE(avail);
@@ -163,11 +160,11 @@ int mca_io_base_delete(char *filename, struct ompi_info_t *info)
     OBJ_RELEASE(selectable);
 
     /* Finally -- delete the file with the selected component */
-        
+
     if (OMPI_SUCCESS != (err = delete_file(&selected, filename, info))) {
         return err;
     }
-    
+
     /* Announce the winner */
   
     opal_output_verbose(10, mca_io_base_output,
@@ -232,7 +229,24 @@ static opal_list_t *check_components(opal_list_t *components,
 
                 /* Put this item on the list in priority order
                    (highest priority first).  Should it go first? */
+                /* MSC actually put it Lowest priority first */
 
+                for(item2 = opal_list_get_first(selectable);
+                    item2 != opal_list_get_end(selectable);
+                    item2 = opal_list_get_next(item2)) {
+                    avail2 = (avail_io_t*)item2;
+                    if(avail->ai_priority < avail2->ai_priority) {
+                        opal_list_insert_pos(selectable,
+                                             item2, (opal_list_item_t*)avail);
+                        break;
+                    }
+                }
+
+                if(opal_list_get_end(selectable) == item2) {
+                    opal_list_append(selectable, (opal_list_item_t*)avail);
+                }
+
+                /*
                 item2 = opal_list_get_first(selectable); 
                 avail2 = (avail_io_t *) item2;
                 if (opal_list_get_end(selectable) == item2 ||
@@ -248,16 +262,17 @@ static opal_list_t *check_components(opal_list_t *components,
                             break;
                         }
                     }
-
+                */
                     /* If we didn't find a place to put it in the
                        list, then append it (because it has the lowest
                        priority found so far) */
-
+                /*
                     if (opal_list_get_end(selectable) == item2) {
                         opal_list_append(selectable, 
                                          (opal_list_item_t *) avail);
                     }
                 }
+                */
             }
         }
     }

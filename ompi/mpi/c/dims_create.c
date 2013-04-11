@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,8 +21,11 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Dims_create = PMPI_Dims_create
 #endif
 
@@ -40,7 +45,7 @@ static int getprimes(int num, int *pnprime, int **pprimes);
  * This is a utility function, no need to have anything in the lower
  * layer for this at all
  */ 
-int MPI_Dims_create(int nnodes, int ndims, int *dims) 
+int MPI_Dims_create(int nnodes, int ndims, int dims[]) 
 {
     int i;
     int freeprocs;

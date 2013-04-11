@@ -1,15 +1,15 @@
-
 /*
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,7 +22,6 @@
 #ifndef MCA_BTL_TCP_H
 #define MCA_BTL_TCP_H
 
-/* Standard system includes */
 #include "ompi_config.h"
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
@@ -35,21 +34,16 @@
 #endif
 
 /* Open MPI includes */
-#include "opal/event/event.h"
-#include "orte/util/show_help.h"
-#include "ompi/class/ompi_bitmap.h"
+#include "opal/mca/event/event.h"
 #include "ompi/class/ompi_free_list.h"
-#include "ompi/mca/pml/pml.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
-#include "ompi/mca/mpool/mpool.h" 
+#include "ompi/mca/mpool/mpool.h"
 #include "ompi/mca/btl/btl.h"
 #include "opal/class/opal_hash_table.h"
 
 #define MCA_BTL_TCP_STATISTICS 0
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 /**
@@ -59,7 +53,7 @@ extern "C" {
 struct mca_btl_tcp_component_t {
     mca_btl_base_component_2_0_0_t super;   /**< base BTL component */ 
     uint32_t tcp_addr_count;                /**< total number of addresses */
-    uint32_t tcp_num_btls;                  /**< number of hcas available to the TCP component */
+    uint32_t tcp_num_btls;                  /**< number of interfaces available to the TCP component */
     uint32_t tcp_num_links;                 /**< number of logical links per physical device */
     struct mca_btl_tcp_module_t **tcp_btls; /**< array of available BTL modules */
     struct mca_btl_tcp_proc_t* tcp_local;   /**< local proc struct */
@@ -98,6 +92,10 @@ struct mca_btl_tcp_component_t {
 
     /* Do we want to use TCP_NODELAY? */
     int    tcp_use_nodelay;
+
+    /* If btl_tcp_if_seq was specified, this is the one interface
+       (name) that we're supposed to use. */
+    char *tcp_if_seq;
 }; 
 typedef struct mca_btl_tcp_component_t mca_btl_tcp_component_t;
 
@@ -110,10 +108,10 @@ struct mca_btl_tcp_module_t {
     mca_btl_base_module_t  super;  /**< base BTL interface */
     uint16_t           tcp_ifkindex; /** <BTL kernel interface index */
 #if 0
-    int                tcp_ifindex; /**< PTL interface index */
+    int                tcp_ifindex; /**< BTL interface index */
 #endif
-    struct sockaddr_storage tcp_ifaddr; /**< PTL interface address */
-    uint32_t           tcp_ifmask;  /**< PTL interface netmask */
+    struct sockaddr_storage tcp_ifaddr; /**< BTL interface address */
+    uint32_t           tcp_ifmask;  /**< BTL interface netmask */
     opal_list_t        tcp_endpoints;
 #if MCA_BTL_TCP_STATISTICS
     size_t tcp_bytes_sent;
@@ -131,16 +129,6 @@ extern mca_btl_tcp_module_t mca_btl_tcp_module;
 #endif  /* defined(__WINDOWS__) */
 
 /**
- * Register TCP component parameters with the MCA framework
- */
-extern int mca_btl_tcp_component_open(void);
-
-/**
- * Any final cleanup before being unloaded.
- */
-extern int mca_btl_tcp_component_close(void);
-
-/**
  * TCP component initialization.
  * 
  * @param num_btl_modules (OUT)           Number of BTLs returned in BTL array.
@@ -151,15 +139,6 @@ extern mca_btl_base_module_t** mca_btl_tcp_component_init(
     int *num_btl_modules, 
     bool allow_multi_user_threads,
     bool have_hidden_threads
-);
-
-/**
- * TCP component control.
- */
-int mca_btl_tcp_component_control(
-    int param, 
-    void* value, 
-    size_t size
 );
 
 
@@ -199,7 +178,7 @@ extern int mca_btl_tcp_add_procs(
     size_t nprocs,
     struct ompi_proc_t **procs,
     struct mca_btl_base_endpoint_t** peers,
-    ompi_bitmap_t* reachable
+    opal_bitmap_t* reachable
 );
 
 /**
@@ -314,7 +293,7 @@ mca_btl_base_descriptor_t* mca_btl_tcp_prepare_src(
     struct mca_btl_base_module_t* btl,
     struct mca_btl_base_endpoint_t* peer,
     struct mca_mpool_base_registration_t*,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -325,7 +304,7 @@ extern mca_btl_base_descriptor_t* mca_btl_tcp_prepare_dst(
     struct mca_btl_base_module_t* btl, 
     struct mca_btl_base_endpoint_t* peer,
     struct mca_mpool_base_registration_t*,
-    struct ompi_convertor_t* convertor,
+    struct opal_convertor_t* convertor,
     uint8_t order,
     size_t reserve,
     size_t* size,
@@ -339,7 +318,5 @@ extern mca_btl_base_descriptor_t* mca_btl_tcp_prepare_dst(
   */
 int mca_btl_tcp_ft_event(int state);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

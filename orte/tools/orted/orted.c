@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
@@ -38,7 +38,7 @@
 
 int main(int argc, char *argv[])
 {
-    /* Allow the PLS starters to pass us a umask to use, if required.
+    /* Allow the PLM starters to pass us a umask to use, if required.
        Most starters by default can do something sane with the umask,
        but some (like TM) do not pass on the umask but instead inherit
        it form the root level process starter.  This has to happen

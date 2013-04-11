@@ -70,15 +70,44 @@
 #include <ifaddrs.h>
 #endif
 
-#include "opal/class/opal_list.h"
 #include "opal/util/net.h"
 #include "opal/util/output.h"
-#include "opal/util/strncpy.h"
 #include "opal/util/argv.h"
 #include "opal/util/show_help.h"
 #include "opal/constants.h"
 #include "opal/threads/tsd.h"
 #include "opal/mca/base/mca_base_param.h"
+
+/* this function doesn't depend on sockaddr_h */
+bool opal_net_isaddr(const char *name)
+{
+    unsigned int groups[8];
+    int i;
+
+    if (4 != sscanf(name, "%u.%u.%u.%u",
+                    &groups[0], &groups[1], &groups[2], &groups[3])) {
+        /* this isn't an IPv4 address */
+        goto checkipv6;
+    }
+
+    for (i=0; i < 4; i++) {
+        if (255 < groups[i]) {
+            return false;
+        }
+    }
+    return true;
+
+ checkipv6:
+    /* TODO: deal with all the shorthand notations for IPv6! */
+    if (8 != sscanf(name, "%x:%x:%x:%x:%x:%x:%x:%x",
+                    &groups[0], &groups[1], &groups[2], &groups[3],
+                    &groups[4], &groups[5], &groups[6], &groups[7])) {
+        /* this isn't an IPv6 address */
+        return false;
+    }
+    /* there are no value limits on the individual groups */
+    return true;
+}
 
 #ifdef HAVE_STRUCT_SOCKADDR_IN
 
@@ -139,6 +168,7 @@ opal_net_init()
                                     &string_value );
 
     args = opal_argv_split( string_value, ';' );
+    free(string_value);
     if( NULL != args ) {
         count = opal_argv_count(args);
         private_ipv4 = (private_ipv4_t*)malloc( (count + 1) * sizeof(private_ipv4_t));
@@ -156,9 +186,8 @@ opal_net_init()
                  * get added to the trunk.
                  */
                 if (0 == found_bad) {
-                    opal_output(0, "FOUND BAD!\n");
                     opal_show_help("help-opal-util.txt", 
-                                   "malformed IP address or netmask",
+                                   "malformed net_private_ipv4",
                                    true, args[i]);
                     found_bad = 1;
                 }
@@ -343,7 +372,7 @@ opal_net_get_hostname(const struct sockaddr *addr)
         opal_output(0, "opal_sockaddr2str: malloc() failed\n");
         return NULL;
     }
-    OMPI_DEBUG_ZERO(*name);
+    OPAL_DEBUG_ZERO(*name);
 
     switch (addr->sa_family) {
     case AF_INET:

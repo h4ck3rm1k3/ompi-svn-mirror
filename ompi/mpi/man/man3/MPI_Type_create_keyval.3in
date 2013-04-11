@@ -1,5 +1,6 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
-.\"Copyright (c) 1996 Thinking Machines
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright (c) 1996 Thinking Machines
 .TH MPI_Type_create_keyval 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
 \fBMPI_Type_create_keyval\fP \- Generates a new attribute key for caching on data types. 
@@ -13,6 +14,7 @@ int MPI_Type_create_keyval(MPI_Type_copy_attr_function *\fItype_copy_attr_fn\fP,
 	MPI_Type_delete_attr_function *\fItype_delete_attr_fn\fP, 
 	int *\fItype_keyval\fP, void *\fIextra_state\fP)
 
+.fi
 .SH Fortran Syntax (see FORTRAN 77 NOTES)
 .nf
 INCLUDE 'mpif.h'
@@ -22,6 +24,7 @@ MPI_TYPE_CREATE_KEYVAL(\fITYPE_COPY_ATTR_FN, TYPE_DELETE_ATTR_FN,
 	INTEGER	\fITYPE_KEYVAL, IERROR \fP
 	INTEGER(KIND=MPI_ADDRESS_KIND) \fIEXTRA_STATE\fP
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -29,6 +32,7 @@ static int MPI::Datatype::Create_keyval(MPI::Datatype::Copy_attr_function*
 	\fItype_copy_attr_fn\fP, MPI::Datatype::Delete_attr_function*
 	\fItype_delete_attr_fn\fP, void* \fIextra_state\fP)
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
@@ -117,7 +121,7 @@ where MPI_ADDRESS_KIND is a constant defined in mpif.h
 and gives the length of the declared integer in bytes.
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler may be changed with MPI_Comm_set_errhandler; the predefined error handler MPI_ERRORS_RETURN may be used to cause error values to be returned. Note that MPI does not guarantee that an MPI program can continue past an error.  

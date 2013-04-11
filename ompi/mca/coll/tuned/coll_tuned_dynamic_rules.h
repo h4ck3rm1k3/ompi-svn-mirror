@@ -10,6 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,53 +23,51 @@
 
 #include "ompi_config.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 typedef struct msg_rule_s {
-   /* paranoid / debug */
-   int mpi_comsize;  /* which MPI comm size this is is for */
+    /* paranoid / debug */
+    int mpi_comsize;  /* which MPI comm size this is is for */
 
-   /* paranoid / debug */
-   int alg_rule_id; /* unique alg rule id */
-   int com_rule_id; /* unique com rule id */
-   int msg_rule_id; /* unique msg rule id */
+    /* paranoid / debug */
+    int alg_rule_id; /* unique alg rule id */
+    int com_rule_id; /* unique com rule id */
+    int msg_rule_id; /* unique msg rule id */
 
-   /* RULE */
-   int msg_size;    /* message size */
+    /* RULE */
+    size_t msg_size; /* message size */
 
-   /* RESULT */
-   int result_alg;              /* result algorithm to use */
-   int result_topo_faninout;    /* result topology fan in/out to use (if applicable) */
-   long result_segsize;         /* result segment size to use */ 
-   int result_max_requests;     /* maximum number of outstanding requests (if applicable) */
+    /* RESULT */
+    int result_alg;              /* result algorithm to use */
+    int result_topo_faninout;    /* result topology fan in/out to use (if applicable) */
+    long result_segsize;         /* result segment size to use */ 
+    int result_max_requests;     /* maximum number of outstanding requests (if applicable) */
 } ompi_coll_msg_rule_t;
 
 
 typedef struct com_rule_s {
-   /* paranoid / debug */
-   int mpi_comsize;  /* which MPI comm size this is is for */
+    /* paranoid / debug */
+    int mpi_comsize;  /* which MPI comm size this is is for */
 
-   /* paranoid / debug */
-   int alg_rule_id; /* unique alg rule id */
-   int com_rule_id; /* unique com rule id */
+    /* paranoid / debug */
+    int alg_rule_id; /* unique alg rule id */
+    int com_rule_id; /* unique com rule id */
 
-   /* RULE */
-   int n_msg_sizes;
-   ompi_coll_msg_rule_t *msg_rules;
+    /* RULE */
+    int n_msg_sizes;
+    ompi_coll_msg_rule_t *msg_rules;
 
 }  ompi_coll_com_rule_t;
 
 
 typedef struct alg_rule_s {
-   /* paranoid / debug */
-   int alg_rule_id; /* unique alg rule id */
+    /* paranoid / debug */
+    int alg_rule_id; /* unique alg rule id */
 
-   /* RULE */
-   int n_com_sizes;
-   ompi_coll_com_rule_t *com_rules;
+    /* RULE */
+    int n_com_sizes;
+    ompi_coll_com_rule_t *com_rules;
 
 } ompi_coll_alg_rule_t;
 
@@ -95,13 +94,11 @@ int ompi_coll_tuned_free_all_rules (ompi_coll_alg_rule_t* alg_p, int n_algs);
 
 ompi_coll_com_rule_t* ompi_coll_tuned_get_com_rule_ptr (ompi_coll_alg_rule_t* rules, int alg_id, int mpi_comsize);
 
-int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, int mpi_msgsize, 
+int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, size_t mpi_msgsize, 
                                               int* result_topo_faninout, int* result_segsize, 
                                               int* max_requests);
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* MCA_COLL_TUNED_DYNAMIC_RULES_H_HAS_BEEN_INCLUDED */
 

@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,14 +24,11 @@
 #include "ompi_config.h"
 #include "opal/class/opal_atomic_lifo.h"
 #include "opal/prefetch.h"
-#include "opal/threads/threads.h"
 #include "opal/threads/condition.h"
 #include "ompi/constants.h"
-#include "opal/sys/cache.h"
+#include "opal/runtime/opal.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 struct mca_mem_pool_t;
 struct ompi_free_list_item_t;
@@ -103,7 +102,7 @@ static inline int ompi_free_list_init(
     int num_elements_per_alloc,
     struct mca_mpool_base_module_t* mpool)
 {
-    return ompi_free_list_init_ex(free_list, element_size, CACHE_LINE_SIZE,
+    return ompi_free_list_init_ex(free_list, element_size, opal_cache_line_size,
             element_class, num_elements_to_alloc, max_elements_to_alloc,
                                   num_elements_per_alloc, mpool, NULL, NULL);
 }
@@ -181,20 +180,6 @@ OMPI_DECLSPEC int ompi_free_list_grow(ompi_free_list_t* flist, size_t num_elemen
    num_elements_per_alloc chunks) */
 OMPI_DECLSPEC int ompi_free_list_resize(ompi_free_list_t *flist, size_t size);
 
-/* Allow to walk through the all allocated items. Not thread-safe, not
- * protected, this function should never be used except for debugging purposes.
- * The position should never be NULL, and it should be set to {NULL, NULL} 
- * for the first call.
- */
-typedef struct ompi_free_list_pos_t {
-    unsigned char* last_memory;
-    unsigned char* last_item;
-} ompi_free_list_pos_t;
-#define OMPI_FREE_LIST_POS_BEGINNING {NULL, NULL}
-
-OMPI_DECLSPEC int ompi_free_list_parse( ompi_free_list_t* list,
-                                        ompi_free_list_pos_t* position,
-                                        opal_list_item_t** return_item );
 /**
  * Attemp to obtain an item from a free list. 
  *
@@ -307,8 +292,6 @@ static inline int __ompi_free_list_wait( ompi_free_list_t* fl,
         }                                                               \
     } while(0)
     
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif 
 

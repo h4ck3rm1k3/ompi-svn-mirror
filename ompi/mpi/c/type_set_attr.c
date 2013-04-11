@@ -19,11 +19,14 @@
 #include "ompi_config.h"
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/attribute/attribute.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Type_set_attr = PMPI_Type_set_attr
 #endif
 
@@ -56,7 +59,7 @@ int MPI_Type_set_attr (MPI_Datatype type,
   OPAL_CR_ENTER_LIBRARY();
 
     ret = ompi_attr_set_c(TYPE_ATTR, type, &type->d_keyhash, 
-                          type_keyval, attribute_val, false, true);
+                          type_keyval, attribute_val, false);
 
     OMPI_ERRHANDLER_RETURN(ret, MPI_COMM_WORLD,
 			  MPI_ERR_OTHER, FUNC_NAME);  

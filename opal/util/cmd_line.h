@@ -5,10 +5,11 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -116,9 +117,7 @@
 #include "opal/class/opal_list.h"
 #include "opal/threads/mutex.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
     /**
      * \internal
      *
@@ -351,6 +350,9 @@ extern "C" {
      * @param argv Array of strings from the command line.
      *
      * @retval OPAL_SUCCESS Upon success.
+     * @retval OPAL_ERR_SILENT If an error message was printed.  This
+     * value will only be returned if the command line was not
+     * successfully parsed.
      *
      * Parse a series of command line tokens according to the option
      * descriptions from a OPAL command line handle.  The OPAL command line
@@ -363,15 +365,33 @@ extern "C" {
      * is displayed.  If ignore_unknown is true, the error message is
      * not displayed.
      *
+     * Error messages are always displayed regardless of the value
+     * of ignore_unknown (to stderr, and OPAL_ERR_SILENT is
+     * returned) if:
+     *
+     * 1. A token was encountered that required N parameters, but <N
+     * parameters were found (e.g., "cmd --param foo", but --param was
+     * registered to require 2 option tokens).
+     *
+     * 2. An unknown token beginning with "-" is encountered.  For
+     * example, if "--fo" is specified, and no "fo" option is
+     * registered (e.g., perhaps the user meant to type "--foo"), an
+     * error message is always printed, UNLESS this unknown token
+     * happens after a "--" token (see below).  
+     *
      * The contents of argc and argv are not changed during parsing.
      * argv[0] is assumed to be the executable name, and is ignored during
-     * parsing.  It can later be retrieved with
+     * parsing, except when printing error messages.
      *
      * Parsing will stop in the following conditions:
      *
      * - all argv tokens are processed
      * - the token "--" is found
      * - an unrecognized token is found
+     * - a parameter registered with an integer type option finds a
+     *   non-integer option token
+     * - a parameted registered N option tokens, but finds less then
+     *   <N tokens available
      *
      * Upon any of these conditions, any remaining tokens will be placed
      * in the "tail" (and therefore not examined by the parser),
@@ -388,8 +408,23 @@ extern "C" {
      * third parameter to the first instance of "foo", and "other" will be
      * an unrecognized option.
      *
-     * Invoking this function multiple times on different sets of argv
-     * tokens is safe, but will erase any previous parsing results.
+     * Note that -- can be used to allow unknown tokens that begin
+     * with "-".  For example, if a user wants to mpirun an executable
+     * named "-my-mpi-program", the "usual" way:
+     *
+     *   mpirun -my-mpi-program
+     *
+     * will cause an error, because mpirun won't find single-letter
+     * options registered for some/all of those letters.  But two
+     * workarounds are possible:
+     *
+     *   mpirun -- -my-mpi-program
+     * or
+     *   mpirun ./-my-mpi-program
+     *
+     * Finally, note that invoking this function multiple times on
+     * different sets of argv tokens is safe, but will erase any
+     * previous parsing results.
      */
     OPAL_DECLSPEC int opal_cmd_line_parse(opal_cmd_line_t *cmd, 
                                           bool ignore_unknown,
@@ -416,7 +451,7 @@ extern "C" {
      *
      * The returned string must be freed by the caller.
      */
-    OPAL_DECLSPEC char *opal_cmd_line_get_usage_msg(opal_cmd_line_t *cmd);
+    OPAL_DECLSPEC char *opal_cmd_line_get_usage_msg(opal_cmd_line_t *cmd) __opal_attribute_malloc__ __opal_attribute_warn_unused_result__;
 
     /**
      * Test if a given option was taken on the parsed command line.
@@ -438,7 +473,7 @@ extern "C" {
      * Otherwise, it will return false.
      */
     OPAL_DECLSPEC bool opal_cmd_line_is_taken(opal_cmd_line_t *cmd, 
-                                              const char *opt);
+                                              const char *opt) __opal_attribute_nonnull__(1) __opal_attribute_nonnull__(2);
 
     /**
      * Return the number of arguments parsed on a OPAL command line handle.
@@ -451,7 +486,7 @@ extern "C" {
      * Arguments are added to the handle via the opal_cmd_line_parse()
      * function.
      */
-    OPAL_DECLSPEC int opal_cmd_line_get_argc(opal_cmd_line_t *cmd);
+    OPAL_DECLSPEC int opal_cmd_line_get_argc(opal_cmd_line_t *cmd) __opal_attribute_unused__;
 
     /**
      * Return a string argument parsed on a OPAL command line handle.
@@ -494,7 +529,7 @@ extern "C" {
      * handle, or opal_cmd_line_parse() was not invoked on this handle.
      */
     OPAL_DECLSPEC int opal_cmd_line_get_ninsts(opal_cmd_line_t *cmd, 
-                                               const char *opt);
+                                               const char *opt) __opal_attribute_nonnull__(1) __opal_attribute_nonnull__(2);
 
     /**
      * Return a specific parameter for a specific instance of a option
@@ -556,11 +591,9 @@ extern "C" {
      * to opal_argv_free()) by the caller.
      */
     OPAL_DECLSPEC int opal_cmd_line_get_tail(opal_cmd_line_t *cmd, int *tailc, 
-                                             char ***tailv);
+                                             char ***tailv) __opal_attribute_nonnull__(1) __opal_attribute_nonnull__(2);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 
 #endif /* OPAL_CMD_LINE_H */

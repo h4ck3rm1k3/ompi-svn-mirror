@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 University of Houston. All rights reserved.
+ * Copyright (c) 2006-2010 University of Houston. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,7 +21,9 @@
 #include "coll_inter.h"
 
 #include "mpi.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
+#include "ompi/request/request.h"
+#include "ompi/communicator/communicator.h"
 #include "ompi/constants.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -80,7 +82,7 @@ mca_coll_inter_allgatherv_inter(void *sbuf, int scount,
 	    displace[i] = displace[i-1] + count[i-1];
 	}
 	/* Perform the gatherv locally with the first process as root */
-	err = ompi_ddt_get_extent(sdtype, &lb, &extent);
+	err = ompi_datatype_get_extent(sdtype, &lb, &extent);
 	if (OMPI_SUCCESS != err) {
 	    return OMPI_ERROR;
 	}
@@ -88,9 +90,11 @@ mca_coll_inter_allgatherv_inter(void *sbuf, int scount,
 	for (i = 0; i < size_local; i++) {
 	    incr = incr + extent*count[i];
 	}
-	ptmp = (char*)malloc(incr); 
-	if (NULL == ptmp) {
-	    return OMPI_ERR_OUT_OF_RESOURCE;
+	if ( incr > 0 ) {
+	    ptmp = (char*)malloc(incr); 
+	    if (NULL == ptmp) {
+		return OMPI_ERR_OUT_OF_RESOURCE;
+	    }
 	}
     }
     err = comm->c_local_comm->c_coll.coll_gatherv(sbuf, scount, sdtype, 
@@ -101,8 +105,8 @@ mca_coll_inter_allgatherv_inter(void *sbuf, int scount,
 	return err;
     }
     
-    ompi_ddt_create_indexed(size,rcounts,disps,rdtype,&ndtype);
-    ompi_ddt_commit(&ndtype);
+    ompi_datatype_create_indexed(size,rcounts,disps,rdtype,&ndtype);
+    ompi_datatype_commit(&ndtype);
 
     if (0 == rank) { 
 	for (i = 0; i < size_local; i++) {
@@ -138,7 +142,7 @@ mca_coll_inter_allgatherv_inter(void *sbuf, int scount,
             return err;
     }
 
-    ompi_ddt_destroy(&ndtype);
+    ompi_datatype_destroy(&ndtype);
     if (NULL != ptmp) {
 	free(ptmp);
     }

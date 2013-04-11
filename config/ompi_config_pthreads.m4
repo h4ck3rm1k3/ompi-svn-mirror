@@ -9,6 +9,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
+dnl Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -46,12 +47,11 @@ AC_DEFUN([OMPI_INTL_PTHREAD_TRY_LINK], [
 ])dnl
 
 
-AC_DEFUN([OMPI_INTL_PTHREAD_TRY_LINK_F77], [
-# BEGIN: OMPI_INTL_PTHREAD_TRY_LINK_F77
+AC_DEFUN([OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN], [
+# BEGIN: OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN
 #
 # Make sure that we can run a small application in Fortran, with
 # pthreads living in a C object file
-OMPI_F77_MAKE_C_FUNCTION([ompi_ac_thread_fn], [pthreadtest])
 
 # Fortran module
 cat > conftestf.f <<EOF
@@ -75,7 +75,7 @@ $ompi_conftest_h
 #ifdef __cplusplus
 extern "C" {
 #endif
-void $ompi_ac_thread_fn()
+void pthreadtest_f(void)
 {
   pthread_t th;
   pthread_create(&th, NULL, NULL, NULL);
@@ -85,16 +85,29 @@ void $ompi_ac_thread_fn()
   pthread_create(0,0,0,0);
   pthread_cleanup_pop(0); 
 }
+
+void pthreadtest(void)
+{ pthreadtest_f(); }
+
+void pthreadtest_(void)
+{ pthreadtest_f(); }
+
+void pthreadtest__(void)
+{ pthreadtest_f(); }
+
+void PTHREADTEST(void)
+{ pthreadtest_f(); }
+
 #ifdef __cplusplus
 }
 #endif
 EOF
 
 # Try the compile
-OMPI_LOG_COMMAND(
+OPAL_LOG_COMMAND(
     [$CC $CFLAGS -I. -c conftest.c],
-    OMPI_LOG_COMMAND(
-        [$F77 $FFLAGS conftestf.f conftest.o -o conftest $LDFLAGS $LIBS],
+    OPAL_LOG_COMMAND(
+        [$FC $FCFLAGS conftestf.f conftest.o -o conftest $LDFLAGS $LIBS],
         [HAPPY=1],
 	[HAPPY=0]),
     [HAPPY=0])
@@ -102,20 +115,20 @@ OMPI_LOG_COMMAND(
 if test "$HAPPY" = "1"; then
    $1
 else
-    OMPI_LOG_MSG([here is the C program:], 1)
-    OMPI_LOG_FILE([conftest.c])
+    OPAL_LOG_MSG([here is the C program:], 1)
+    OPAL_LOG_FILE([conftest.c])
     if test -f conftest.h; then
-	OMPI_LOG_MSG([here is contest.h:], 1)
-	OMPI_LOG_FILE([conftest.h])
+	OPAL_LOG_MSG([here is contest.h:], 1)
+	OPAL_LOG_FILE([conftest.h])
     fi
-    OMPI_LOG_MSG([here is the fortran program:], 1)
-    OMPI_LOG_FILE([conftestf.f])
+    OPAL_LOG_MSG([here is the fortran program:], 1)
+    OPAL_LOG_FILE([conftestf.f])
     $2
 fi
 
 unset HAPPY ompi_conftest_h
 rm -rf conftest*
-# END: OMPI_INTL_PTHREAD_TRY_LINK_F77
+# END: OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN
 ])dnl
 
 
@@ -140,7 +153,7 @@ if test "$ompi_pthread_c_success" = "0"; then
       ;;
       *-aix* | *-freebsd*)
         if test "`echo $CPPFLAGS | $GREP 'D_THREAD_SAFE'`" = ""; then
-          PTRHEAD_CPPFLAGS="-D_THREAD_SAFE"
+          PTHREAD_CPPFLAGS="-D_THREAD_SAFE"
           CPPFLAGS="$CPPFLAGS $PTHREAD_CPPFLAGS"
         fi
         run_this_test=1
@@ -188,7 +201,7 @@ if test "$ompi_pthread_cxx_success" = "0"; then
       ;;
       *-aix* | *-freebsd*)
         if test "`echo $CXXCPPFLAGS | $GREP 'D_THREAD_SAFE'`" = ""; then
-          PTRHEAD_CXXCPPFLAGS="-D_THREAD_SAFE"
+          PTHREAD_CXXCPPFLAGS="-D_THREAD_SAFE"
           CXXCPPFLAGS="$CXXCPPFLAGS $PTHREAD_CXXCPPFLAGS"
         fi
         run_this_test=1
@@ -224,8 +237,8 @@ AC_DEFUN([OMPI_INTL_POSIX_THREADS_PLAIN_FC], [
 #
 # Fortran compiler
 #
-if test "$ompi_pthread_f77_success" = "0" -a "$OMPI_WANT_F77_BINDINGS" = "1"; then
-  AC_MSG_CHECKING([if F77 compiler and POSIX threads work as is])
+if test "$ompi_pthread_fortran_success" = "0" -a "$OMPI_WANT_FORTRAN_BINDINGS" = "1" -a $ompi_fortran_happy -eq 1; then
+  AC_MSG_CHECKING([if Fortran compiler and POSIX threads work as is])
   if test "$HAVE_POSIX_THREADS" = "1" ; then
     run_this_test=1
   else
@@ -242,10 +255,10 @@ if test "$ompi_pthread_f77_success" = "0" -a "$OMPI_WANT_F77_BINDINGS" = "1"; th
 
   if test "$run_this_test" = "1" ; then
     AC_LANG_PUSH(C)
-    OMPI_INTL_PTHREAD_TRY_LINK_F77(ompi_pthread_f77_success=1, 
-                                  ompi_pthread_f77_success=0)
+    OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN(ompi_pthread_fortran_success=1, 
+                                       ompi_pthread_fortran_success=0)
     AC_LANG_POP(C)
-    if test "$ompi_pthread_f77_success" = "1"; then
+    if test "$ompi_pthread_fortran_success" = "1"; then
       AC_MSG_RESULT([yes])
     else
       AC_MSG_RESULT([no])
@@ -274,9 +287,9 @@ AC_PROVIDE_IFELSE([AC_PROG_CXX],
                   [OMPI_INTL_POSIX_THREADS_PLAIN_CXX], 
                   [ompi_pthread_cxx_success=1])
 
-AC_PROVIDE_IFELSE([AC_PROG_F77], 
+AC_PROVIDE_IFELSE([AC_PROG_FC], 
                   [OMPI_INTL_POSIX_THREADS_PLAIN_FC],
-                  [ompi_pthread_f77_success=1])
+                  [ompi_pthread_fortran_success=1])
 
 # End: OMPI_INTL_POSIX_THREADS_PLAIN
 ])dnl
@@ -343,21 +356,21 @@ AC_DEFUN([OMPI_INTL_POSIX_THREADS_SPECIAL_FLAGS_FC], [
 #
 # Fortran compiler
 #
-if test "$ompi_pthread_f77_success" = "0" -a "$OMPI_WANT_F77_BINDINGS" = "1"; then
+if test "$ompi_pthread_fortran_success" = "0" -a "$OMPI_WANT_FORTRAN_BINDINGS" = "1" -a $ompi_fortran_happy -eq 1; then
   for pf in $pflags; do
-    AC_MSG_CHECKING([if F77 compiler and POSIX threads work with $pf])
-    FFLAGS="$orig_FFLAGS $pf"
+    AC_MSG_CHECKING([if Fortran compiler and POSIX threads work with $pf])
+    FCFLAGS="$orig_FCFLAGS $pf"
     AC_LANG_PUSH(C)
-    OMPI_INTL_PTHREAD_TRY_LINK_F77(ompi_pthread_f77_success=1, 
-                                  ompi_pthread_f77_success=0)
+    OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN(ompi_pthread_fortran_success=1, 
+                                       ompi_pthread_fortran_success=0)
     AC_LANG_POP(C)
-    if test "$ompi_pthread_f77_success" = "1"; then
-      PTHREAD_FFLAGS="$pf"
+    if test "$ompi_pthread_fortran_success" = "1"; then
+      PTHREAD_FCFLAGS="$pf"
       AC_MSG_RESULT([yes])
       break
     else
-      PTHREAD_FFLAGS=
-      FFLAGS="$orig_FFLAGS"
+      PTHREAD_FCFLAGS=
+      FCFLAGS="$orig_FCFLAGS"
       AC_MSG_RESULT([no])
     fi
   done
@@ -400,9 +413,9 @@ AC_PROVIDE_IFELSE([AC_PROG_CXX],
                   [OMPI_INTL_POSIX_THREADS_SPECIAL_FLAGS_CXX], 
                   [ompi_pthread_cxx_success=1])
 
-AC_PROVIDE_IFELSE([AC_PROG_F77], 
+AC_PROVIDE_IFELSE([AC_PROG_FC], 
                   [OMPI_INTL_POSIX_THREADS_SPECIAL_FLAGS_FC],
-                  [ompi_pthread_f77_success=1])
+                  [ompi_pthread_fortran_success=1])
 
 # End: OMPI_INTL_POSIX_THREADS_SPECIAL_FLAGS
 ])dnl
@@ -423,7 +436,7 @@ if test "$ompi_pthread_c_success" = "0"; then
     case "${host_cpu}-${host-_os}" in
       *-aix* | *-freebsd*)
         if test "`echo $CPPFLAGS | $GREP 'D_THREAD_SAFE'`" = ""; then
-          PTRHEAD_CPPFLAGS="-D_THREAD_SAFE"
+          PTHREAD_CPPFLAGS="-D_THREAD_SAFE"
           CPPFLAGS="$CPPFLAGS $PTHREAD_CPPFLAGS"
         fi
       ;;
@@ -463,7 +476,7 @@ if test "$ompi_pthread_cxx_success" = "0"; then
     case "${host_cpu}-${host-_os}" in
       *-aix* | *-freebsd*)
         if test "`echo $CXXCPPFLAGS | $GREP 'D_THREAD_SAFE'`" = ""; then
-          PTRHEAD_CXXCPPFLAGS="-D_THREAD_SAFE"
+          PTHREAD_CXXCPPFLAGS="-D_THREAD_SAFE"
           CXXCPPFLAGS="$CXXCPPFLAGS $PTHREAD_CXXCPPFLAGS"
         fi
       ;;
@@ -493,7 +506,7 @@ if test "$ompi_pthread_cxx_success" = "0"; then
       case "${host_cpu}-${host-_os}" in
         *-aix* | *-freebsd*)
           if test "`echo $CXXCPPFLAGS | $GREP 'D_THREAD_SAFE'`" = ""; then
-            PTRHEAD_CXXCPPFLAGS="-D_THREAD_SAFE"
+            PTHREAD_CXXCPPFLAGS="-D_THREAD_SAFE"
             CXXCPPFLAGS="$CXXCPPFLAGS $PTHREAD_CXXCPPFLAGS"
           fi
         ;;
@@ -528,15 +541,15 @@ AC_DEFUN([OMPI_INTL_POSIX_THREADS_LIBS_FC],[
 #
 # Fortran compiler
 #
-if test "$ompi_pthread_f77_success" = "0" -a "$OMPI_WANT_F77_BINDINGS" = "1"; then
+if test "$ompi_pthread_fortran_success" = "0" -a "$OMPI_WANT_FORTRAN_BINDINGS" = "1" -a $ompi_fortran_happy -eq 1; then
   if test ! "$ompi_pthread_c_success" = "0" -a ! "$PTHREAD_LIBS" = "" ; then
-    AC_MSG_CHECKING([if F77 compiler and POSIX threads work with $PTHREAD_LIBS])
+    AC_MSG_CHECKING([if Fortran compiler and POSIX threads work with $PTHREAD_LIBS])
     LIBS="$orig_LIBS $PTHREAD_LIBS"
     AC_LANG_PUSH(C)
-    OMPI_INTL_PTHREAD_TRY_LINK_F77(ompi_pthread_f77_success=1, 
-                                  ompi_pthread_f77_success=0)
+    OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN(ompi_pthread_fortran_success=1, 
+                                       ompi_pthread_fortran_success=0)
     AC_LANG_POP(C)
-    if test "$ompi_pthread_f77_success" = "1"; then
+    if test "$ompi_pthread_fortran_success" = "1"; then
       AC_MSG_RESULT([yes])
     else
       LIBS="$orig_LIBS"
@@ -545,13 +558,13 @@ if test "$ompi_pthread_f77_success" = "0" -a "$OMPI_WANT_F77_BINDINGS" = "1"; th
     fi
   else
     for pl in $plibs; do
-      AC_MSG_CHECKING([if F77 compiler and POSIX threads work with $pl])
+      AC_MSG_CHECKING([if Fortran compiler and POSIX threads work with $pl])
       LIBS="$orig_LIBS $pl"
       AC_LANG_PUSH(C)
-      OMPI_INTL_PTHREAD_TRY_LINK_F77(ompi_pthread_f77_success=1, 
-                                    ompi_pthread_f77_success=0)
+      OMPI_INTL_PTHREAD_TRY_LINK_FORTRAN(ompi_pthread_fortran_success=1, 
+                                         ompi_pthread_fortran_success=0)
       AC_LANG_POP(C)
-      if test "$ompi_pthread_f77_success" = "1"; then
+      if test "$ompi_pthread_fortran_success" = "1"; then
 	PTHREAD_LIBS="$pl"
         AC_MSG_RESULT([yes])
         break
@@ -587,9 +600,9 @@ AC_PROVIDE_IFELSE([AC_PROG_CXX],
                   [OMPI_INTL_POSIX_THREADS_LIBS_CXX], 
                   [ompi_pthread_cxx_success=1])
 
-AC_PROVIDE_IFELSE([AC_PROG_F77], 
+AC_PROVIDE_IFELSE([AC_PROG_FC], 
                   [OMPI_INTL_POSIX_THREADS_LIBS_FC],
-                  [ompi_pthread_f77_success=1])
+                  [ompi_pthread_fortran_success=1])
 
 # End: OMPI_INTL_POSIX_THREADS_LIBS]
 )dnl
@@ -604,19 +617,19 @@ AC_DEFUN([OMPI_CONFIG_POSIX_THREADS],[
     AC_REQUIRE([AC_PROG_GREP])
 
 ompi_pthread_c_success=0
-ompi_pthread_f77_success=0
+ompi_pthread_fortran_success=0
 ompi_pthread_cxx_success=0
 
 orig_CFLAGS="$CFLAGS"
-orig_FFLAGS="$FFLAGS"
+orig_FCFLAGS="$FCFLAGS"
 orig_CXXFLAGS="$CXXFLAGS"
 orig_CPPFLAGS="$CPPFLAGS"
 orig_CXXCPPFLAGS="$CXXCPPFLAGS"
 orig_LDFLAGS="$LDFLAGS"
 orig_LIBS="$LIBS"
 
-PTRHEAD_CFLAGS=
-PTHREAD_FFLAGS=
+PTHREAD_CFLAGS=
+PTHREAD_FCFLAGS=
 PTHREAD_CXXFLAGS=
 PTHREAD_CPPFLAGS=
 PTHREAD_CXXCPPFLAGS=
@@ -660,20 +673,20 @@ AC_DEFINE_UNQUOTED([OMPI_HAVE_PTHREAD_MUTEX_ERRORCHECK], [$defval],
             [If PTHREADS implementation supports PTHREAD_MUTEX_ERRORCHECK])
 
 CFLAGS="$orig_CFLAGS"
-FFLAGS="$orig_FFLAGS"
+FCFLAGS="$orig_FCFLAGS"
 CXXFLAGS="$orig_CXXFLAGS"
 CPPFLAGS="$orig_CPPFLAGS"
 CXXCPPFLAGS="$orig_CXXCPPFLAGS"
 LDFLAGS="$orig_LDFLAGS"
 LIBS="$orig_LIBS"
 
-if test "$OMPI_WANT_F77_BINDINGS" != "1"; then
-  ompi_pthread_f77_success=1
+if test "$OMPI_WANT_FORTRAN_BINDINGS" != "1" -o $ompi_fortran_happy -ne 1; then
+  ompi_pthread_fortran_success=1
 fi
 
 if test "$ompi_pthread_c_success" = "1" -a \
         "$ompi_pthread_cxx_success" = "1" -a \
-       "$ompi_pthread_f77_success" = "1"; then
+       "$ompi_pthread_fortran_success" = "1"; then
   internal_useless=1
   $1
 else
@@ -681,6 +694,6 @@ else
   $2
 fi
 
-unset ompi_pthread_c_success ompi_pthread_f77_success ompi_pthread_cxx_success
+unset ompi_pthread_c_success ompi_pthread_fortran_success ompi_pthread_cxx_success
 unset internal_useless
 ])dnl

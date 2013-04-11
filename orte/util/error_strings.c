@@ -9,6 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010-2011 Cisco Systems, Inc.  All rights reserved. 
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,9 +25,19 @@
 #include "orte/constants.h"
 
 #include <stdio.h>
+#ifdef HAVE_SYS_SIGNAL_H
+#include <sys/signal.h>
+#else
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#endif
 
-const char *
-orte_err2str(int errnum)
+#include "orte/mca/plm/plm_types.h"
+#include "orte/util/error_strings.h"
+#include "orte/runtime/orte_globals.h"
+
+int orte_err2str(int errnum, const char **errmsg)
 {
     const char *retval;
     switch (errnum) {
@@ -77,7 +90,11 @@ orte_err2str(int errnum)
         retval = "Multiple applications were specified, but at least one failed to specify the number of processes to run";
         break;
     case ORTE_ERR_SILENT:
-        retval = NULL;
+        if (orte_report_silent_errors) {
+            retval = "Silent error";
+        } else {
+            retval = NULL;
+        }
         break;
     case ORTE_ERR_ADDRESSEE_UNKNOWN:
         retval = "A message is attempting to be sent to a process whose contact information is unknown";
@@ -118,9 +135,213 @@ orte_err2str(int errnum)
     case ORTE_ERR_SYS_LIMITS_SOCKETS:
         retval = "The system limit on number of network connections a process can open was reached";
         break;
+    case ORTE_ERR_SOCKET_NOT_AVAILABLE:
+        retval = "Unable to open a TCP socket for out-of-band communications";
+        break;
+    case ORTE_ERR_SYSTEM_WILL_BOOTSTRAP:
+        retval = "System will determine resources during bootstrap of daemons";
+        break;
+    case ORTE_ERR_RESTART_LIMIT_EXCEEDED:
+        retval = "Limit on number of process restarts was exceeded";
+        break;
+    case ORTE_ERR_INVALID_NODE_RANK:
+        retval = "Invalid node rank";
+        break;
+    case ORTE_ERR_INVALID_LOCAL_RANK:
+        retval = "Invalid local rank";
+        break;
+    case ORTE_ERR_UNRECOVERABLE:
+        retval = "Unrecoverable error";
+        break;
+    case ORTE_ERR_MEM_LIMIT_EXCEEDED:
+        retval = "Memory limit exceeded";
+        break;
+    case ORTE_ERR_HEARTBEAT_LOST:
+        retval = "Heartbeat lost";
+        break;
+    case ORTE_ERR_PROC_STALLED:
+        retval = "Proc appears to be stalled";
+        break;
+    case ORTE_ERR_NO_APP_SPECIFIED:
+        retval = "No application specified";
+        break;
+    case ORTE_ERR_NO_EXE_SPECIFIED:
+        retval = "No executable specified";
+        break;
+    case ORTE_ERR_COMM_DISABLED:
+        retval = "Communications have been disabled";
+        break;
+    case ORTE_ERR_FAILED_TO_MAP:
+        retval = "Unable to map job";
+        break;
+    case ORTE_ERR_TAKE_NEXT_OPTION:
+        if (orte_report_silent_errors) {
+            retval = "Next option";
+        } else {
+            retval = NULL;
+        }
+        break;
+    case ORTE_ERR_SENSOR_LIMIT_EXCEEDED:
+        retval = "Sensor limit exceeded";
+        break;
     default:
-        retval = NULL;
+        if (orte_report_silent_errors) {
+            retval = "Unknown error";
+        } else {
+            retval = NULL;
+        }
     }
 
-    return retval;
+    *errmsg = retval;
+    return ORTE_SUCCESS;
+}
+
+const char *orte_job_state_to_str(orte_job_state_t state)
+{
+    switch(state) {
+    case ORTE_JOB_STATE_UNDEF:
+        return "UNDEFINED";
+    case ORTE_JOB_STATE_INIT:
+        return "PENDING INIT";
+    case ORTE_JOB_STATE_INIT_COMPLETE:
+        return "INIT_COMPLETE";
+    case ORTE_JOB_STATE_ALLOCATE:
+        return "PENDING ALLOCATION";
+    case ORTE_JOB_STATE_ALLOCATION_COMPLETE:
+        return "ALLOCATION COMPLETE";
+    case ORTE_JOB_STATE_MAP:
+        return "PENDING MAPPING";
+    case ORTE_JOB_STATE_MAP_COMPLETE:
+        return "MAP COMPLETE";
+    case ORTE_JOB_STATE_SYSTEM_PREP:
+        return "PENDING FINAL SYSTEM PREP";
+    case ORTE_JOB_STATE_LAUNCH_DAEMONS:
+        return "PENDING DAEMON LAUNCH";
+    case ORTE_JOB_STATE_DAEMONS_LAUNCHED:
+        return "DAEMONS LAUNCHED";
+    case ORTE_JOB_STATE_DAEMONS_REPORTED:
+        return "ALL DAEMONS REPORTED";
+    case ORTE_JOB_STATE_VM_READY:
+        return "VM READY";
+    case ORTE_JOB_STATE_LAUNCH_APPS:
+        return "PENDING APP LAUNCH";
+    case ORTE_JOB_STATE_RUNNING:
+        return "RUNNING";
+    case ORTE_JOB_STATE_SUSPENDED:
+        return "SUSPENDED";
+    case ORTE_JOB_STATE_REGISTERED:
+        return "SYNC REGISTERED";
+    case ORTE_JOB_STATE_READY_FOR_DEBUGGERS:
+        return "READY FOR DEBUGGERS";
+    case ORTE_JOB_STATE_LOCAL_LAUNCH_COMPLETE:
+        return "LOCAL LAUNCH COMPLETE";
+    case ORTE_JOB_STATE_UNTERMINATED:
+        return "UNTERMINATED";
+    case ORTE_JOB_STATE_TERMINATED:
+        return "NORMALLY TERMINATED";
+    case ORTE_JOB_STATE_NOTIFY_COMPLETED:
+        return "NOTIFY COMPLETED";
+    case ORTE_JOB_STATE_NOTIFIED:
+        return "NOTIFIED";
+    case ORTE_JOB_STATE_ALL_JOBS_COMPLETE:
+        return "ALL JOBS COMPLETE";
+    case ORTE_JOB_STATE_ERROR:
+        return "ARTIFICIAL BOUNDARY - ERROR";
+    case ORTE_JOB_STATE_KILLED_BY_CMD:
+        return "KILLED BY INTERNAL COMMAND";
+    case ORTE_JOB_STATE_ABORTED:
+        return "ABORTED";
+    case ORTE_JOB_STATE_FAILED_TO_START:
+        return "FAILED TO START";
+    case ORTE_JOB_STATE_ABORTED_BY_SIG:
+        return "ABORTED BY SIGNAL";
+    case ORTE_JOB_STATE_ABORTED_WO_SYNC:
+        return "TERMINATED WITHOUT SYNC";
+    case ORTE_JOB_STATE_COMM_FAILED:
+        return "COMMUNICATION FAILURE";
+    case ORTE_JOB_STATE_SENSOR_BOUND_EXCEEDED:
+        return "SENSOR BOUND EXCEEDED";
+    case ORTE_JOB_STATE_CALLED_ABORT:
+        return "PROC CALLED ABORT";
+    case ORTE_JOB_STATE_HEARTBEAT_FAILED:
+        return "HEARTBEAT FAILED";
+    case ORTE_JOB_STATE_NEVER_LAUNCHED:
+        return "NEVER LAUNCHED";
+    case ORTE_JOB_STATE_ABORT_ORDERED:
+        return "ABORT IN PROGRESS";
+    case ORTE_JOB_STATE_NON_ZERO_TERM:
+        return "AT LEAST ONE PROCESS EXITED WITH NON-ZERO STATUS";
+    case ORTE_JOB_STATE_FAILED_TO_LAUNCH:
+        return "FAILED TO LAUNCH";
+    case ORTE_JOB_STATE_FORCED_EXIT:
+        return "FORCED EXIT";
+    case ORTE_JOB_STATE_DAEMONS_TERMINATED:
+        return "DAEMONS TERMINATED";
+    case ORTE_JOB_STATE_SILENT_ABORT:
+        return "ERROR REPORTED ELSEWHERE";
+    case ORTE_JOB_STATE_REPORT_PROGRESS:
+        return "REPORT PROGRESS";
+    case ORTE_JOB_STATE_ANY:
+        return "ANY";
+    default:
+        return "UNKNOWN STATE!";
+    }
+}
+
+const char *orte_proc_state_to_str(orte_proc_state_t state)
+{
+    switch(state) {
+    case ORTE_PROC_STATE_UNDEF:
+        return "UNDEFINED";
+    case ORTE_PROC_STATE_INIT:
+        return "INITIALIZED";
+    case ORTE_PROC_STATE_RESTART:
+        return "RESTARTING";
+    case ORTE_PROC_STATE_TERMINATE:
+        return "MARKED FOR TERMINATION";
+    case ORTE_PROC_STATE_RUNNING:
+        return "RUNNING";
+    case ORTE_PROC_STATE_REGISTERED:
+        return "SYNC REGISTERED";
+    case ORTE_PROC_STATE_IOF_COMPLETE:
+        return "IOF COMPLETE";
+    case ORTE_PROC_STATE_WAITPID_FIRED:
+        return "WAITPID FIRED";
+    case ORTE_PROC_STATE_UNTERMINATED:
+        return "UNTERMINATED";
+    case ORTE_PROC_STATE_TERMINATED:
+        return "NORMALLY TERMINATED";
+    case ORTE_PROC_STATE_ERROR:
+        return "ARTIFICIAL BOUNDARY - ERROR";
+    case ORTE_PROC_STATE_KILLED_BY_CMD:
+        return "KILLED BY INTERNAL COMMAND";
+    case ORTE_PROC_STATE_ABORTED:
+        return "ABORTED";
+    case ORTE_PROC_STATE_FAILED_TO_START:
+        return "FAILED TO START";
+    case ORTE_PROC_STATE_ABORTED_BY_SIG:
+        return "ABORTED BY SIGNAL";
+    case ORTE_PROC_STATE_TERM_WO_SYNC:
+        return "TERMINATED WITHOUT SYNC";
+    case ORTE_PROC_STATE_COMM_FAILED:
+        return "COMMUNICATION FAILURE";
+    case ORTE_PROC_STATE_SENSOR_BOUND_EXCEEDED:
+        return "SENSOR BOUND EXCEEDED";
+    case ORTE_PROC_STATE_CALLED_ABORT:
+        return "CALLED ABORT";
+    case ORTE_PROC_STATE_HEARTBEAT_FAILED:
+        return "HEARTBEAT FAILED";
+    case ORTE_PROC_STATE_MIGRATING:
+        return "MIGRATING";
+    case ORTE_PROC_STATE_CANNOT_RESTART:
+        return "CANNOT BE RESTARTED";
+    case ORTE_PROC_STATE_TERM_NON_ZERO:
+        return "EXITED WITH NON-ZERO STATUS";
+    case ORTE_PROC_STATE_FAILED_TO_LAUNCH:
+        return "FAILED TO LAUNCH";
+    case ORTE_PROC_STATE_ANY:
+        return "ANY";
+    default:
+        return "UNKNOWN STATE!";
+    }
 }

@@ -10,7 +10,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,6 +23,7 @@
 # $2: e-mail address for destination
 # $3: SVN root
 # $4: dest dir
+# $5: version string for error e-mails, eg. trunk, v1.2, etc. (optional)
 #
 
 scratch_root="$1"
@@ -32,7 +33,7 @@ destdir="$4"
 
 # Set this to any value for additional output; typically only when
 # debugging
-debug=
+debug=1
 
 # do you want a success mail?
 want_success_mail=1
@@ -56,6 +57,15 @@ if test -z "$scratch_root" -o -z "$email" -o -z "$svnroot" \
     exit 1
 fi
 
+# Get a version string to use if there is an error.
+# It will get replaced upon succesful "make distcheck" with the real version.
+# Extract (from the SVN root) a version string if one wasn't supplied.
+if test -n "$5"; then
+    version="$5"
+else
+    version=`basename $svnroot`
+fi
+
 # send a mail
 # should only be called after logdir is set
 send_error_mail() {
@@ -71,11 +81,7 @@ send_error_mail() {
             cat "$file" >> "$outfile"
         fi
     done
-    if test -n "$version"; then
-        Mail -s "=== CREATE FAILURE ($version) ===" "$email" < "$outfile"
-    else
-        Mail -s "=== CREATE FAILURE ===" "$email" < "$outfile"
-    fi
+    Mail -s "=== CREATE FAILURE ($version) ===" "$email" < "$outfile"
     rm -f "$outfile"
 }
 
@@ -109,7 +115,7 @@ do_command() {
     if test "$st" != "0"; then
         cat > "$logdir/15-error.txt" <<EOF
 
-ERROR: Command returned a non-zero exist status
+ERROR: Command returned a non-zero exist status ($version):
        $cmd
 
 Start time: $start_time
@@ -136,6 +142,14 @@ fi
 if test ! -d "$destdir"; then
     die "Could not cd to dest dir: $destdir"
 fi
+
+# make sure we can write to the destdir
+file="$destdir/test-write.$$"
+touch "$file"
+if test ! -f "$file"; then
+    die "Could not write to the dest dir: $destdir"
+fi
+rm -f "$file"
 
 # if there's a $destdir/latest_snapshot.txt, see if anything has
 # happened since that r number.
@@ -258,9 +272,12 @@ do_command "svn co $svnroot -r $r ompi"
 cd ompi
 svnversion="r`svnversion .`"
 version_files="`find . -name VERSION`"
+d=`date +'%b %d, %Y'`
 for file in $version_files; do
-    sed -e 's/^want_svn=.*/want_svn=1/' \
-        -e 's/^svn_r=.*/svn_r='$svnversion/ $file > $file.new
+    sed -e 's/^want_repo_rev=.*/want_repo_rev=1/' \
+        -e 's/^repo_rev=.*/repo_rev='$svnversion/ \
+        -e 's@^date=.*@date="'"$d"' (nightly snapshot tarball)"@' \
+        $file > $file.new
     cp -f $file.new $file
     rm -f $file.new
 done
@@ -272,12 +289,11 @@ USER="ompibuilder"
 export USER
 
 # autogen is our friend
-do_command "./autogen.sh"
+do_command "./autogen.pl"
 
 # do config
 do_command "./configure --enable-dist"
 
-# do make dist
 # distcheck does many things; we need to ensure it doesn't pick up any 
 # other OMPI installs via LD_LIBRARY_PATH.  It may be a bit Draconian
 # to totally clean LD_LIBRARY_PATH (i.e., we may need something in there),
@@ -293,6 +309,18 @@ save=
 gz="`/bin/ls openmpi*tar.gz`"
 bz2="`/bin/ls openmpi*tar.bz2`"
 mv $gz $bz2 $destdir
+if test "$?" != "0"; then
+    cat <<EOF
+ERROR -- move final tarballs to web tree failed!
+
+From:  `pwd`
+Files: $gz $bz2
+To:    $destdir
+
+The nightly snapshots are therefore not available on the web!
+EOF
+    die "Could not move final tarballs to web dir: $destdir"
+fi
 cd $destdir
 
 # make the latest_snapshot.txt file containing the last version

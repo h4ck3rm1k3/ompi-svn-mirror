@@ -9,6 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -26,8 +27,12 @@
 # time)
 #
 ######################################################################
-generated/@OMPI_ASM_FILE@: base/@OMPI_ASSEMBLY_ARCH@.asm
-	$(PERL) '$(top_srcdir)/opal/asm/generate-asm.pl' '@OMPI_ASSEMBLY_ARCH@' '@OMPI_ASSEMBLY_FORMAT@' '$(top_srcdir)/opal/asm/base' '$(top_builddir)/opal/asm/generated/@OMPI_ASM_FILE@'
+generated/@OMPI_ASM_FILE@: base/@OPAL_ASSEMBLY_ARCH@.asm
+	@ if test ! -f "$(top_srcdir)/opal/asm/$@" ; then \
+	    cmd="$(PERL) '$(top_srcdir)/opal/asm/generate-asm.pl' '@OPAL_ASSEMBLY_ARCH@' '@OPAL_ASSEMBLY_FORMAT@' '$(top_srcdir)/opal/asm/base' '$(top_builddir)/opal/asm/generated/@OMPI_ASM_FILE@'" ; \
+	    echo "$$cmd" ; \
+	    eval $$cmd ; \
+	fi
 
 atomic-asm.S: generated/@OMPI_ASM_FILE@
 	rm -f atomic-asm.S
@@ -41,7 +46,7 @@ atomic-asm.S: generated/@OMPI_ASM_FILE@
 	    eval $$cmd ; \
 	fi
 
-if OMPI_HAVE_ASM_FILE
+if OPAL_HAVE_ASM_FILE
 nodist_libasm_la_SOURCES = atomic-asm.S
 libasm_la_DEPENDENCIES = generated/@OMPI_ASM_FILE@
 else
@@ -60,12 +65,12 @@ EXTRA_DIST	= \
 	base/default.conf \
 	base/ALPHA.asm \
 	base/AMD64.asm \
+	base/ARM.asm \
 	base/IA32.asm \
 	base/IA64.asm \
 	base/MIPS.asm \
 	base/POWERPC32.asm \
 	base/POWERPC64.asm \
-	base/SPARC.asm \
 	base/SPARCV9_32.asm \
 	base/SPARCV9_64.asm
 
@@ -74,7 +79,7 @@ EXTRA_DIST	= \
 clean-local:
 	rm -f atomic-asm.S
 
-maintainer-clean-local:
+distclean-local:
 	rm -f generated/atomic-local.s
 
 ######################################################################

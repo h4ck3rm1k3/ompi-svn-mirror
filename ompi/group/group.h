@@ -11,8 +11,9 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 University of Houston. All rights reserved.
- * Copyright (c) 2007      Cisco, Inc. All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -25,16 +26,16 @@
  *
  * Infrastructure for MPI group support.
  */
-#include "ompi/proc/proc.h"
 #ifndef OMPI_GROUP_H
 #define OMPI_GROUP_H
 
-#include "orte/util/show_help.h"
+#include "ompi_config.h"
+#include "ompi/proc/proc.h"
 #include "mpi.h"
 #include "opal/class/opal_pointer_array.h"
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+#include "opal/util/output.h"
+
+BEGIN_C_DECLS
 
 #define BSIZE ((int)sizeof(unsigned char)*8)
 
@@ -135,11 +136,11 @@ typedef struct ompi_predefined_group_t ompi_predefined_group_t;
  */
 OMPI_DECLSPEC extern struct opal_pointer_array_t ompi_group_f_to_c_table;
 OMPI_DECLSPEC extern struct ompi_predefined_group_t ompi_mpi_group_null;
+OMPI_DECLSPEC extern struct ompi_predefined_group_t *ompi_mpi_group_null_addr;
 
 
 /*
- * function prototype
-s
+ * function prototypes
  */
 
 /**
@@ -234,6 +235,12 @@ OMPI_DECLSPEC int ompi_group_translate_ranks ( ompi_group_t *group1,
                                  ompi_group_t *group2, 
                                  int *ranks2);
 
+/**
+ * Abstracting MPI_Group_compare to an ompi function for internal use
+ */
+OMPI_DECLSPEC int ompi_group_compare(ompi_group_t *group1,
+                                     ompi_group_t *group2,
+                                     int *result);
 
 /** 
  * Abstracting MPI_Group_free, since it is required by some internal functions...
@@ -321,7 +328,7 @@ int ompi_group_minloc (int list[], int length);
  */
 static inline struct ompi_proc_t* ompi_group_peer_lookup(ompi_group_t *group, int peer_id)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if (peer_id >= group->grp_proc_count) {
         opal_output(0, "ompi_group_lookup_peer: invalid peer index (%d)", peer_id);
         return (struct ompi_proc_t *) NULL;
@@ -344,7 +351,5 @@ int ompi_group_dump (ompi_group_t* group);
  */
 int ompi_group_div_ceil (int num, int den);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif /* OMPI_GROUP_H */

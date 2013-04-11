@@ -18,6 +18,7 @@
 
 #include "opal_config.h"
 
+#include "opal/util/output.h"
 #include "opal/dss/dss_internal.h"
 
 int opal_dss_copy(void **dest, void *src, opal_data_type_t type)
@@ -146,32 +147,6 @@ int opal_dss_copy_string(char **dest, char *src, opal_data_type_t type)
 /* COPY FUNCTIONS FOR GENERIC OPAL TYPES */
 
 /*
- * OPAL_DATA_VALUE
- */
-int opal_dss_copy_data_value(opal_dss_value_t **dest, opal_dss_value_t *src,
-                             opal_data_type_t type)
-{
-    int rc;
-
-    /* create the new object */
-    *dest = OBJ_NEW(opal_dss_value_t);
-    if (NULL == *dest) {
-        return OPAL_ERR_OUT_OF_RESOURCE;
-    }
-
-    (*dest)->type = src->type;
-
-    /* copy the payload with its associated copy function */
-    if (OPAL_SUCCESS != (rc = opal_dss.copy(&((*dest)->data), src->data, src->type))) {
-        OBJ_RELEASE(*dest);
-        return rc;
-    }
-
-    return OPAL_SUCCESS;
-}
-
-
-/*
  * OPAL_BYTE_OBJECT
  */
 int opal_dss_copy_byte_object(opal_byte_object_t **dest, opal_byte_object_t *src,
@@ -194,6 +169,138 @@ int opal_dss_copy_byte_object(opal_byte_object_t **dest, opal_byte_object_t *src
 
     /* copy the data across */
     memcpy((*dest)->bytes, src->bytes, src->size);
+
+    return OPAL_SUCCESS;
+}
+
+/* OPAL_PSTAT */
+int opal_dss_copy_pstat(opal_pstats_t **dest, opal_pstats_t *src,
+                        opal_data_type_t type)
+{
+    opal_pstats_t *p;
+    
+    /* create the new object */
+    *dest = OBJ_NEW(opal_pstats_t);
+    if (NULL == *dest) {
+        return OPAL_ERR_OUT_OF_RESOURCE;
+    }
+    p = *dest;
+    
+    /* copy the individual fields */
+    memcpy(p->node, src->node, sizeof(src->node));
+    p->rank = src->rank;
+    p->pid = src->pid;
+    memcpy(p->cmd, src->cmd, sizeof(src->cmd));
+    p->state[0] = src->state[0];
+    p->time = src->time;
+    p->priority = src->priority;
+    p->num_threads = src->num_threads;
+    p->vsize = src->vsize;
+    p->rss = src->rss;
+    p->peak_vsize = src->peak_vsize;
+    p->processor = src->processor;
+    p->sample_time.tv_sec = src->sample_time.tv_sec;
+    p->sample_time.tv_usec = src->sample_time.tv_usec;    
+    return OPAL_SUCCESS;
+}
+
+/* OPAL_NODE_STAT */
+int opal_dss_copy_node_stat(opal_node_stats_t **dest, opal_node_stats_t *src,
+                            opal_data_type_t type)
+{
+    opal_node_stats_t *p;
+    
+    /* create the new object */
+    *dest = OBJ_NEW(opal_node_stats_t);
+    if (NULL == *dest) {
+        return OPAL_ERR_OUT_OF_RESOURCE;
+    }
+    p = *dest;
+    
+    /* copy the individual fields */
+    p->la = src->la;
+    p->la5 = src->la5;
+    p->la15 = src->la15;
+    p->total_mem = src->total_mem;
+    p->free_mem = src->free_mem;
+    p->sample_time.tv_sec = src->sample_time.tv_sec;
+    p->sample_time.tv_usec = src->sample_time.tv_usec;    
+    return OPAL_SUCCESS;
+}
+
+/* OPAL_VALUE */
+int opal_dss_copy_value(opal_value_t **dest, opal_value_t *src,
+                        opal_data_type_t type)
+{
+    opal_value_t *p;
+    
+    /* create the new object */
+    *dest = OBJ_NEW(opal_value_t);
+    if (NULL == *dest) {
+        return OPAL_ERR_OUT_OF_RESOURCE;
+    }
+    p = *dest;
+    
+    /* copy the type and key */
+    if (NULL != src->key) {
+        p->key = strdup(src->key);
+    }
+    p->type = src->type;
+
+    /* copy the right field */
+    switch (src->type) {
+    case OPAL_BYTE:
+        p->data.byte = src->data.byte;
+        break;
+    case OPAL_STRING:
+        if (NULL != src->data.string) {
+            p->data.string = strdup(src->data.string);
+        } else {
+            p->data.string = NULL;
+        }
+        break;
+    case OPAL_PID:
+        p->data.pid = src->data.pid;
+        break;
+    case OPAL_INT:
+        p->data.integer = src->data.integer;
+        break;
+    case OPAL_INT8:
+        p->data.int8 = src->data.int8;
+        break;
+    case OPAL_INT16:
+        p->data.int16 = src->data.int16;
+        break;
+    case OPAL_INT32:
+        p->data.int32 = src->data.int32;
+        break;
+    case OPAL_INT64:
+        p->data.int64 = src->data.int64;
+        break;
+    case OPAL_UINT:
+        p->data.uint = src->data.uint;
+        break;
+    case OPAL_UINT8:
+        p->data.uint8 = src->data.uint8;
+        break;
+    case OPAL_UINT16:
+        p->data.uint16 = src->data.uint16;
+        break;
+    case OPAL_UINT32:
+        p->data.uint32 = src->data.uint32;
+        break;
+    case OPAL_UINT64:
+        p->data.uint64 = src->data.uint64;
+        break;
+    case OPAL_BYTE_OBJECT:
+        p->data.bo.bytes = malloc(src->data.bo.size);
+        memcpy(p->data.bo.bytes, src->data.bo.bytes, src->data.bo.size);
+        p->data.bo.size = src->data.bo.size;
+        break;
+    default:
+        opal_output(0, "COPY-OPAL-VALUE: UNSUPPORTED TYPE %d", (int)src->type);
+        return OPAL_ERROR;
+    }
 
     return OPAL_SUCCESS;
 }

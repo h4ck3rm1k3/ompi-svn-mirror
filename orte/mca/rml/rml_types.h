@@ -1,16 +1,17 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -27,6 +28,7 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
+#include "orte/types.h"
 
 #include <limits.h>
 #ifdef HAVE_SYS_UIO_H
@@ -37,12 +39,10 @@
 #include <net/uio.h>
 #endif
 
+#include "opal/dss/dss_types.h"
+#include "opal/class/opal_list.h"
 
 BEGIN_C_DECLS
-
-
-/* ******************************************************************** */
-
 
 /**
  * Constant tag values for well-known services
@@ -61,18 +61,14 @@ BEGIN_C_DECLS
 #define ORTE_RML_TAG_WIREUP                  8
 #define ORTE_RML_TAG_RML_INFO_UPDATE         9
 #define ORTE_RML_TAG_ORTED_CALLBACK         10
-#define ORTE_RML_TAG_APP_LAUNCH_CALLBACK    11
+#define ORTE_RML_TAG_ROLLUP                 11
 #define ORTE_RML_TAG_REPORT_REMOTE_LAUNCH   12
 
 #define ORTE_RML_TAG_CKPT                   13
 
 #define ORTE_RML_TAG_RML_ROUTE              14
+#define ORTE_RML_TAG_XCAST                  15
 
-#define ORTE_RML_TAG_ALLGATHER              15
-#define ORTE_RML_TAG_ALLGATHER_LIST         16
-#define ORTE_RML_TAG_BARRIER                17
-
-#define ORTE_RML_TAG_INIT_ROUTES            18
 #define ORTE_RML_TAG_UPDATE_ROUTE_ACK       19
 #define ORTE_RML_TAG_SYNC                   20
 
@@ -97,14 +93,46 @@ BEGIN_C_DECLS
 /* timing related */
 #define ORTE_RML_TAG_COLLECTIVE_TIMER       29
 
-/* daemon collectives */
-#define ORTE_RML_TAG_DAEMON_COLLECTIVE      30
+/* collectives */
+#define ORTE_RML_TAG_COLLECTIVE             30
+#define ORTE_RML_TAG_COLL_ID                50
+#define ORTE_RML_TAG_DAEMON_COLL            52
+#define ORTE_RML_TAG_COLL_ID_REQ            53
 
 /* show help */
 #define ORTE_RML_TAG_SHOW_HELP              31
 
 /* debugger release */
 #define ORTE_RML_TAG_DEBUGGER_RELEASE       32
+
+/* bootstrap */
+#define ORTE_RML_TAG_BOOTSTRAP              34
+
+/* TCP "fake" multicast */
+#define ORTE_RML_TAG_MULTICAST              35
+/* multicast messages sent direct */
+#define ORTE_RML_TAG_MULTICAST_DIRECT       36
+/* report a missed msg */
+#define ORTE_RML_TAG_MISSED_MSG             37
+
+/* tag for receiving ack of abort msg */
+#define ORTE_RML_TAG_ABORT                  38
+
+/* tag for receiving heartbeats */
+#define ORTE_RML_TAG_HEARTBEAT              39
+
+/* Process Migration Tool Tag */
+#define ORTE_RML_TAG_MIGRATE                43
+
+/* For SStore Framework */
+#define ORTE_RML_TAG_SSTORE                 44
+#define ORTE_RML_TAG_SSTORE_INTERNAL        45
+
+#define ORTE_RML_TAG_SUBSCRIBE              46
+
+
+/* Notify of failed processes */
+#define ORTE_RML_TAG_FAILURE_NOTICE         48
 
 #define ORTE_RML_TAG_MAX                   100
 

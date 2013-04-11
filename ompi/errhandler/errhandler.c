@@ -3,14 +3,14 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -21,9 +21,12 @@
 
 #include "ompi_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "ompi/communicator/communicator.h"
 #include "ompi/win/win.h"
-#include "ompi/file/file.h"
 #include "ompi/errhandler/errhandler.h"
 #include "ompi/errhandler/errhandler_predefined.h"
 #include "opal/class/opal_pointer_array.h"
@@ -49,10 +52,21 @@ OBJ_CLASS_INSTANCE(ompi_errhandler_t, opal_object_t, ompi_errhandler_construct,
                    ompi_errhandler_destruct);
 
 
+/*
+ * _addr flavors are for F03 bindings
+ */
 ompi_predefined_errhandler_t ompi_mpi_errhandler_null;
+ompi_predefined_errhandler_t *ompi_mpi_errhandler_null_addr = 
+    &ompi_mpi_errhandler_null;
 ompi_predefined_errhandler_t ompi_mpi_errors_are_fatal;
+ompi_predefined_errhandler_t *ompi_mpi_errors_are_fatal_addr = 
+    &ompi_mpi_errors_are_fatal;
 ompi_predefined_errhandler_t ompi_mpi_errors_return;
+ompi_predefined_errhandler_t *ompi_mpi_errors_return_addr = 
+    &ompi_mpi_errors_return;
 ompi_predefined_errhandler_t ompi_mpi_errors_throw_exceptions;
+ompi_predefined_errhandler_t *ompi_mpi_errors_throw_exceptions_addr = 
+    &ompi_mpi_errors_throw_exceptions;
 
 /*
  * Local state to know when the three intrinsics have been freed; see
@@ -196,7 +210,7 @@ ompi_errhandler_t *ompi_errhandler_create(ompi_errhandler_type_t object_type,
 
   new_errhandler = OBJ_NEW(ompi_errhandler_t);
   if (NULL != new_errhandler) {
-    if (OMPI_ERROR == new_errhandler->eh_f_to_c_index) {
+    if (0 > new_errhandler->eh_f_to_c_index) {
       OBJ_RELEASE(new_errhandler);
       new_errhandler = NULL;
     } else {
@@ -210,13 +224,13 @@ ompi_errhandler_t *ompi_errhandler_create(ompi_errhandler_type_t object_type,
       new_errhandler->eh_lang = lang;
       switch (object_type ) {
 	  case (OMPI_ERRHANDLER_TYPE_COMM):
-	      new_errhandler->eh_comm_fn = (MPI_Comm_errhandler_fn *)func;
+	      new_errhandler->eh_comm_fn = (MPI_Comm_errhandler_function *)func;
 	      break;
 	  case (OMPI_ERRHANDLER_TYPE_FILE):
 	      new_errhandler->eh_file_fn = (ompi_file_errhandler_fn *)func;
 	      break;
 	  case (OMPI_ERRHANDLER_TYPE_WIN):
-	      new_errhandler->eh_win_fn = (MPI_Win_errhandler_fn *)func;
+	      new_errhandler->eh_win_fn = (MPI_Win_errhandler_function *)func;
 	      break;
 	  default:
 	      break;
@@ -231,6 +245,12 @@ ompi_errhandler_t *ompi_errhandler_create(ompi_errhandler_type_t object_type,
   return new_errhandler;
 }
 
+/**
+ * Runtime errhandler callback
+ */
+void ompi_errhandler_runtime_callback(opal_pointer_array_t *procs) {
+    ompi_mpi_abort(MPI_COMM_WORLD, 1, false);
+}
 
 /**************************************************************************
  *

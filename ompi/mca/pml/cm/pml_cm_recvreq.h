@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012      Sandia National Laboratories.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -80,14 +81,12 @@ do {                                                                           \
  * @param count (IN)         Number of elements of indicated datatype.
  * @param datatype (IN)      User defined datatype.
  * @param src (IN)           Source rank w/in the communicator.
- * @param tag (IN)           User defined tag.
  * @param comm (IN)          Communicator.
  * @param persistent (IN)    Is this a ersistent request.
  */
 #define MCA_PML_CM_THIN_RECV_REQUEST_INIT( request,                     \
                                            ompi_proc,                   \
                                            comm,                        \
-                                           tag,                         \
                                            src,                         \
                                            datatype,                    \
                                            addr,                        \
@@ -107,9 +106,9 @@ do {                                                                    \
     } else {                                                            \
         ompi_proc = ompi_comm_peer_lookup( comm, src );                 \
     }                                                                   \
-    ompi_convertor_copy_and_prepare_for_recv(                           \
+    opal_convertor_copy_and_prepare_for_recv(                           \
                                   ompi_proc->proc_convertor,            \
-                                  datatype,                             \
+                                  &(datatype->super),                   \
                                   count,                                \
                                   addr,                                 \
                                   0,                                    \
@@ -144,9 +143,9 @@ do {                                                                    \
     } else {                                                            \
         ompi_proc = ompi_comm_peer_lookup( comm, src );                 \
     }                                                                   \
-    ompi_convertor_copy_and_prepare_for_recv(                           \
+    opal_convertor_copy_and_prepare_for_recv(                           \
                                   ompi_proc->proc_convertor,            \
-                                  datatype,                             \
+                                  &(datatype->super),                   \
                                   count,                                \
                                   addr,                                 \
                                   0,                                    \
@@ -180,6 +179,26 @@ do {                                                                    \
                               tag,                                      \
                               &recvreq->req_base.req_convertor,         \
                               &recvreq->req_mtl));                      \
+} while (0)
+
+#define MCA_PML_CM_THIN_RECV_REQUEST_MATCHED_START(request, message, ret) \
+do {                                                                    \
+    /* init/re-init the request */                                      \
+    request->req_base.req_pml_complete = false;                         \
+    request->req_base.req_ompi.req_complete = false;                    \
+    request->req_base.req_ompi.req_state = OMPI_REQUEST_ACTIVE;         \
+                                                                        \
+    /* always set the req_status.MPI_TAG to ANY_TAG before starting the \
+     * request. This field is used if cancelled to find out if the request \
+     * has been matched or not.                                         \
+     */                                                                 \
+    request->req_base.req_ompi.req_status.MPI_TAG = OMPI_ANY_TAG;       \
+    request->req_base.req_ompi.req_status.MPI_ERROR = OMPI_SUCCESS;     \
+    request->req_base.req_ompi.req_status._cancelled = 0;               \
+    ret = OMPI_MTL_CALL(imrecv(ompi_mtl,                                \
+                               &recvreq->req_base.req_convertor,        \
+                               message,                                 \
+                               &recvreq->req_mtl));                     \
 } while (0)
 
 
@@ -259,7 +278,7 @@ do {                                                                    \
         if(recvreq->req_base.req_ompi.req_persistent) {                 \
             /* rewind convertor */                                      \
             size_t offset = 0;                                          \
-            ompi_convertor_set_position(&recvreq->req_base.req_convertor, &offset); \
+            opal_convertor_set_position(&recvreq->req_base.req_convertor, &offset); \
         }                                                               \
         recvreq->req_base.req_pml_complete = true;                      \
         ompi_request_complete(  &(recvreq->req_base.req_ompi), true );  \
@@ -276,7 +295,7 @@ do {                                                                    \
     OBJ_RELEASE((recvreq)->req_base.req_comm);                          \
     OBJ_RELEASE((recvreq)->req_base.req_datatype);                      \
     OMPI_REQUEST_FINI(&(recvreq)->req_base.req_ompi);                   \
-    ompi_convertor_cleanup( &((recvreq)->req_base.req_convertor) );     \
+    opal_convertor_cleanup( &((recvreq)->req_base.req_convertor) );     \
     OMPI_FREE_LIST_RETURN( &mca_pml_base_recv_requests,                 \
                            (ompi_free_list_item_t*)(recvreq));          \
 }
@@ -289,7 +308,7 @@ do {                                                                    \
     OBJ_RELEASE((recvreq)->req_base.req_comm);                          \
     OBJ_RELEASE((recvreq)->req_base.req_datatype);                      \
     OMPI_REQUEST_FINI(&(recvreq)->req_base.req_ompi);                   \
-    ompi_convertor_cleanup( &((recvreq)->req_base.req_convertor) );     \
+    opal_convertor_cleanup( &((recvreq)->req_base.req_convertor) );     \
     OMPI_FREE_LIST_RETURN( &mca_pml_base_recv_requests,                 \
                            (ompi_free_list_item_t*)(recvreq));          \
 }

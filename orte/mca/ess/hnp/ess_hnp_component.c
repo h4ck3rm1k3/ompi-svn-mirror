@@ -40,7 +40,7 @@ extern orte_ess_base_module_t orte_ess_hnp_module;
  */
 orte_ess_base_component_t mca_ess_hnp_component = {
     {
-        ORTE_ESS_BASE_VERSION_2_0_0,
+        ORTE_ESS_BASE_VERSION_3_0_0,
 
         /* Component name and version */
         "hnp",
@@ -73,7 +73,7 @@ int orte_ess_hnp_component_query(mca_base_module_t **module, int *priority)
     /* we are the hnp module - we need to be selected
      * IFF we are designated as the hnp
      */
-    if (orte_process_info.hnp) {
+    if (ORTE_PROC_IS_HNP) {
         *priority = 100;
         *module = (mca_base_module_t *)&orte_ess_hnp_module;
         return ORTE_SUCCESS;

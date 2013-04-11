@@ -10,6 +10,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -30,10 +32,9 @@
 #include "orte/types.h"
 
 #include "opal/mca/mca.h"
-#include "opal/class/opal_list.h"
+#include "opal/class/opal_pointer_array.h"
 
 #include "opal/dss/dss_types.h"
-#include "orte/mca/rmaps/rmaps_types.h"
 #include "orte/mca/rml/rml_types.h"
 #include "orte/runtime/orte_globals.h"
 
@@ -65,7 +66,7 @@ typedef int (*orte_odls_base_module_launch_local_processes_fn_t)(opal_buffer_t *
 /**
  * Kill the local processes on this node
  */
-typedef int (*orte_odls_base_module_kill_local_processes_fn_t)(orte_jobid_t job, bool set_state);
+typedef int (*orte_odls_base_module_kill_local_processes_fn_t)(opal_pointer_array_t *procs);
 
 /**
  * Signal local processes
@@ -74,7 +75,7 @@ typedef int (*orte_odls_base_module_signal_local_process_fn_t)(const orte_proces
                                                               int32_t signal);
 
 /**
-    * Deliver a message to local processes
+ * Deliver a message to local processes
  */
 typedef int (*orte_odls_base_module_deliver_message_fn_t)(orte_jobid_t job, opal_buffer_t *buffer,
                                                           orte_rml_tag_t tag);
@@ -85,12 +86,10 @@ typedef int (*orte_odls_base_module_deliver_message_fn_t)(orte_jobid_t job, opal
 typedef int (*orte_odls_base_module_require_sync_fn_t)(orte_process_name_t *proc,
                                                        opal_buffer_t *buffer,
                                                        bool drop_nidmap);
-
 /**
- * Collect data as part of a collective operation by the procs
+ * Restart a local process
  */
-typedef int (*orte_odls_base_module_collect_data_fn_t)(orte_process_name_t *proc, opal_buffer_t *buffer);
-
+typedef int (*orte_odls_base_module_restart_proc_fn_t)(orte_proc_t *child);
 
 /**
  * pls module version
@@ -99,10 +98,10 @@ struct orte_odls_base_module_1_3_0_t {
     orte_odls_base_module_get_add_procs_data_fn_t           get_add_procs_data;
     orte_odls_base_module_launch_local_processes_fn_t       launch_local_procs;
     orte_odls_base_module_kill_local_processes_fn_t         kill_local_procs;
-    orte_odls_base_module_signal_local_process_fn_t   		signal_local_procs;
+    orte_odls_base_module_signal_local_process_fn_t         signal_local_procs;
     orte_odls_base_module_deliver_message_fn_t              deliver_message;
     orte_odls_base_module_require_sync_fn_t                 require_sync;
-    orte_odls_base_module_collect_data_fn_t                 collect_data;
+    orte_odls_base_module_restart_proc_fn_t                 restart_proc;
 };
 
 /** shorten orte_odls_base_module_1_3_0_t declaration */

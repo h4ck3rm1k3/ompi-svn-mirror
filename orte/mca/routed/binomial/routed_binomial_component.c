@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2007      Los Alamos National Security, LLC.
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.
  *                         All rights reserved. 
  * Copyright (c) 2004-2008 The Trustees of Indiana University.
  *                         All rights reserved.
@@ -12,15 +12,10 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
-#include "orte/types.h"
 
-#include "orte/util/show_help.h"
-#include "opal/class/opal_hash_table.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/routed/base/base.h"
 #include "routed_binomial.h"
@@ -53,6 +48,13 @@ orte_routed_component_t mca_routed_binomial_component = {
 
 static int orte_routed_binomial_component_query(mca_base_module_t **module, int *priority)
 {
+    /* make this selected ONLY if the user directs as this module scales
+     * poorly compared to our other options
+     *
+     * XXX: make this the default until we can figure out what's going on with
+     * debruijn within undersubscribed allocations. Once debruijn is fixed,
+     * revert back to priority 0.
+     */
     *priority = 70;
     *module = (mca_base_module_t *) &orte_routed_binomial_module;
     return ORTE_SUCCESS;

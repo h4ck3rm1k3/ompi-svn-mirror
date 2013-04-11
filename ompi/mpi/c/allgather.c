@@ -9,7 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      University of Houston.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,10 +22,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Allgather = PMPI_Allgather
 #endif
 
@@ -46,7 +50,7 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         ptrdiff_t ext;
 
         rank = ompi_comm_rank(comm);
-        ompi_ddt_type_extent(recvtype, &ext);
+        ompi_datatype_type_extent(recvtype, &ext);
 
         memchecker_datatype(recvtype);
         memchecker_comm(comm);
@@ -86,12 +90,24 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     /* Do we need to do anything?  Everyone had to give the same send
        signature, which means that everyone must have given a
-       sendcount > 0 if there's anything to send.  If we're doing
-       IN_PLACE, however, check recvcount, not sendcount. */
-
-    if ((MPI_IN_PLACE != sendbuf && 0 == sendcount) ||
-        (0 == recvcount)) {
-        return MPI_SUCCESS;
+       sendcount > 0 if there's anything to send for the intra-communicator
+       case.  If we're doing IN_PLACE, however, check recvcount, 
+       not sendcount. */
+    if ( OMPI_COMM_IS_INTRA(comm) ) {
+       if ((MPI_IN_PLACE != sendbuf && 0 == sendcount) ||
+            (0 == recvcount)) {
+            return MPI_SUCCESS;
+	}
+    }
+    else if ( OMPI_COMM_IS_INTER(comm) ){
+        /* for inter comunicators, the communication pattern
+           need not be symmetric. Specifically, one group is
+	   allows to have sendcount=0, while the other has
+           a valid sendcount. Thus, the only way not to do
+           anything is if both sendcount and recvcount are zero. */
+	if ( 0 == sendcount && 0 == recvcount ) {
+	    return MPI_SUCCESS;
+	}
     }
 
     OPAL_CR_ENTER_LIBRARY();

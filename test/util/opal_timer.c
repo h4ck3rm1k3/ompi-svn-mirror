@@ -21,7 +21,6 @@
 #include <unistd.h>
 
 #include "opal/runtime/opal.h"
-#include "opal/constants.h"
 #include "opal/mca/timer/base/base.h"
 
 int
@@ -29,7 +28,7 @@ main(int argc, char *argv[])
 {
     opal_timer_t start, end, diff;
 
-    opal_init();
+    opal_init(&argc, &argv);
 
     printf("--> frequency: %llu\n", (unsigned long long) opal_timer_base_get_freq());
 

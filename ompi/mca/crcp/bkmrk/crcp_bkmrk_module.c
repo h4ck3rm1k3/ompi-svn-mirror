@@ -1,7 +1,7 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
@@ -27,7 +27,6 @@
 #include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "opal/util/argv.h"
 #include "opal/util/opal_environ.h"
 
 #include "ompi/mca/crcp/crcp.h"
@@ -45,16 +44,20 @@ static ompi_crcp_base_module_t loc_module = {
     /** Finalization Function */
     ompi_crcp_bkmrk_module_finalize,
 
-    /** PML Wrapper */
-    ompi_crcp_bkmrk_pml_enable,
+    /** Quiesce interface */
+    ompi_crcp_bkmrk_quiesce_start,
+    ompi_crcp_bkmrk_quiesce_end,
 
-    ompi_crcp_bkmrk_pml_add_comm,
-    ompi_crcp_bkmrk_pml_del_comm,
+    /** PML Wrapper */
+    NULL, /* ompi_crcp_bkmrk_pml_enable, */
+
+    NULL, /* ompi_crcp_bkmrk_pml_add_comm, */
+    NULL, /* ompi_crcp_bkmrk_pml_del_comm, */
 
     ompi_crcp_bkmrk_pml_add_procs,
     ompi_crcp_bkmrk_pml_del_procs,
 
-    ompi_crcp_bkmrk_pml_progress,
+    NULL, /* ompi_crcp_bkmrk_pml_progress, */
 
     ompi_crcp_bkmrk_pml_iprobe,
     ompi_crcp_bkmrk_pml_probe,
@@ -109,7 +112,7 @@ int ompi_crcp_bkmrk_component_query(mca_base_module_t **module, int *priority)
     *priority = mca_crcp_bkmrk_component.super.priority;
     *module = (mca_base_module_t *)&loc_module;
 
-    return ORTE_SUCCESS;
+    return OMPI_SUCCESS;
 }
 
 int ompi_crcp_bkmrk_module_init(void)
@@ -130,6 +133,34 @@ int ompi_crcp_bkmrk_module_finalize(void)
     ompi_crcp_bkmrk_pml_finalize();
 
     return OMPI_SUCCESS;
+}
+
+int ompi_crcp_bkmrk_quiesce_start(MPI_Info *info)
+{
+    OPAL_OUTPUT_VERBOSE((10, mca_crcp_bkmrk_component.super.output_handle,
+                         "crcp:bkmrk: quiesce_start(--)"));
+#if 0
+    if( OMPI_SUCCESS != (ret = ompi_crcp_bkmrk_pml_quiesce_start(QUIESCE_TAG_CKPT)) ) {
+        ;
+    }
+    return OMPI_SUCCESS;
+#else
+    return OMPI_ERR_NOT_IMPLEMENTED;
+#endif
+}
+
+int ompi_crcp_bkmrk_quiesce_end(MPI_Info *info)
+{
+    OPAL_OUTPUT_VERBOSE((10, mca_crcp_bkmrk_component.super.output_handle,
+                         "crcp:bkmrk: quiesce_end(--)"));
+#if 0
+    if( OMPI_SUCCESS != (ret = ompi_crcp_bkmrk_pml_quiesce_end(QUIESCE_TAG_CONTINUE) ) ) {
+        ;
+    }
+    return OMPI_SUCCESS;
+#else
+    return OMPI_ERR_NOT_IMPLEMENTED;
+#endif
 }
 
 /******************

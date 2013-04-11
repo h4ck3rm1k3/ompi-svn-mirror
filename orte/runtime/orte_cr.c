@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -41,37 +41,27 @@
 #include <sys/stat.h>  /* for mkfifo */
 #endif  /* HAVE_SYS_STAT_H */
 
-#include "orte/util/show_help.h"
 #include "opal/util/opal_environ.h"
-#include "opal/event/event.h"
+#include "opal/util/output.h"
+#include "opal/util/basename.h"
+#include "opal/mca/event/event.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 #include "opal/runtime/opal_cr.h"
 
 #include "orte/runtime/orte_cr.h"
-#include "orte/runtime/runtime.h"
 #include "orte/util/proc_info.h"
-#include "orte/util/session_dir.h"
-#include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/util/show_help.h"
 
-#include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"
 #include "orte/mca/ess/ess.h"
 #include "orte/mca/ess/base/base.h"
 #include "orte/mca/routed/base/base.h"
 #include "orte/mca/routed/routed.h"
-#include "orte/mca/rml/rml.h"
 #include "orte/mca/rml/base/base.h"
-#include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
-#include "orte/mca/odls/odls.h"
-#include "orte/mca/odls/base/base.h"
-#include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
-#include "orte/mca/filem/filem.h"
 #include "orte/mca/filem/base/base.h"
 
 /*************
@@ -84,6 +74,9 @@ static int orte_cr_coord_pre_continue(void);
 static int orte_cr_coord_post_ckpt(void);
 static int orte_cr_coord_post_restart(void);
 static int orte_cr_coord_post_continue(void);
+
+bool orte_cr_continue_like_restart = false;
+bool orte_cr_flush_restart_files = true;
 
 /*************
  * Local vars
@@ -140,6 +133,10 @@ int orte_cr_init(void)
 
     /* Register the ORTE interlevel coordination callback */
     opal_cr_reg_coord_callback(orte_cr_coord, &prev_coord_callback);
+
+    /* Typically this is not needed. Individual BTLs will set this as needed */
+    orte_cr_continue_like_restart = false;
+    orte_cr_flush_restart_files   = true;
     
  cleanup:
 
@@ -261,7 +258,6 @@ static int orte_cr_coord_pre_ckpt(void) {
     }
 
  cleanup:
-
     return exit_status;
 }
 
@@ -303,13 +299,27 @@ static int orte_cr_coord_post_ckpt(void) {
 
 static int orte_cr_coord_post_restart(void) {
     int ret, exit_status = ORTE_SUCCESS;
+    orte_proc_type_t prev_type = ORTE_PROC_TYPE_NONE;
+    char * tmp_dir = NULL;
 
     opal_output_verbose(10, orte_cr_output,
                         "orte_cr: coord_post_restart: orte_cr_coord_post_restart()");
 
     /*
+     * Add the previous session directory for cleanup
+     */
+    opal_crs_base_cleanup_append(orte_process_info.job_session_dir, true);
+    tmp_dir = opal_dirname(orte_process_info.job_session_dir);
+    if( NULL != tmp_dir ) {
+        opal_crs_base_cleanup_append(tmp_dir, true);
+        free(tmp_dir);
+        tmp_dir = NULL;
+    }
+
+    /*
      * Refresh System information
      */
+    prev_type = orte_process_info.proc_type;
     if( ORTE_SUCCESS != (ret = orte_proc_info_finalize()) ) {
         exit_status = ret;
     }
@@ -327,6 +337,8 @@ static int orte_cr_coord_post_restart(void) {
     if( ORTE_SUCCESS != (ret = orte_proc_info()) ) {
         exit_status = ret;
     }
+
+    orte_process_info.proc_type = prev_type;
     orte_process_info.my_name = *ORTE_NAME_INVALID;
 
     /*

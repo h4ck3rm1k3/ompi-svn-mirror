@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -43,6 +43,7 @@
 #include "opal/constants.h"
 #include "opal/util/output.h"
 #include "opal/util/opal_environ.h"
+#include "opal/runtime/opal.h"
 
 /*
  * Local types
@@ -112,7 +113,6 @@ static int syn_register(int index_orig, const char *syn_type_name,
                         const char *syn_component_name,
                         const char *syn_param_name, bool deprecated);
 static bool param_lookup(size_t index, mca_base_param_storage_t *storage,
-                         opal_hash_table_t *attrs,
                          mca_base_param_source_t *source,
                          char **source_file);
 static bool param_set_override(size_t index, 
@@ -193,7 +193,7 @@ int mca_base_param_recache_files(bool rel_path_search)
         }
     }
 
-#if OMPI_WANT_HOME_CONFIG_FILES
+#if OPAL_WANT_HOME_CONFIG_FILES
     asprintf(&files,
              "%s"OPAL_PATH_SEP".openmpi"OPAL_PATH_SEP"mca-params.conf%c%s"OPAL_PATH_SEP"openmpi-mca-params.conf",
              home, OPAL_ENV_SEP, opal_install_dirs.sysconfdir);
@@ -488,7 +488,7 @@ int mca_base_param_lookup_int(int index, int *value)
 {
   mca_base_param_storage_t storage;
   
-  if (param_lookup(index, &storage, NULL, NULL, NULL)) {
+  if (param_lookup(index, &storage, NULL, NULL)) {
     *value = storage.intval;
     return OPAL_SUCCESS;
   }
@@ -532,7 +532,7 @@ int mca_base_param_lookup_string(int index, char **value)
 {
   mca_base_param_storage_t storage;
   
-  if (param_lookup(index, &storage, NULL, NULL, NULL)) {
+  if (param_lookup(index, &storage, NULL, NULL)) {
     *value = storage.stringval;
     return OPAL_SUCCESS;
   }
@@ -548,7 +548,7 @@ int mca_base_param_set_string(int index, char *value)
     mca_base_param_storage_t storage;
 
     mca_base_param_unset(index);
-    storage.stringval = strdup(value);
+    storage.stringval = value;
     param_set_override(index, &storage, MCA_BASE_PARAM_TYPE_STRING);
     return OPAL_SUCCESS;
 }
@@ -557,11 +557,11 @@ int mca_base_param_set_string(int index, char *value)
 /*
  * Lookup the source of an MCA param's value
  */
-bool mca_base_param_lookup_source(int index, mca_base_param_source_t *source, char **source_file)
+int mca_base_param_lookup_source(int index, mca_base_param_source_t *source, char **source_file)
 {
     mca_base_param_storage_t storage;
   
-    if (param_lookup(index, &storage, NULL, source, source_file)) {
+    if (param_lookup(index, &storage, source, source_file)) {
         return OPAL_SUCCESS;
     }
     return OPAL_ERROR;
@@ -630,7 +630,7 @@ char *mca_base_param_environ_variable(const char *type,
     }
 
     id = mca_base_param_find(type, component, param);
-    if (OPAL_ERROR != id) {
+    if (0 <= id) {
         array = OPAL_VALUE_ARRAY_GET_BASE(&mca_base_params, mca_base_param_t);
         ret = strdup(array[id].mbp_env_var_name);
     } else {
@@ -857,7 +857,7 @@ int mca_base_param_build_env(char ***env, int *num_env, bool internal)
         }
 
         if (array[i].mbp_internal == internal || internal) {
-            if (param_lookup(i, &storage, NULL, NULL, NULL)) {
+            if (param_lookup(i, &storage, NULL, NULL)) {
                 if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type) {
                     asprintf(&str, "%s=%d", array[i].mbp_env_var_name, 
                              storage.intval);
@@ -1221,7 +1221,7 @@ static int param_register(const char *type_name,
   mca_base_param_t param, *array;
 
   /* There are data holes in the param struct */
-  OMPI_DEBUG_ZERO(param);
+  OPAL_DEBUG_ZERO(param);
 
   /* Initialize the array if it has never been initialized */
 
@@ -1363,8 +1363,8 @@ static int param_register(const char *type_name,
   for (i = 0; i < len; ++i) {
     if (0 == strcmp(param.mbp_full_name, array[i].mbp_full_name)) {
 
-        /* We found an entry with the same param name.  Check to see
-           if we're changing types */
+        /* We found an entry with the same param name.  Check to
+           ensure that we're not changing types */
         /* Easy case: both are INT */
 
       if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type &&
@@ -1425,62 +1425,22 @@ static int param_register(const char *type_name,
           }
       } 
 
-      /* Original is INT, new is STRING */
+      /* If the original is INT and the new is STRING, or the original
+         is STRING and the new is INT, this is an OMPI developer
+         error. */
 
-      else if (MCA_BASE_PARAM_TYPE_INT == array[i].mbp_type &&
-               MCA_BASE_PARAM_TYPE_STRING == param.mbp_type) {
-          if (NULL != default_value && 
-              NULL != param.mbp_default_value.stringval) {
-              array[i].mbp_default_value.stringval =
-                  strdup(param.mbp_default_value.stringval);
-          }
-
-          if (NULL != file_value &&
-              NULL != param.mbp_file_value.stringval) {
-              array[i].mbp_file_value.stringval =
-                  strdup(param.mbp_file_value.stringval);
-              array[i].mbp_file_value_set = true;
-          }
-
-          if (NULL != override_value &&
-              NULL != param.mbp_override_value.stringval) {
-              array[i].mbp_override_value.stringval =
-                  strdup(param.mbp_override_value.stringval);
-              array[i].mbp_override_value_set = true;
-          }
-
-          array[i].mbp_type = param.mbp_type;
-      } 
-
-      /* Original is STRING, new is INT */
-
-      else if (MCA_BASE_PARAM_TYPE_STRING == array[i].mbp_type &&
-                 MCA_BASE_PARAM_TYPE_INT == param.mbp_type) {
-          if (NULL != default_value) {
-              if (NULL != array[i].mbp_default_value.stringval) {
-                  free(array[i].mbp_default_value.stringval);
-              }
-              array[i].mbp_default_value.intval =
-                  param.mbp_default_value.intval;
-          }
-          if (NULL != file_value) {
-              if (NULL != array[i].mbp_file_value.stringval) {
-                  free(array[i].mbp_file_value.stringval);
-              }
-              array[i].mbp_file_value.intval =
-                  param.mbp_file_value.intval;
-              array[i].mbp_file_value_set = true;
-          }
-          if (NULL != override_value) {
-              if (NULL != array[i].mbp_override_value.stringval) {
-                  free(array[i].mbp_override_value.stringval);
-              }
-              array[i].mbp_override_value.intval =
-                  param.mbp_override_value.intval;
-              array[i].mbp_override_value_set = true;
-          }
-
-          array[i].mbp_type = param.mbp_type;
+      else if ((MCA_BASE_PARAM_TYPE_INT    == array[i].mbp_type &&
+                MCA_BASE_PARAM_TYPE_STRING == param.mbp_type) ||
+               (MCA_BASE_PARAM_TYPE_STRING == array[i].mbp_type &&
+                MCA_BASE_PARAM_TYPE_INT    == param.mbp_type)) {
+#if OPAL_ENABLE_DEBUG
+          opal_show_help("help-mca-param.txt", 
+                         "re-register with different type",
+                         true, array[i].mbp_full_name);
+#endif
+          /* Return an error code and hope for the best. */
+          OBJ_DESTRUCT(&param);
+          return OPAL_ERR_VALUE_OUT_OF_BOUNDS;
       }
 
       /* Now delete the newly-created entry (since we just saved the
@@ -1491,7 +1451,7 @@ static int param_register(const char *type_name,
       /* Finally, if we have a lookup value, look it up */
       
       if (NULL != current_value) {
-          if (!param_lookup(i, current_value, NULL, NULL, NULL)) {
+          if (!param_lookup(i, current_value, NULL, NULL)) {
               return OPAL_ERR_NOT_FOUND;
           }
       }
@@ -1515,7 +1475,7 @@ static int param_register(const char *type_name,
   /* Finally, if we have a lookup value, look it up */
 
   if (NULL != current_value) {
-      if (!param_lookup(ret, current_value, NULL, NULL, NULL)) {
+      if (!param_lookup(ret, current_value, NULL, NULL)) {
           return OPAL_ERR_NOT_FOUND;
       }
   }
@@ -1685,7 +1645,6 @@ static bool param_set_override(size_t index,
  * Lookup a parameter in multiple places
  */
 static bool param_lookup(size_t index, mca_base_param_storage_t *storage,
-                         opal_hash_table_t *attrs,
                          mca_base_param_source_t *source_param,
                          char **source_file)
 {
@@ -2104,7 +2063,7 @@ static void param_destructor(mca_base_param_t *p)
         OBJ_RELEASE(p->mbp_synonyms);
     }
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     /* Cheap trick to reset everything to NULL */
     param_constructor(p);
 #endif
@@ -2190,4 +2149,233 @@ static void syn_info_destructor(syn_info_t *si)
     }
 
     syn_info_constructor(si);
+}
+
+int mca_base_param_find_int(const mca_base_component_t *component,
+                            const char *param_name,
+                            char **env,
+                            int *current_value)
+{
+    char *tmp, *ptr;
+    int len, i;
+    int rc=OPAL_ERR_NOT_FOUND;
+    
+    if (NULL == env) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    
+    asprintf(&tmp, "%s%s_%s_%s", mca_prefix, component->mca_type_name,
+             component->mca_component_name, param_name);
+    len = strlen(tmp);
+    for (i=0; NULL != env[i]; i++) {
+        if (0 == strncmp(tmp, env[i], len)) {
+            ptr = strchr(env[i], '=');
+            ptr++;
+            *current_value = strtol(ptr, NULL, 10);
+            rc = OPAL_SUCCESS;
+            break;
+        }
+    }
+    free(tmp);
+    return rc;
+}
+
+int mca_base_param_find_int_name(const char *type,
+                                 const char *param_name,
+                                 char **env,
+                                 int *current_value)
+{
+    char *tmp, *ptr;
+    int len, i;
+    int rc=OPAL_ERR_NOT_FOUND;
+    
+    if (NULL == env) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    
+    asprintf(&tmp, "%s%s_%s", mca_prefix, type, param_name);
+    len = strlen(tmp);
+    for (i=0; NULL != env[i]; i++) {
+        if (0 == strncmp(tmp, env[i], len)) {
+            ptr = strchr(env[i], '=');
+            ptr++;
+            *current_value = strtol(ptr, NULL, 10);
+            rc = OPAL_SUCCESS;
+            break;
+        }
+    }
+    free(tmp);
+    return rc;
+}
+
+int mca_base_param_find_string(const mca_base_component_t *component,
+                               const char *param_name,
+                               char **env,
+                               char **current_value)
+{
+    char *tmp, *ptr;
+    int len, i;
+    int rc=OPAL_ERR_NOT_FOUND;
+    
+    if (NULL == env) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    
+    asprintf(&tmp, "%s%s_%s_%s", mca_prefix, component->mca_type_name,
+             component->mca_component_name, param_name);
+    len = strlen(tmp);
+    for (i=0; NULL != env[i]; i++) {
+        if (0 == strncmp(tmp, env[i], len)) {
+            ptr = strchr(env[i], '=');
+            ptr++;
+            *current_value = ptr;
+            rc = OPAL_SUCCESS;
+            break;
+        }
+    }
+    free(tmp);
+    return rc;
+}
+
+int mca_base_param_find_string_name(const char *type,
+                                    const char *param_name,
+                                    char **env,
+                                    char **current_value)
+{
+    char *tmp, *ptr;
+    int len, i;
+    int rc=OPAL_ERR_NOT_FOUND;
+    
+    if (NULL == env) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    
+    asprintf(&tmp, "%s%s_%s", mca_prefix, type, param_name);
+    len = strlen(tmp);
+    for (i=0; NULL != env[i]; i++) {
+        if (0 == strncmp(tmp, env[i], len)) {
+            ptr = strchr(env[i], '=');
+            ptr++;
+            *current_value = ptr;
+            rc = OPAL_SUCCESS;
+            break;
+        }
+    }
+    free(tmp);
+    return rc;
+}
+
+static char *source_name(mca_base_param_source_t source, 
+                               const char *filename)
+{
+    char *ret;
+
+    switch (source) {
+    case MCA_BASE_PARAM_SOURCE_DEFAULT:
+        return strdup("default value");
+        break;
+
+    case MCA_BASE_PARAM_SOURCE_ENV:
+        return strdup("command line or environment variable");
+        break;
+
+    case MCA_BASE_PARAM_SOURCE_FILE:
+        asprintf(&ret, "file (%s)", filename);
+        return ret;
+        break;
+
+    case MCA_BASE_PARAM_SOURCE_OVERRIDE:
+        return strdup("internal override");
+        break;
+
+    default:
+        return strdup("unknown (!)");
+        break;
+    }
+}
+
+int mca_base_param_check_exclusive_string(const char *type_a,
+                                          const char *component_a,
+                                          const char *param_a,
+                                          const char *type_b,
+                                          const char *component_b,
+                                          const char *param_b)
+{
+    int i, ret;
+    mca_base_param_source_t source_a, source_b;
+    char *filename_a, *filename_b;
+
+    i = mca_base_param_find(type_a, component_a, param_a);
+    if (i < 0) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    ret = mca_base_param_lookup_source(i, &source_a, &filename_a);
+    if (OPAL_SUCCESS != ret) {
+        return ret;
+    }
+
+    i = mca_base_param_find(type_b, component_b, param_b);
+    if (i < 0) {
+        return OPAL_ERR_NOT_FOUND;
+    }
+    ret = mca_base_param_lookup_source(i, &source_b, &filename_b);
+    if (OPAL_SUCCESS != ret) {
+        return ret;
+    }
+
+    if (MCA_BASE_PARAM_SOURCE_DEFAULT != source_a &&
+        MCA_BASE_PARAM_SOURCE_DEFAULT != source_b) {
+        size_t len;
+        char *str_a, *str_b, *name_a, *name_b;
+
+        /* Form cosmetic string names for A */
+        str_a = source_name(source_a, filename_a);
+        len = 5;
+        if (NULL != type_a) len += strlen(type_a);
+        if (NULL != component_a) len += strlen(component_a);
+        if (NULL != param_a) len += strlen(param_a);
+        name_a = calloc(1, len);
+        if (NULL == name_a) {
+            return OPAL_ERR_OUT_OF_RESOURCE;
+        }
+        if (NULL != type_a) {
+            strncat(name_a, type_a, len);
+            strncat(name_a, "_", len);
+        }
+        if (NULL != component_a) strncat(name_a, component_a, len);
+        strncat(name_a, "_", len);
+        strncat(name_a, param_a, len);
+
+        /* Form cosmetic string names for B */
+        str_b = source_name(source_b, filename_b);
+        len = 5;
+        if (NULL != type_b) len += strlen(type_b);
+        if (NULL != component_b) len += strlen(component_b);
+        if (NULL != param_b) len += strlen(param_b);
+        name_b = calloc(1, len);
+        if (NULL == name_b) {
+            return OPAL_ERR_OUT_OF_RESOURCE;
+        }
+        if (NULL != type_b) {
+            strncat(name_b, type_b, len);
+            strncat(name_b, "_", len);
+        }
+        if (NULL != component_b) strncat(name_b, component_b, len);
+        strncat(name_b, "_", len);
+        strncat(name_b, param_b, len);
+
+        /* Print it all out */
+        opal_show_help("help-mca-param.txt", 
+                       "mutually exclusive params",
+                       true, name_a, str_a, name_b, str_b);
+
+        /* Free the temp strings */
+        free(str_a);
+        free(name_a);
+        free(str_b);
+        free(name_b);
+        return OPAL_ERR_BAD_PARAM;
+    }
+
+    return OPAL_SUCCESS;
 }

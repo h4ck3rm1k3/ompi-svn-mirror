@@ -9,9 +9,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -55,13 +56,13 @@
 #include "opal/util/basename.h"
 #include "opal/util/os_path.h"
 
-#if !defined(__WINDOWS__)
-#define OPAL_INCLUDE_FLAG  "-I"
-#define OPAL_LIBDIR_FLAG   "-L"
-#else
+#if defined(__WINDOWS__) && defined(_MSC_VER)
 #define OPAL_INCLUDE_FLAG  "/I"
 #define OPAL_LIBDIR_FLAG   "/LIBPATH:"
-#endif  /* !defined(__WINDOWS__) */
+#else
+#define OPAL_INCLUDE_FLAG  "-I"
+#define OPAL_LIBDIR_FLAG   "-L"
+#endif  /* !defined(__WINDOWS__) && defined(_MSC_VER) */
 
 struct options_data_t {
     char **compiler_args;
@@ -75,8 +76,12 @@ struct options_data_t {
     char *module_option;
     char **preproc_flags;
     char **comp_flags;
+    char **comp_flags_prefix;
     char **link_flags;
     char **libs;
+    char **libs_static;
+    char *dyn_lib_file;
+    char *static_lib_file;
     char *req_file;
     char *path_includedir;
     char *path_libdir;
@@ -98,6 +103,8 @@ static int default_data_idx = -1;
 #define COMP_WANT_COMPILE  0x010
 #define COMP_WANT_LINK     0x020
 #define COMP_WANT_PMPI     0x040
+#define COMP_WANT_STATIC   0x080
+#define COMP_WANT_LINKALL  0x100
 
 static void
 options_data_init(struct options_data_t *data)
@@ -116,10 +123,16 @@ options_data_init(struct options_data_t *data)
     data->preproc_flags[0] = NULL;
     data->comp_flags = (char **) malloc(sizeof(char*));
     data->comp_flags[0] = NULL;
+    data->comp_flags_prefix = (char **) malloc(sizeof(char*));
+    data->comp_flags_prefix[0] = NULL;
     data->link_flags = (char **) malloc(sizeof(char*));
     data->link_flags[0] = NULL;
     data->libs = (char **) malloc(sizeof(char*));
     data->libs[0] = NULL;
+    data->libs_static = (char **) malloc(sizeof(char*));
+    data->libs_static[0] = NULL;
+    data->dyn_lib_file = NULL;
+    data->static_lib_file = NULL;
     data->req_file = NULL;
     data->path_includedir = NULL;
     data->path_libdir = NULL;
@@ -142,8 +155,12 @@ options_data_free(struct options_data_t *data)
     if (NULL != data->module_option) free(data->module_option);
     opal_argv_free(data->preproc_flags);
     opal_argv_free(data->comp_flags);
+    opal_argv_free(data->comp_flags_prefix);
     opal_argv_free(data->link_flags);
     opal_argv_free(data->libs);
+    opal_argv_free(data->libs_static);
+    if (NULL != data->dyn_lib_file) free(data->dyn_lib_file);
+    if (NULL != data->static_lib_file) free(data->static_lib_file);
     if (NULL != data->req_file) free(data->req_file);
     if (NULL != data->path_includedir) free(data->path_includedir);
     if (NULL != data->path_libdir) free(data->path_libdir);
@@ -298,6 +315,13 @@ data_callback(const char *key, const char *value)
                          values);
         expand_flags(options_data[parse_options_idx].comp_flags);
         opal_argv_free(values);
+    } else if (0 == strcmp(key, "compiler_flags_prefix")) {
+        char **values = opal_argv_split(value, ' ');
+        opal_argv_insert(&options_data[parse_options_idx].comp_flags_prefix,
+                         opal_argv_count(options_data[parse_options_idx].comp_flags_prefix),
+                         values);
+        expand_flags(options_data[parse_options_idx].comp_flags_prefix);
+        opal_argv_free(values);
     } else if (0 == strcmp(key, "linker_flags")) {
         char **values = opal_argv_split(value, ' ');
         opal_argv_insert(&options_data[parse_options_idx].link_flags,
@@ -311,6 +335,16 @@ data_callback(const char *key, const char *value)
                          opal_argv_count(options_data[parse_options_idx].libs),
                          values);
         opal_argv_free(values);
+    } else if (0 == strcmp(key, "libs_static")) {
+        char **values = opal_argv_split(value, ' ');
+        opal_argv_insert(&options_data[parse_options_idx].libs_static,
+                         opal_argv_count(options_data[parse_options_idx].libs_static),
+                         values);
+        opal_argv_free(values);
+    } else if (0 == strcmp(key, "dyn_lib_file")) {
+        if (NULL != value) options_data[parse_options_idx].dyn_lib_file = strdup(value);
+    } else if (0 == strcmp(key, "static_lib_file")) {
+        if (NULL != value) options_data[parse_options_idx].static_lib_file = strdup(value);
     } else if (0 == strcmp(key, "required_file")) {
         if (NULL != value) options_data[parse_options_idx].req_file = strdup(value);
     } else if (0 == strcmp(key, "project_short")) {
@@ -346,14 +380,20 @@ data_callback(const char *key, const char *value)
     } else if (0 == strcmp(key, "libdir")) {
         if (NULL != value) options_data[parse_options_idx].path_libdir = 
                                opal_install_dirs_expand(value);
-#if defined(__WINDOWS__)
+#if defined(__WINDOWS__) && defined(_MSC_VER)
         opal_argv_append_nosize( &options_data[parse_options_idx].link_flags, "/link" );
-#endif  /* defined(__WINDOWS__) */
+#endif  /* defined(__WINDOWS__) && defined(_MSC_VER) */
         if (0 != strcmp(options_data[parse_options_idx].path_libdir, "/usr/lib")) {
             char *line;
 #if defined(__WINDOWS__)
+#  if defined(_MSC_VER)
             asprintf(&line, OPAL_LIBDIR_FLAG"\"%s\"", 
                      options_data[parse_options_idx].path_libdir);
+#  else
+            /* linked DLLs are in bin for MinGW build*/
+            asprintf(&line, OPAL_LIBDIR_FLAG"\"%s/../bin\"", 
+                     options_data[parse_options_idx].path_libdir);
+#  endif /* defined(_MSC_VER) */
 #else
             asprintf(&line, OPAL_LIBDIR_FLAG"%s", 
                      options_data[parse_options_idx].path_libdir);
@@ -377,9 +417,9 @@ data_init(const char *appname)
     if (NULL == datafile) return OPAL_ERR_TEMP_OUT_OF_RESOURCE;
 
     ret = opal_util_keyval_parse(datafile, data_callback);
-	if( OPAL_SUCCESS != ret ) {
-		fprintf(stderr, "Cannot open configuration file %s\n", datafile );
-	}
+    if( OPAL_SUCCESS != ret ) {
+        fprintf(stderr, "Cannot open configuration file %s\n", datafile );
+    }
     free(datafile);
 
     return ret;
@@ -477,7 +517,7 @@ main(int argc, char *argv[])
     bool disable_flags = true;
     bool real_flag = false;
 
-    if (OPAL_SUCCESS != (ret = opal_init_util())) {
+    if (OPAL_SUCCESS != (ret = opal_init_util(&argc, &argv))) {
         return ret;
     }
 
@@ -619,13 +659,36 @@ main(int argc, char *argv[])
                 goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:version", strlen("-showme:version")) ||
                        0 == strncmp(user_argv[i], "--showme:version", strlen("--showme:version"))) {
-                opal_show_help("help-opal-wrapper.txt", "version", false,
-                               argv[0], options_data[user_data_idx].project, options_data[user_data_idx].version, options_data[user_data_idx].language, NULL);
+                char * str;
+                str = opal_show_help_string("help-opal-wrapper.txt",
+                                            "version", false,
+                                            argv[0], options_data[user_data_idx].project, options_data[user_data_idx].version, options_data[user_data_idx].language, NULL);
+                if (NULL != str) {
+                    printf("%s", str);
+                    free(str);
+                }
+                goto cleanup;
+            } else if (0 == strncmp(user_argv[i], "-showme:help", strlen("-showme:help")) ||
+                       0 == strncmp(user_argv[i], "--showme:help", strlen("--showme:help"))) {
+                char *str;
+                str = opal_show_help_string("help-opal-wrapper.txt", "usage", 
+                                            false, argv[0],
+                                            options_data[user_data_idx].project, 
+                                            NULL);
+                if (NULL != str) {
+                    printf("%s", str);
+                    free(str);
+                }
+
+                exit_status = 0;
                 goto cleanup;
             } else if (0 == strncmp(user_argv[i], "-showme:", strlen("-showme:")) ||
                        0 == strncmp(user_argv[i], "--showme:", strlen("--showme:"))) {
-                opal_show_help("help-opal-wrapper.txt", "usage", true,
-                               argv[0], options_data[user_data_idx].project, NULL);
+                fprintf(stderr, "%s: unrecognized option: %s\n", argv[0],
+                        user_argv[i]);
+                fprintf(stderr, "Type '%s --showme:help' for usage.\n",
+                        argv[0]);
+                exit_status = 1;
                 goto cleanup;
             }
 
@@ -655,6 +718,43 @@ main(int argc, char *argv[])
             /* remove element from user_argv */
             opal_argv_delete(&user_argc, &user_argv, i, 1);
             --i;
+        } else if (0 == strcmp(user_argv[i], "-static") ||
+                   0 == strcmp(user_argv[i], "--static") ||
+                   0 == strcmp(user_argv[i], "-Bstatic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-static") ||
+                   0 == strcmp(user_argv[i], "-Wl,--static") ||
+                   0 == strcmp(user_argv[i], "-Wl,-Bstatic")) {
+            flags |= COMP_WANT_STATIC;
+        } else if (0 == strcmp(user_argv[i], "-dynamic") ||
+                   0 == strcmp(user_argv[i], "--dynamic") ||
+                   0 == strcmp(user_argv[i], "-Bdynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-dynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,--dynamic") ||
+                   0 == strcmp(user_argv[i], "-Wl,-Bdynamic")) {
+            flags &= ~COMP_WANT_STATIC;
+        } else if (0 == strcmp(user_argv[i], "--openmpi:linkall")) {
+            /* This is an intentionally undocummented wrapper compiler
+               switch.  It should only be used by Open MPI developers
+               -- not end users.  It will cause mpicc to use the
+               static library list, even if we're compiling
+               dynamically (i.e., it'll specifically -lopen-rte and
+               -lopen-pal (and all their dependent libs)).  We provide
+               this flag for test MPI applications that also invoke
+               ORTE and/or OPAL function calls.
+
+               On some systems (e.g., OS X), if the top-level
+               application calls ORTE/OPAL functions and you don't -l
+               ORTE and OPAL, then the functions won't be resolved at
+               link time (i.e., the implicit library dependencies of
+               libmpi won't be pulled in at link time), and therefore
+               the link will fail.  This flag will cause the wrapper
+               to explicitly list the ORTE and OPAL libs on the
+               underlying compiler command line, so the application
+               will therefore link properly. */
+            flags |= COMP_WANT_LINKALL;
+
+            /* remove element from user_argv */
+            opal_argv_delete(&user_argc, &user_argv, i, 1);
         } else if ('-' != user_argv[i][0]) {
             disable_flags = false;
             flags |= COMP_SHOW_ERROR;
@@ -712,6 +812,24 @@ main(int argc, char *argv[])
         exec_argc = 0;
     }
 
+    /* This error would normally not happen unless the user edits the 
+       wrapper data files manually */
+    if (NULL == exec_argv) {
+        opal_show_help("help-opal-wrapper.txt", "no-compiler-specified", true);
+        return 1;
+    }
+
+    if (flags & COMP_WANT_COMPILE) {
+        opal_argv_insert(&exec_argv, exec_argc,
+                         options_data[user_data_idx].comp_flags_prefix);
+        exec_argc = opal_argv_count(exec_argv);
+    }
+
+    /* Per https://svn.open-mpi.org/trac/ompi/ticket/2201, add all the
+       user arguments before anything else. */
+    opal_argv_insert(&exec_argv, exec_argc, user_argv);
+    exec_argc = opal_argv_count(exec_argv);
+
     /* preproc flags */
     if (flags & COMP_WANT_PREPROC) {
         opal_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].preproc_flags);
@@ -732,16 +850,82 @@ main(int argc, char *argv[])
         exec_argc = opal_argv_count(exec_argv);
     }
 
-    /* add all the user arguments */
-    opal_argv_insert(&exec_argv, exec_argc, user_argv);
-    exec_argc = opal_argv_count(exec_argv);
-
     /* link flags and libs */
     if (flags & COMP_WANT_LINK) {
+        bool have_static_lib;
+        bool have_dyn_lib;
+        bool use_static_libs;
+        char *filename;
+        struct stat buf;
+
         opal_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].link_flags);
         exec_argc = opal_argv_count(exec_argv);
 
-        opal_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
+        /* Are we linking statically?  If so, decide what libraries to
+           list.  It depends on two factors:
+
+           1. Was --static (etc.) specified?
+           2. Does OMPI have static, dynamic, or both libraries installed?
+
+           Here's a matrix showing what we'll do in all 6 cases:
+
+           What's installed    --static    no --static
+           ----------------    ----------  -----------
+           ompi .so libs       -lmpi       -lmpi
+           ompi .a libs        all         all
+           ompi both libs      all         -lmpi
+
+        */
+
+        filename = opal_os_path( false, options_data[user_data_idx].path_libdir, options_data[user_data_idx].static_lib_file, NULL );
+        if (0 == stat(filename, &buf)) {
+            have_static_lib = true;
+        } else {
+            have_static_lib = false;
+        }
+
+        filename = opal_os_path( false, options_data[user_data_idx].path_libdir, options_data[user_data_idx].dyn_lib_file, NULL );
+        if (0 == stat(filename, &buf)) {
+            have_dyn_lib = true;
+        } else {
+            have_dyn_lib = false;
+        }
+
+        /* Determine which set of libs to use: dynamic or static.  Be
+           pedantic to make the code easy to read. */
+        if (flags & COMP_WANT_LINKALL) {
+            /* If --openmpi:linkall was specified, list all the libs
+               (i.e., the static libs) if they're available, either in
+               static or dynamic form. */
+            if (have_static_lib || have_dyn_lib) {
+                use_static_libs = true;
+            }
+        } else if (flags & COMP_WANT_STATIC) {
+            /* If --static (or something like it) was specified, if we
+               have the static libs, then use them.  Otherwise, use
+               the dynamic libs. */
+            if (have_static_lib) {
+                use_static_libs = true;
+            } else {
+                use_static_libs = false;
+            }
+        } else {
+            /* If --static (or something like it) was NOT specified
+               (or if --dyanic, or something like it, was specified),
+               if we have the dynamic libs, then use them.  Otherwise,
+               use the static libs. */
+            if (have_dyn_lib) {
+                use_static_libs = false;
+            } else {
+                use_static_libs = true;
+            }
+        }
+
+        if (use_static_libs) {
+            opal_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs_static);
+        } else {
+            opal_argv_insert(&exec_argv, exec_argc, options_data[user_data_idx].libs);
+        }
         exec_argc = opal_argv_count(exec_argv);
     }
 

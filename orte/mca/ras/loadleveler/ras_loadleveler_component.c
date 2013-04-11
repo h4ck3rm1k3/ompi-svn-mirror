@@ -20,8 +20,7 @@
 
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "orte/util/show_help.h"
-#include "orte/util/proc_info.h"
+#include "orte/runtime/orte_globals.h"
 #include "orte/util/name_fns.h"
 
 #include "orte/mca/ras/base/ras_private.h"
@@ -69,12 +68,10 @@ static int orte_ras_loadleveler_open(void)
 {
     /* for now we set the priority lower then the priority of the POE RAS
      * so that it is used whenever the LOADL_PROCESSOR_LIST is actually set */
-    param_priority = 
-        mca_base_param_reg_int(&mca_ras_loadleveler_component.base_version,
-                               "priority",
-                               "Priority of the loadleveler ras component",
-                               false, false, 90, NULL);
-
+    mca_base_param_reg_int(&mca_ras_loadleveler_component.base_version,
+                           "priority",
+                           "Priority of the loadleveler ras component",
+                           false, false, 90, &param_priority);
     return ORTE_SUCCESS;
 }
 
@@ -83,7 +80,7 @@ static int orte_ras_loadleveler_component_query(mca_base_module_t **module, int 
     /* Are we running under a LOADLEVELER job? */
     if (NULL != getenv("LOADL_STEP_ID")) {
         mca_base_param_lookup_int(param_priority, priority);
-        OPAL_OUTPUT_VERBOSE((1, orte_ras_base.ras_output,
+        OPAL_OUTPUT_VERBOSE((2, orte_ras_base.ras_output,
                              "%s ras:loadleveler: available for selection",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
         *module = (mca_base_module_t *) &orte_ras_loadleveler_module;
@@ -91,7 +88,7 @@ static int orte_ras_loadleveler_component_query(mca_base_module_t **module, int 
     }
 
     /* Sadly, no */
-    OPAL_OUTPUT_VERBOSE((1, orte_ras_base.ras_output,
+    OPAL_OUTPUT_VERBOSE((2, orte_ras_base.ras_output,
                          "%s ras:loadleveler: NOT available for selection",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
     *module = NULL;

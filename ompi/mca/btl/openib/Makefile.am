@@ -5,17 +5,23 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+# Copyright (c) 2007-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2011      NVIDIA Corporation.  All rights reserved.
+# Copyright (c) 2011      Mellanox Technologies.  All rights reserved.
+# Copyright (c) 2012      Oak Ridge National Laboratory.  All rights reserved
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
+
+EXTRA_DIST = .windows
 
 AM_CPPFLAGS = $(btl_openib_CPPFLAGS)
 AM_LFLAGS = -Pbtl_openib_ini_yy
@@ -52,8 +58,8 @@ sources = \
     btl_openib_xrc.h \
     btl_openib_fd.h \
     btl_openib_fd.c \
-    btl_openib_iwarp.h \
-    btl_openib_iwarp.c \
+    btl_openib_ip.h \
+    btl_openib_ip.c \
     connect/base.h \
     connect/btl_openib_connect_base.c \
     connect/btl_openib_connect_oob.c \
@@ -62,20 +68,18 @@ sources = \
     connect/btl_openib_connect_empty.h \
     connect/connect.h
 
+# If we have failover support, build that file
+if MCA_btl_openib_enable_failover
+sources += \
+    btl_openib_failover.c \
+    btl_openib_failover.h
+endif
+
 # If we have XRC support, build that CPC
 if MCA_btl_openib_have_xrc
 sources += \
     connect/btl_openib_connect_xoob.c \
     connect/btl_openib_connect_xoob.h
-endif
-
-# If we have ibcm support, build that CPC
-if MCA_btl_openib_have_ibcm
-sources += \
-    connect/btl_openib_connect_ibcm.c \
-    connect/btl_openib_connect_ibcm.h
-
-dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-ibcm.txt
 endif
 
 # If we have rdmacm support, build that CPC
@@ -87,11 +91,27 @@ sources += \
 dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-rdmacm.txt
 endif
 
+# If we have udcm support, build that CPC
+if MCA_btl_openib_have_udcm
+sources += \
+    connect/btl_openib_connect_udcm.c \
+    connect/btl_openib_connect_udcm.h
+
+# dist_pkgdata_DATA += connect/help-mpi-btl-openib-cpc-ud.txt
+endif
+
+# If we have dynamic SL support, build those files
+if MCA_btl_openib_have_dynamic_sl
+sources += \
+    connect/btl_openib_connect_sl.c \
+    connect/btl_openib_connect_sl.h
+endif
+
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if OMPI_BUILD_btl_openib_DSO
+if MCA_BUILD_ompi_btl_openib_DSO
 lib =
 lib_sources =
 component = mca_btl_openib.la
@@ -106,10 +126,15 @@ endif
 mcacomponentdir = $(pkglibdir)
 mcacomponent_LTLIBRARIES = $(component)
 mca_btl_openib_la_SOURCES = $(component_sources)
-mca_btl_openib_la_LDFLAGS = -module -avoid-version $(btl_openib_LDFLAGS) 
-mca_btl_openib_la_LIBADD = $(btl_openib_LIBS)
+mca_btl_openib_la_LDFLAGS = -module -avoid-version $(btl_openib_LDFLAGS)
+mca_btl_openib_la_LIBADD = $(btl_openib_LIBS) \
+    $(top_ompi_builddir)/ompi/mca/common/ofautils/libmca_common_ofautils.la
+if MCA_ompi_cuda_support
+mca_btl_openib_la_LIBADD += \
+    $(top_ompi_builddir)/ompi/mca/common/cuda/libmca_common_cuda.la
+endif
 
 noinst_LTLIBRARIES = $(lib)
 libmca_btl_openib_la_SOURCES = $(lib_sources)
-libmca_btl_openib_la_LDFLAGS= -module -avoid-version $(btl_openib_LDFLAGS) 
+libmca_btl_openib_la_LDFLAGS= -module -avoid-version $(btl_openib_LDFLAGS)
 libmca_btl_openib_la_LIBADD = $(btl_openib_LIBS)

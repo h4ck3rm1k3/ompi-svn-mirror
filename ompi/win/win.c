@@ -11,6 +11,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -38,6 +39,7 @@
 opal_pointer_array_t ompi_mpi_windows; 
 
 ompi_predefined_win_t ompi_mpi_win_null;
+ompi_predefined_win_t *ompi_mpi_win_null_addr = &ompi_mpi_win_null;
 
 static void ompi_win_construct(ompi_win_t *win);
 static void ompi_win_destruct(ompi_win_t *win);
@@ -103,14 +105,14 @@ ompi_win_create(void *base, size_t size,
 
     /* Fill in required attributes */
     ret = ompi_attr_set_c(WIN_ATTR, win, &win->w_keyhash, 
-                          MPI_WIN_BASE, win->w_baseptr, true, true);
+                          MPI_WIN_BASE, win->w_baseptr, true);
     if (OMPI_SUCCESS != ret) {
         OBJ_RELEASE(win);
         return ret;
     }
     ret = ompi_attr_set_fortran_mpi2(WIN_ATTR, win, 
                                      &win->w_keyhash, 
-                                     MPI_WIN_SIZE, win->w_size, true, true);
+                                     MPI_WIN_SIZE, win->w_size, true);
     if (OMPI_SUCCESS != ret) {
         OBJ_RELEASE(win);
         return ret;
@@ -118,7 +120,7 @@ ompi_win_create(void *base, size_t size,
     ret = ompi_attr_set_fortran_mpi2(WIN_ATTR, win, 
                                      &win->w_keyhash, 
                                      MPI_WIN_DISP_UNIT, win->w_disp_unit,
-                                     true, true);
+                                     true);
     if (OMPI_SUCCESS != ret) {
         OBJ_RELEASE(win);
         return ret;

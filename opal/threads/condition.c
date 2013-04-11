@@ -18,7 +18,6 @@
 
 #include "opal_config.h"
 
-#include "opal/threads/mutex.h"
 #include "opal/threads/condition.h"
 
 
@@ -26,17 +25,21 @@ static void opal_condition_construct(opal_condition_t *c)
 {
     c->c_waiting = 0;
     c->c_signaled = 0;
-#if OMPI_HAVE_POSIX_THREADS
+#if OPAL_HAVE_POSIX_THREADS
     pthread_cond_init(&c->c_cond, NULL);
 #endif
+    c->name = NULL;
 }
 
 
 static void opal_condition_destruct(opal_condition_t *c)
 {
-#if OMPI_HAVE_POSIX_THREADS
+#if OPAL_HAVE_POSIX_THREADS
     pthread_cond_destroy(&c->c_cond);
 #endif
+    if (NULL != c->name) {
+        free(c->name);
+    }
 }
 
 OBJ_CLASS_INSTANCE(opal_condition_t,

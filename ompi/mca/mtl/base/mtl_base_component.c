@@ -19,10 +19,9 @@
 #include "ompi_config.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
-#include "orte/util/show_help.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/constants.h"
 #include "ompi/mca/mtl/mtl.h"
@@ -58,7 +57,7 @@ ompi_mtl_base_open(void)
         mca_base_components_open("mtl", ompi_mtl_base_output,
                                  mca_mtl_base_static_components, 
                                  &ompi_mtl_base_components_opened,
-                                 !MCA_mtl_DIRECT_CALL)) {
+                                 !MCA_ompi_mtl_DIRECT_CALL)) {
         return OMPI_ERROR;
     }
 

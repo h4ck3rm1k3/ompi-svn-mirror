@@ -10,6 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
+dnl Copyright (c) 2012      Oracle and/or its affiliates.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -57,6 +58,9 @@ AC_DEFUN([OMPI_CXX_COMPILER_VENDOR], [
     $1="$ompi_cv_c_compiler_vendor"
 ])
 
+# workaround to avoid syntax error with Autoconf < 2.68:
+m4_ifndef([AC_LANG_DEFINES_PROVIDED],
+	  [m4_define([AC_LANG_DEFINES_PROVIDED])])
 
 # OMPI_IFDEF_IFELSE(symbol, [action-if-defined], 
 #                   [action-if-not-defined])
@@ -64,7 +68,8 @@ AC_DEFUN([OMPI_CXX_COMPILER_VENDOR], [
 # Run compiler to determine if preprocessor symbol "symbol" is
 # defined by the compiler.
 AC_DEFUN([OMPI_IFDEF_IFELSE], [
-    AC_COMPILE_IFELSE([#ifndef $1
+    AC_COMPILE_IFELSE([AC_LANG_DEFINES_PROVIDED
+#ifndef $1
 #error "symbol $1 not defined"
 choke me
 #endif], [$2], [$3])])
@@ -76,7 +81,8 @@ choke me
 # Run compiler to determine if preprocessor symbol "symbol" is
 # defined by the compiler.
 AC_DEFUN([OMPI_IF_IFELSE], [
-    AC_COMPILE_IFELSE([#if !( $1 )
+    AC_COMPILE_IFELSE([AC_LANG_DEFINES_PROVIDED
+#if !( $1 )
 #error "condition $1 not met"
 choke me
 #endif], [$2], [$3])])
@@ -105,7 +111,25 @@ AC_DEFUN([_OMPI_CHECK_COMPILER_VENDOR], [
     # GNU
     AS_IF([test "$ompi_check_compiler_vendor_result" = "unknown"],
           [OMPI_IFDEF_IFELSE([__GNUC__], 
-               [ompi_check_compiler_vendor_result="gnu"])])
+               [ompi_check_compiler_vendor_result="gnu"
+
+               # We do not support gccfss as a compiler so die if 
+               # someone tries to use said compiler.  gccfss (gcc 
+               # for SPARC Systems) is a compiler that is no longer 
+               # supported by Oracle and it has some major flaws
+               # that prevents it from actually compiling OMPI code. 
+               # So if we detect it we automatically bail.
+
+               if ($CC --version | grep gccfss) >/dev/null 2>&1; then
+                   AC_MSG_RESULT([gccfss])
+                   AC_MSG_WARN([Detected gccfss being used to compile Open MPI.])
+                   AC_MSG_WARN([Because of several issues Open MPI does not support])
+                   AC_MSG_WARN([the gccfss compiler.  Please use a different compiler.])
+                   AC_MSG_WARN([If you didn't think you used gccfss you may want to])
+                   AC_MSG_WARN([check to see if the compiler you think you used is])
+                   AC_MSG_WARN([actually a link to gccfss.])
+                   AC_MSG_ERROR([Cannot continue])
+               fi])])
 
     # Borland Turbo C
     AS_IF([test "$ompi_check_compiler_vendor_result" = "unknown"],

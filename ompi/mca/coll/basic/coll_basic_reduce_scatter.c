@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,10 +25,12 @@
 #include <errno.h>
 
 #include "mpi.h"
+#include "opal/util/bit_ops.h"
 #include "ompi/constants.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/mca/pml/pml.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "coll_basic.h"
 #include "ompi/op/op.h"
 
@@ -100,8 +103,8 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
     }
 
     /* get datatype information */
-    ompi_ddt_get_extent(dtype, &lb, &extent);
-    ompi_ddt_get_true_extent(dtype, &true_lb, &true_extent);
+    ompi_datatype_get_extent(dtype, &lb, &extent);
+    ompi_datatype_get_true_extent(dtype, &true_lb, &true_extent);
     buf_size = true_extent + (count - 1) * extent;
 
     /* Handle MPI_IN_PLACE */
@@ -111,7 +114,7 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
 
     if ((op->o_flags & OMPI_OP_FLAGS_COMMUTE) &&
         (buf_size < COMMUTATIVE_LONG_MSG) && (!zerocounts)) {
-        int tmp_size = 1, remain = 0, tmp_rank;
+        int tmp_size, remain = 0, tmp_rank;
 
         /* temporary receive buffer.  See coll_basic_reduce.c for details on sizing */
         recv_buf_free = (char*) malloc(buf_size);
@@ -126,13 +129,13 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
         result_buf = result_buf_free - lb;
 
         /* copy local buffer into the temporary results */
-        err = ompi_ddt_sndrcv(sbuf, count, dtype, result_buf, count, dtype);
+        err = ompi_datatype_sndrcv(sbuf, count, dtype, result_buf, count, dtype);
         if (OMPI_SUCCESS != err) goto cleanup;
 
         /* figure out power of two mapping: grow until larger than
            comm size, then go back one, to get the largest power of
            two less than comm size */
-        while (tmp_size <= size) tmp_size <<= 1;
+        tmp_size = opal_next_poweroftwo(size);
         tmp_size >>= 1;
         remain = size - tmp_size;
 
@@ -153,6 +156,7 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
                 err = MCA_PML_CALL(recv(recv_buf, count, dtype, rank - 1,
                                         MCA_COLL_BASE_TAG_REDUCE_SCATTER,
                                         comm, MPI_STATUS_IGNORE));
+                if (OMPI_SUCCESS != err) goto cleanup;
 
                 /* integrate their results into our temp results */
                 ompi_op_reduce(op, recv_buf, result_buf, count, dtype);
@@ -286,7 +290,7 @@ mca_coll_basic_reduce_scatter_intra(void *sbuf, void *rbuf, int *rcounts,
 
             /* copy local results from results buffer into real receive buffer */
             if (0 != rcounts[rank]) {
-                err = ompi_ddt_sndrcv(result_buf + disps[rank] * extent,
+                err = ompi_datatype_sndrcv(result_buf + disps[rank] * extent,
                                       rcounts[rank], dtype, 
                                       rbuf, rcounts[rank], dtype);
                 if (OMPI_SUCCESS != err) {
@@ -404,7 +408,7 @@ mca_coll_basic_reduce_scatter_inter(void *sbuf, void *rbuf, int *rcounts,
      * its size is the same as the local communicator size.
      */
     if (rank == root) {
-        err = ompi_ddt_get_extent(dtype, &lb, &extent);
+        err = ompi_datatype_get_extent(dtype, &lb, &extent);
         if (OMPI_SUCCESS != err) {
             return OMPI_ERROR;
         }

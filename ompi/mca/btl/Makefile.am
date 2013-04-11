@@ -9,6 +9,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -22,19 +23,14 @@ AM_CPPFLAGS = $(LTDLINCL)
 noinst_LTLIBRARIES = libmca_btl.la
 libmca_btl_la_SOURCES =
 
-# header setup
-nobase_ompi_HEADERS =
-
 # local files
 headers = btl.h
 libmca_btl_la_SOURCES += $(headers)
 
 # Conditionally install the header files
 if WANT_INSTALL_HEADERS
-nobase_ompi_HEADERS += $(headers)
-ompidir = $(includedir)/openmpi/ompi/mca/btl
-else
-ompidir = $(includedir)
+ompidir = $(includedir)/openmpi/$(subdir)
+nobase_ompi_HEADERS = $(headers)
 endif
 
 include base/Makefile.am

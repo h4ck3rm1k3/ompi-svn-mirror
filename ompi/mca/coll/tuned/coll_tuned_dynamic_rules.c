@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 FUJITSU LIMITED.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,11 +21,7 @@
 
 #include "mpi.h"
 #include "opal/mca/mca.h"
-#include "ompi/mca/coll/coll.h"
-#include "ompi/request/request.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/communicator/communicator.h"
 #include "coll_tuned.h"
 
 /* need to include our own topo prototypes so we can malloc data on the comm correctly */
@@ -82,7 +79,7 @@ ompi_coll_msg_rule_t* ompi_coll_tuned_mk_msg_rules (int n_msg_rules, int alg_rul
     msg_rules = (ompi_coll_msg_rule_t *) calloc (n_msg_rules, sizeof (ompi_coll_msg_rule_t));
     if (!msg_rules) return (msg_rules);
 
-    for (i=0;i<n_msg_rules;i++) {
+    for( i = 0; i < n_msg_rules; i++ ) {
         msg_rules[i].mpi_comsize = mpi_comsize;
         msg_rules[i].alg_rule_id = alg_rule_id;
         msg_rules[i].com_rule_id = com_rule_id;
@@ -101,8 +98,6 @@ ompi_coll_msg_rule_t* ompi_coll_tuned_mk_msg_rules (int n_msg_rules, int alg_rul
  * Debug / IO routines 
  *
  */ 
-
-
 int ompi_coll_tuned_dump_msg_rule (ompi_coll_msg_rule_t* msg_p)
 {
     if (!msg_p) {
@@ -113,7 +108,7 @@ int ompi_coll_tuned_dump_msg_rule (ompi_coll_msg_rule_t* msg_p)
     OPAL_OUTPUT((ompi_coll_tuned_stream,"alg_id %3d\tcom_id %3d\tcom_size %3d\tmsg_id %3d\t", msg_p->alg_rule_id, 
                  msg_p->com_rule_id, msg_p->mpi_comsize, msg_p->msg_rule_id));
 
-    OPAL_OUTPUT((ompi_coll_tuned_stream,"msg_size %6d -> algorithm %2d\ttopo in/out %2d\tsegsize %5ld\tmax_requests %4d\n", 
+    OPAL_OUTPUT((ompi_coll_tuned_stream,"msg_size %10lu -> algorithm %2d\ttopo in/out %2d\tsegsize %5ld\tmax_requests %4d\n", 
                  msg_p->msg_size, msg_p->result_alg, msg_p->result_topo_faninout, msg_p->result_segsize, 
                  msg_p->result_max_requests));
 
@@ -196,8 +191,6 @@ int ompi_coll_tuned_dump_all_rules (ompi_coll_alg_rule_t* alg_p, int n_rules)
  * Memory free routines
  *
  */
-
-
 int ompi_coll_tuned_free_msg_rules_in_com_rule (ompi_coll_com_rule_t* com_p)
 {
     int rc=0;
@@ -227,7 +220,6 @@ int ompi_coll_tuned_free_msg_rules_in_com_rule (ompi_coll_com_rule_t* com_p)
 }
 
 
-
 int ompi_coll_tuned_free_coms_in_alg_rule (ompi_coll_alg_rule_t* alg_p)
 {
     int rc=0;
@@ -245,10 +237,9 @@ int ompi_coll_tuned_free_coms_in_alg_rule (ompi_coll_alg_rule_t* alg_p)
 
         if (!com_p) {
             OPAL_OUTPUT((ompi_coll_tuned_stream,"attempt to free NULL com_rules when com count was %d\n", alg_p->n_com_sizes));
-        }
-        else {
+        } else {
             /* ok, memory exists for the com rules so free their message rules first */
-            for (i=0;i<alg_p->n_com_sizes;i++) {
+            for( i = 0; i < alg_p->n_com_sizes; i++ ) {
                 com_p = &(alg_p->com_rules[i]);
                 ompi_coll_tuned_free_msg_rules_in_com_rule (com_p);
             }
@@ -268,7 +259,7 @@ int ompi_coll_tuned_free_all_rules (ompi_coll_alg_rule_t* alg_p, int n_algs)
     int i;
     int rc = 0;
 
-    for(i=0;i<n_algs;i++) {
+    for( i = 0; i < n_algs; i++ ) {
         rc += ompi_coll_tuned_free_coms_in_alg_rule (&(alg_p[i]));
     }
 
@@ -276,8 +267,6 @@ int ompi_coll_tuned_free_all_rules (ompi_coll_alg_rule_t* alg_p, int n_algs)
 
     return (rc);
 }
-
-
 
 /* 
  * query functions
@@ -350,7 +339,7 @@ ompi_coll_com_rule_t* ompi_coll_tuned_get_com_rule_ptr (ompi_coll_alg_rule_t* ru
  *
  */
 
-int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, int mpi_msgsize, int *result_topo_faninout, 
+int ompi_coll_tuned_get_target_method_params (ompi_coll_com_rule_t* base_com_rule, size_t mpi_msgsize, int *result_topo_faninout, 
                                               int* result_segsize, int* max_requests)
 {
     ompi_coll_msg_rule_t*  msg_p = (ompi_coll_msg_rule_t*) NULL;

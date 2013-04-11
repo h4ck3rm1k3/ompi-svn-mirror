@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC. All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -27,7 +28,6 @@
 #endif  /* HAVE_STRING_H */
 
 #include "opal/util/argv.h"
-#include "opal/util/strncpy.h"
 #include "opal/constants.h"
 
 #define ARGSIZE 128
@@ -90,7 +90,41 @@ int opal_argv_append_nosize(char ***argv, const char *arg)
     return OPAL_SUCCESS;
 }
 
-int opal_argv_append_unique_nosize(char ***argv, const char *arg)
+int opal_argv_prepend_nosize(char ***argv, const char *arg)
+{
+    int argc;
+    int i;
+
+    /* Create new argv. */
+
+    if (NULL == *argv) {
+        *argv = (char**) malloc(2 * sizeof(char *));
+        if (NULL == *argv) {
+            return OPAL_ERR_OUT_OF_RESOURCE;
+        }
+        (*argv)[0] = strdup(arg);
+        (*argv)[1] = NULL;
+    } else {
+        /* count how many entries currently exist */
+        argc = opal_argv_count(*argv);
+        
+        *argv = (char**) realloc(*argv, (argc + 2) * sizeof(char *));
+        if (NULL == *argv) {
+            return OPAL_ERR_OUT_OF_RESOURCE;
+        }
+        (*argv)[argc+1] = NULL;
+
+        /* shift all existing elements down 1 */
+        for (i=argc; 0 < i; i--) {
+            (*argv)[i] = (*argv)[i-1];
+        }
+        (*argv)[0] = strdup(arg);
+    }
+
+    return OPAL_SUCCESS;
+}
+
+int opal_argv_append_unique_nosize(char ***argv, const char *arg, bool overwrite)
 {
     int i;
     
@@ -104,7 +138,11 @@ int opal_argv_append_unique_nosize(char ***argv, const char *arg)
     /* see if this arg is already present in the array */
     for (i=0; NULL != (*argv)[i]; i++) {
         if (0 == strcmp(arg, (*argv)[i])) {
-            /* already exists - nothing to do */
+            /* already exists - are we authorized to overwrite? */
+            if (overwrite) {
+                free((*argv)[i]);
+                (*argv)[i] = strdup(arg);
+            }
             return OPAL_SUCCESS;
         }
     }
@@ -158,7 +196,7 @@ static char **opal_argv_split_inter(const char *src_string, int delimiter,
     if (src_string == p) {
       if (include_empty) {
         arg[0] = '\0';
-        if (OPAL_ERROR == opal_argv_append(&argc, &argv, arg))
+        if (OPAL_SUCCESS != opal_argv_append(&argc, &argv, arg))
           return NULL;
       }
     }
@@ -166,7 +204,7 @@ static char **opal_argv_split_inter(const char *src_string, int delimiter,
     /* tail argument, add straight from the original string */
 
     else if ('\0' == *p) {
-      if (OPAL_ERROR == opal_argv_append(&argc, &argv, src_string))
+      if (OPAL_SUCCESS != opal_argv_append(&argc, &argv, src_string))
 	return NULL;
       src_string = p;
       continue;
@@ -182,7 +220,7 @@ static char **opal_argv_split_inter(const char *src_string, int delimiter,
       strncpy(argtemp, src_string, arglen);
       argtemp[arglen] = '\0';
 
-      if (OPAL_ERROR == opal_argv_append(&argc, &argv, argtemp)) {
+      if (OPAL_SUCCESS != opal_argv_append(&argc, &argv, argtemp)) {
 	free(argtemp);
 	return NULL;
       }
@@ -196,7 +234,7 @@ static char **opal_argv_split_inter(const char *src_string, int delimiter,
       strncpy(arg, src_string, arglen);
       arg[arglen] = '\0';
 
-      if (OPAL_ERROR == opal_argv_append(&argc, &argv, arg))
+      if (OPAL_SUCCESS != opal_argv_append(&argc, &argv, arg))
 	return NULL;
     }
 
@@ -386,7 +424,7 @@ char **opal_argv_copy(char **argv)
   dupv[0] = NULL;
 
   while (NULL != *argv) {
-    if (OPAL_ERROR == opal_argv_append(&dupc, &dupv, *argv)) {
+    if (OPAL_SUCCESS != opal_argv_append(&dupc, &dupv, *argv)) {
       opal_argv_free(dupv);
       return NULL;
     }
@@ -503,5 +541,44 @@ int opal_argv_insert(char ***target, int start, char **source)
 
     /* All done */
 
+    return OPAL_SUCCESS;
+}
+
+int opal_argv_insert_element(char ***target, int location, char *source)
+{
+    int i, target_count;
+    int suffix_count;
+    
+    /* Check for the bozo cases */
+    
+    if (NULL == target || NULL == *target || location < 0) {
+        return OPAL_ERR_BAD_PARAM;
+    } else if (NULL == source) {
+        return OPAL_SUCCESS;
+    }
+    
+    /* Easy case: appending to the end */
+    target_count = opal_argv_count(*target);
+    if (location > target_count) {
+        opal_argv_append(&target_count, target, source);
+        return OPAL_SUCCESS;
+    }
+    
+    /* Alloc out new space */
+    *target = (char**) realloc(*target, 
+                               sizeof(char*) * (target_count + 2));
+    
+    /* Move suffix items down to the end */
+    suffix_count = target_count - location;
+    for (i = suffix_count - 1; i >= 0; --i) {
+        (*target)[location + 1 + i] =
+        (*target)[location + i];
+    }
+    (*target)[location + suffix_count + 1] = NULL;
+    
+    /* Strdup in the source */
+    (*target)[location] = strdup(source);
+    
+    /* All done */
     return OPAL_SUCCESS;
 }

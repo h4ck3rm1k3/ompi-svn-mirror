@@ -19,9 +19,12 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Comm_set_errhandler = PMPI_Comm_set_errhandler
 #endif
 
@@ -59,24 +62,17 @@ int MPI_Comm_set_errhandler(MPI_Comm comm, MPI_Errhandler errhandler)
         }
     }
 
+    /* Prepare the new error handler */
+    OBJ_RETAIN(errhandler);
+
     /* Ditch the old errhandler, and decrement its refcount.  On 64
        bits environments we have to make sure the reading of the
        error_handler became atomic. */
     do {
         tmp = comm->error_handler;
-    } while (!OPAL_ATOMIC_CMPSET(&(comm->error_handler), tmp, tmp));
+    } while (!OPAL_ATOMIC_CMPSET(&(comm->error_handler), tmp, errhandler));
     OBJ_RELEASE(tmp);
 
-    /* Now set the new errhandler and increase its refcount */
-
-    do {
-        comm->error_handler = errhandler;
-    } while (!OPAL_ATOMIC_CMPSET(&(errhandler), comm->error_handler, 
-                                 comm->error_handler));
-    comm->error_handler = errhandler;
-    OBJ_RETAIN(errhandler);
-
     /* All done */
-  
     return MPI_SUCCESS;
 }

@@ -10,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2008      UT-Battelle, LLC
-# Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,6 +23,9 @@ AM_CPPFLAGS = $(ras_alps_CPPFLAGS)
 dist_pkgdata_DATA = help-ras-alps.txt \
 		  ras-alps-command.sh
 
+install-data-hook:
+	chmod +x $(DESTDIR)$(pkgdatadir)/ras-alps-command.sh
+
 sources = \
         ras_alps.h \
         ras_alps_component.c \
@@ -33,7 +36,7 @@ sources = \
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if OMPI_BUILD_ras_alps_DSO
+if MCA_BUILD_orte_ras_alps_DSO
 lib =
 lib_sources = 
 component = mca_ras_alps.la
@@ -50,8 +53,10 @@ mcacomponent_LTLIBRARIES = $(component)
 mca_ras_alps_la_SOURCES = $(component_sources)
 mca_ras_alps_la_LDFLAGS = -module -avoid-version $(ras_alps_LDFLAGS)
 mca_ras_alps_la_LIBADD = $(ras_alps_LIBS)
+mca_ras_alps_la_CPPFLAGS = $(ras_alps_CPPFLAGS)
 
 noinst_LTLIBRARIES = $(lib)
 libmca_ras_alps_la_SOURCES = $(lib_sources)
 libmca_ras_alps_la_LDFLAGS = -module -avoid-version $(ras_alps_LDFLAGS)
 libmca_ras_alps_la_LIBADD = $(ras_alps_LIBS)
+libmca_ras_alps_la_CPPFLAGS = $(ras_alps_CPPFLAGS)

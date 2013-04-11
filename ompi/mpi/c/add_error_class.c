@@ -20,10 +20,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/errhandler/errcode.h"
+#include "ompi/communicator/communicator.h"
 #include "ompi/attribute/attribute.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Add_error_class = PMPI_Add_error_class
 #endif
 
@@ -67,7 +70,7 @@ int MPI_Add_error_class(int *errorclass)
 				      &MPI_COMM_WORLD->c_keyhash,
 				      MPI_LASTUSEDCODE, 
 				      ompi_mpi_errcode_lastused,
-				      true, true);
+				      true);
     if ( MPI_SUCCESS != rc ) {
 	return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, rc, FUNC_NAME);
     }

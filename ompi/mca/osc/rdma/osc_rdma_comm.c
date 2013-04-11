@@ -7,8 +7,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,6 +27,8 @@
 #include "osc_rdma_header.h"
 #include "osc_rdma_data_move.h"
 #include "ompi/memchecker.h"
+#include "ompi/mca/osc/base/osc_base_obj_convert.h"
+#include "opal_stdint.h"
 
 static int
 enqueue_sendreq(ompi_osc_rdma_module_t *module,
@@ -44,7 +47,8 @@ enqueue_sendreq(ompi_osc_rdma_module_t *module,
 int
 ompi_osc_rdma_module_accumulate(void *origin_addr, int origin_count,
                                  struct ompi_datatype_t *origin_dt,
-                                 int target, int target_disp, int target_count,
+                                 int target, OPAL_PTRDIFF_TYPE target_disp, 
+                                 int target_count,
                                  struct ompi_datatype_t *target_dt,
                                  struct ompi_op_t *op, ompi_win_t *win)
 {
@@ -87,7 +91,45 @@ ompi_osc_rdma_module_accumulate(void *origin_addr, int origin_count,
 
     sendreq->req_op_id = op->o_f_to_c_index;
 
-    if (0 && module->m_eager_send_active) {
+    if (module->m_eager_send_active) {
+        /* accumulate semantics require send to self, which is bloody
+           expensive with the extra copies.  Put a shortcut in for the
+           common case. */
+        if (target == ompi_comm_rank(sendreq->req_module->m_comm) &&
+            ompi_datatype_is_contiguous_memory_layout(sendreq->req_target_datatype,
+                                                 sendreq->req_target_count) &&
+            !opal_convertor_need_buffers(&sendreq->req_origin_convertor) &&
+            0 == OPAL_THREAD_TRYLOCK(&module->m_acc_lock)) {
+            void *target_buffer = (unsigned char*) module->m_win->w_baseptr + 
+                ((unsigned long) target_disp * 
+                 module->m_win->w_disp_unit);
+
+            struct iovec iov;
+            uint32_t iov_count = 1;
+            size_t max_data = sendreq->req_origin_bytes_packed;
+
+            iov.iov_len = max_data;
+            iov.iov_base = NULL;
+            ret = opal_convertor_pack(&sendreq->req_origin_convertor,
+                                      &iov, &iov_count,
+                                      &max_data);
+            if (ret < 0) {
+                OPAL_THREAD_UNLOCK(&module->m_acc_lock);
+                return OMPI_ERR_FATAL;
+            }
+
+            ret = ompi_osc_base_process_op(target_buffer,
+                                           iov.iov_base,
+                                           max_data,
+                                           target_dt,
+                                           target_count,
+                                           op);
+            /* unlock the window for accumulates */
+            OPAL_THREAD_UNLOCK(&module->m_acc_lock);
+            ompi_osc_rdma_sendreq_free(sendreq);
+            return ret;
+        }
+
         OPAL_THREAD_LOCK(&module->m_lock);
         sendreq->req_module->m_num_pending_out += 1;
         module->m_num_pending_sendreqs[sendreq->req_target_rank] += 1;
@@ -95,7 +137,7 @@ ompi_osc_rdma_module_accumulate(void *origin_addr, int origin_count,
 
         ret  = ompi_osc_rdma_sendreq_send(module, sendreq);
 
-        if (OMPI_SUCCESS != ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
             OPAL_THREAD_LOCK(&module->m_lock);
             sendreq->req_module->m_num_pending_out -= 1;
             opal_list_append(&(module->m_pending_sendreqs),
@@ -117,7 +159,7 @@ ompi_osc_rdma_module_get(void *origin_addr,
                           int origin_count,
                           struct ompi_datatype_t *origin_dt,
                           int target,
-                          int target_disp,
+                          OPAL_PTRDIFF_TYPE target_disp,
                           int target_count,
                           struct ompi_datatype_t *target_dt,
                           ompi_win_t *win)
@@ -167,7 +209,7 @@ ompi_osc_rdma_module_get(void *origin_addr,
 
         ret  = ompi_osc_rdma_sendreq_send(module, sendreq);
 
-        if (OMPI_SUCCESS != ret) {
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
             OPAL_THREAD_LOCK(&module->m_lock);
             sendreq->req_module->m_num_pending_out -= 1;
             opal_list_append(&(module->m_pending_sendreqs),
@@ -187,7 +229,8 @@ ompi_osc_rdma_module_get(void *origin_addr,
 int
 ompi_osc_rdma_module_put(void *origin_addr, int origin_count,
                           struct ompi_datatype_t *origin_dt,
-                          int target, int target_disp, int target_count,
+                          int target, OPAL_PTRDIFF_TYPE target_disp, 
+                          int target_count,
                           struct ompi_datatype_t *target_dt, ompi_win_t *win)
 {
     int ret;
@@ -235,8 +278,7 @@ ompi_osc_rdma_module_put(void *origin_addr, int origin_count,
 
         ret  = ompi_osc_rdma_sendreq_send(module, sendreq);
 
-        if (OMPI_SUCCESS != ret) {
-            opal_output(0, "rdma_senreq_send from put failed: %d", ret);
+        if (OMPI_ERR_TEMP_OUT_OF_RESOURCE == ret) {
             OPAL_THREAD_LOCK(&module->m_lock);
             sendreq->req_module->m_num_pending_out -= 1;
             opal_list_append(&(module->m_pending_sendreqs),

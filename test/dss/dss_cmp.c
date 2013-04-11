@@ -17,7 +17,6 @@
  */
 
 #include "opal_config.h"
-#include "opal/constants.h"
 
 
 #include <stdio.h>
@@ -55,7 +54,7 @@ FILE *test_out;
 
 int main (int argc, char* argv[])
 {
-    opal_init();
+    opal_init(&argc, &argv);
 
     test_out = stderr;
 

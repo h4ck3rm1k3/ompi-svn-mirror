@@ -27,17 +27,11 @@
 #include "ompi_config.h"
 
 #include "opal/mca/mca.h"
-#include "ompi/mca/crcp/crcp.h"
-#include "ompi/communicator/communicator.h"
-#include "opal/runtime/opal_cr.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
 
+#include "ompi/mca/crcp/crcp.h"
 #include "ompi/mca/crcp/bkmrk/crcp_bkmrk.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * BTL Coordination functions
@@ -47,7 +41,7 @@ extern "C" {
       size_t nprocs,
       struct ompi_proc_t** procs,
       struct mca_btl_base_endpoint_t** endpoints,
-      struct ompi_bitmap_t* reachable,
+      struct opal_bitmap_t* reachable,
       ompi_crcp_base_btl_state_t* );
 
     ompi_crcp_base_btl_state_t* ompi_crcp_base_coord_btl_del_procs
@@ -82,7 +76,7 @@ extern "C" {
     ( struct mca_btl_base_module_t* btl,
       struct mca_btl_base_endpoint_t* endpoint,
       mca_mpool_base_registration_t* registration,
-      struct ompi_convertor_t* convertor,
+      struct opal_convertor_t* convertor,
       size_t reserve,
       size_t* size,
       ompi_crcp_base_btl_state_t*);
@@ -91,7 +85,7 @@ extern "C" {
     ( struct mca_btl_base_module_t* btl,
       struct mca_btl_base_endpoint_t* endpoint,
       mca_mpool_base_registration_t* registration,
-      struct ompi_convertor_t* convertor,
+      struct opal_convertor_t* convertor,
       size_t reserve,
       size_t* size,
       ompi_crcp_base_btl_state_t*);
@@ -125,8 +119,6 @@ extern "C" {
     (int state,
      ompi_crcp_base_btl_state_t*);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_CRCP_HOKE_BTL_EXPORT_H */

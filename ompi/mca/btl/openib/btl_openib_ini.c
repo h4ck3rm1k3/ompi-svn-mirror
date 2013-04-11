@@ -11,6 +11,8 @@
  *                         All rights reserved.
  * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2008      Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -24,7 +26,9 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 
 #include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
@@ -104,9 +108,17 @@ int ompi_btl_openib_ini_init(void)
     int ret = OMPI_ERR_NOT_FOUND;
     char *colon;
 
+#ifndef __WINDOWS__
+    char separator = ':';
+#else
+    /* ':' is part of the path on Windows,
+       so use ';' instead. */
+    char separator = ';';
+#endif
+
     OBJ_CONSTRUCT(&devices, opal_list_t);
 
-    colon = strchr(mca_btl_openib_component.device_params_file_names, ':');
+    colon = strchr(mca_btl_openib_component.device_params_file_names, separator);
     if (NULL == colon) {
         /* If we've only got 1 file (i.e., no colons found), parse it
            and be done */
@@ -318,7 +330,7 @@ static int parse_line(parsed_section_values_t *sv)
     if (key_buffer_len < strlen(btl_openib_ini_yytext) + 1) {
         char *tmp;
         key_buffer_len = strlen(btl_openib_ini_yytext) + 1;
-        tmp = realloc(key_buffer, key_buffer_len);
+        tmp = (char *) realloc(key_buffer, key_buffer_len);
         if (NULL == tmp) {
             free(key_buffer);
             key_buffer_len = 0;
@@ -403,7 +415,7 @@ static int parse_line(parsed_section_values_t *sv)
 
     else if (0 == strcasecmp(key_buffer, "rdmacm_reject_causes_connect_error")) {
         /* Single value */
-        sv->values.rdmacm_reject_causes_connect_error = 
+        sv->values.rdmacm_reject_causes_connect_error =
             (bool) ompi_btl_openib_ini_intify(value);
         sv->values.rdmacm_reject_causes_connect_error_set = true;
     }
@@ -547,7 +559,7 @@ static int save_section(parsed_section_values_t *s)
                     }
 
                     if (NULL != s->values.receive_queues) {
-                        h->values.receive_queues = 
+                        h->values.receive_queues =
                             strdup(s->values.receive_queues);
                     }
 
@@ -557,9 +569,9 @@ static int save_section(parsed_section_values_t *s)
                     }
 
                     if (s->values.rdmacm_reject_causes_connect_error_set) {
-                        h->values.rdmacm_reject_causes_connect_error = 
+                        h->values.rdmacm_reject_causes_connect_error =
                             s->values.rdmacm_reject_causes_connect_error;
-                        h->values.rdmacm_reject_causes_connect_error_set = 
+                        h->values.rdmacm_reject_causes_connect_error_set =
                             true;
                     }
 
@@ -631,7 +643,7 @@ int ompi_btl_openib_ini_intify_list(char *value, uint32_t **values, int *len)
     if (NULL == comma) {
         /* If we only got one value (i.e., no comma found), then
            just make an array of one value and save it */
-        *values = malloc(sizeof(uint32_t));
+        *values = (uint32_t *) malloc(sizeof(uint32_t));
         if (NULL == *values) {
             return OMPI_ERR_OUT_OF_RESOURCE;
         }
@@ -647,7 +659,7 @@ int ompi_btl_openib_ini_intify_list(char *value, uint32_t **values, int *len)
             str = comma + 1;
             comma = strchr(str, ',');
         }
-        *values = malloc(sizeof(uint32_t) * newsize);
+        *values = (uint32_t *) malloc(sizeof(uint32_t) * newsize);
         if (NULL == *values) {
             return OMPI_ERR_OUT_OF_RESOURCE;
         }

@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,11 +22,9 @@
 #include <stdio.h>
 
 #include "ompi/constants.h"
-#include "opal/event/event.h"
+#include "opal/mca/event/event.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "ompi/mca/pml/pml.h"
-#include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 
 int mca_btl_base_close(void)
@@ -36,14 +34,13 @@ int mca_btl_base_close(void)
 
     if( mca_btl_base_already_opened <= 0 ) {
         return OMPI_ERROR;
-    } else {
-        if( --mca_btl_base_already_opened > 0 ) {
-            return OMPI_SUCCESS;
-        }
+    } else if (--mca_btl_base_already_opened > 0) {
+        return OMPI_SUCCESS;
     }
+#if 0
     /* disable event processing while cleaning up btls */
     opal_event_disable();
-
+#endif
     /* Finalize all the btl components and free their list items */
 
     for (item = opal_list_remove_first(&mca_btl_base_modules_initialized);
@@ -73,9 +70,10 @@ int mca_btl_base_close(void)
     if(NULL != mca_btl_base_exclude)
         free(mca_btl_base_exclude);
 
+#if 0
     /* restore event processing */
     opal_event_enable();
-
+#endif
     /* All done */
     return OMPI_SUCCESS;
 }

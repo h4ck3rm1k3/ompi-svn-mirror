@@ -42,7 +42,7 @@ orte_ess_base_component_t mca_ess_singleton_component = {
     /* First, the mca_component_t struct containing meta information
        about the component itself */
     {
-        ORTE_ESS_BASE_VERSION_2_0_0,
+        ORTE_ESS_BASE_VERSION_3_0_0,
 
         /* Component name and version */
         "singleton",
@@ -73,9 +73,9 @@ int orte_ess_singleton_component_query(mca_base_module_t **module, int *priority
     /* if we are an HNP, daemon, or tool, then we
      * are definitely not a singleton!
      */
-    if (orte_process_info.hnp ||
-        orte_process_info.daemon ||
-        orte_process_info.tool) {
+    if (ORTE_PROC_IS_HNP ||
+        ORTE_PROC_IS_DAEMON ||
+        ORTE_PROC_IS_TOOL) {
         *module = NULL;
         return ORTE_ERROR;
     }

@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,13 +22,12 @@
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
-#if HAVE_STRING_H
+#ifdef HAVE_STRING_H
 #include <string.h>
 #endif  /* HAVE_STRING_H */
 #include "ompi/mca/mpool/mpool.h"
 #include "base.h"
 #include "mpool_base_tree.h"
-#include "opal/threads/mutex.h" 
 #include "mpool_base_mem_cb.h"
 
 /**
@@ -290,8 +290,10 @@ int mca_mpool_base_free(void *base)
     }
 
     rc = mca_mpool_base_tree_delete(mpool_tree_item);
-    if(OMPI_SUCCESS == rc)
+    if(OMPI_SUCCESS == rc) {
         unregister_tree_item(mpool_tree_item);
+        mca_mpool_base_tree_item_put(mpool_tree_item);
+    }
     
     return rc;
 }

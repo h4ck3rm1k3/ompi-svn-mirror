@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -30,9 +30,6 @@
 #include "orte_config.h"
 #include "orte/types.h"
 
-#include "opal/class/opal_list.h"
-#include "opal/class/opal_pointer_array.h"
-#include "opal/class/opal_value_array.h"
 #include "opal/dss/dss_types.h"
 
 #include "orte/runtime/orte_globals.h"
@@ -43,15 +40,21 @@ BEGIN_C_DECLS
 #define ORTE_CONTIG_NODE_CMD        0x01
 #define ORTE_NON_CONTIG_NODE_CMD    0x02
 
+ORTE_DECLSPEC int orte_util_nidmap_init(opal_buffer_t *buffer);
+ORTE_DECLSPEC void orte_util_nidmap_finalize(void);
 
 ORTE_DECLSPEC int orte_util_encode_nodemap(opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_nodemap(opal_byte_object_t *boptr, opal_pointer_array_t *nodes);
+ORTE_DECLSPEC int orte_util_decode_nodemap(opal_byte_object_t *boptr);
+ORTE_DECLSPEC int orte_util_decode_daemon_nodemap(opal_byte_object_t *bo);
 
-ORTE_DECLSPEC int orte_util_encode_pidmap(orte_job_t *jdata, opal_byte_object_t *boptr);
-ORTE_DECLSPEC int orte_util_decode_pidmap(opal_byte_object_t *boptr, orte_vpid_t *num_procs,
-                                          opal_value_array_t *procs, int8_t **app_idx,
-                                          char ***slot_str);
+ORTE_DECLSPEC int orte_util_encode_pidmap(opal_byte_object_t *boptr);
+ORTE_DECLSPEC int orte_util_decode_pidmap(opal_byte_object_t *boptr);
+ORTE_DECLSPEC int orte_util_decode_daemon_pidmap(opal_byte_object_t *bo);
 
+#if ORTE_ENABLE_STATIC_PORTS
+ORTE_DECLSPEC int orte_util_build_daemon_nidmap(char **nodes);
+#endif
 
 END_C_DECLS
+
 #endif

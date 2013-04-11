@@ -15,12 +15,17 @@
  */
 
 #include "orte_config.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "orte/constants.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/mca/filem/filem.h"
@@ -35,9 +40,9 @@ static orte_filem_base_component_t none_component = {
         ORTE_FILEM_BASE_VERSION_2_0_0,
         /* Component name and version */
         "none",
-        OMPI_MAJOR_VERSION,
-        OMPI_MINOR_VERSION,
-        OMPI_RELEASE_VERSION,
+        ORTE_MAJOR_VERSION,
+        ORTE_MINOR_VERSION,
+        ORTE_RELEASE_VERSION,
         
         /* Component open and close functions */
         orte_filem_base_none_open,

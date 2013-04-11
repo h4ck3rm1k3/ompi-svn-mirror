@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -38,10 +40,10 @@
 #endif
 
 #include "opal/mca/mca.h"
-#include "orte/mca/rml/rml_types.h"
-
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
+
+#include "orte/mca/rml/rml_types.h"
 
 BEGIN_C_DECLS
 
@@ -53,6 +55,14 @@ struct opal_buffer_t;
 struct orte_process_name_t;
 struct orte_rml_module_t;
 
+
+/* Provide a generic callback function to release buffers
+ * following a non-blocking send as this happens all over
+ * the code base
+ */
+ORTE_DECLSPEC void orte_rml_send_callback(int status, orte_process_name_t* sender,
+                                          opal_buffer_t* buffer, orte_rml_tag_t tag,
+                                          void* cbdata);
 
 /* ******************************************************************** */
 
@@ -250,24 +260,6 @@ typedef char* (*orte_rml_module_get_contact_info_fn_t)(void);
  * @retval ORTE_ERROR   An unspecified error occurred during the update
  */
 typedef int (*orte_rml_module_set_contact_info_fn_t)(const char *contact_info);
-
-
-/**
- * Request a new name from the HNP, if one is not already assigned
- *
- * Request a new name from the HNP, if one is not already assigned.
- * This function should be avoided at all costs, but is unavoidable in
- * some instances (like when trying to get a name from a singleton or 
- * when trying to contact a persistent daemon from an orte tool.
- *
- * @param[out] name The new name of the process
- *
- * @retval ORTE_SUCCESS A name was successfully acquired
- * @retcal ORTE_ERR_NOT_SUPPORTED A name is already assigned to the
- *                      current process
- * @retval ORTE_ERROR   An unspecified error occurred
- */
-typedef int (*orte_rml_module_get_new_name_fn_t)(orte_process_name_t *name);
 
 
 /**
@@ -575,6 +567,12 @@ typedef int (*orte_rml_module_exception_fn_t)(orte_rml_exception_callback_t cbfu
  */
 typedef int  (*orte_rml_module_ft_event_fn_t)(int state);
 
+/**
+ * Purge the RML/OOB of contact info and pending messages
+ * to/from a specified process. Used when a process aborts
+ * and is to be restarted
+ */
+typedef int (*orte_rml_module_purge_fn_t)(struct orte_process_name_t *peer);
 
 /* ******************************************************************** */
 
@@ -597,8 +595,6 @@ struct orte_rml_module_t {
     /** Set contact information for remote process */
     orte_rml_module_set_contact_info_fn_t        set_contact_info;
 
-    /** Get a name from the remote process */
-    orte_rml_module_get_new_name_fn_t            get_new_name;
     /** Ping process for connectivity check */
     orte_rml_module_ping_fn_t                    ping;
 
@@ -629,6 +625,9 @@ struct orte_rml_module_t {
 
     /** Fault tolerance handler */
     orte_rml_module_ft_event_fn_t                ft_event;
+    
+    /** Purge information */
+    orte_rml_module_purge_fn_t                   purge;
 };
 /** Convienence typedef */
 typedef struct orte_rml_module_t orte_rml_module_t;

@@ -1,4 +1,9 @@
 /*
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -8,16 +13,19 @@
 
 #include "orte_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "opal/mca/mca.h"
 #include "opal/mca/base/mca_base_component_repository.h"
 #include "opal/util/output.h"
 
 #include "orte/mca/rml/rml.h"
+#include "orte/util/name_fns.h"
 
 #if !ORTE_DISABLE_FULL_SUPPORT
 
-#include "orte/util/show_help.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #endif
 
@@ -29,7 +37,6 @@
 #include "orte/mca/rml/base/static-components.h"
 
 orte_rml_module_t orte_rml = {
-    NULL,
     NULL,
     NULL,
     NULL,
@@ -55,12 +62,19 @@ opal_list_t       orte_rml_base_components;
 orte_rml_component_t *orte_rml_component = NULL;
 
 static bool       component_open_called = false;
+static bool       opened = false;
+static bool       selected = false;
 
 int
 orte_rml_base_open(void)
 {
     int ret;
 
+    if (opened) {
+        return ORTE_SUCCESS;
+    }
+    opened = true;
+    
     /* Initialize globals */
     OBJ_CONSTRUCT(&orte_rml_base_components, opal_list_t);
     OBJ_CONSTRUCT(&orte_rml_base_subscriptions, opal_list_t);
@@ -104,7 +118,13 @@ orte_rml_base_select(void)
     orte_rml_component_t *wrapper_component = NULL;
     orte_rml_module_t *wrapper_module = NULL;
     char *rml_wrapper = NULL;
+    bool return_silent=false;
 
+    if (selected) {
+        return ORTE_SUCCESS;
+    }
+    selected = true;
+    
     mca_base_param_reg_string_name("rml", "wrapper",
                                    "Use a Wrapper component around the selected RML component",
                                    false, false,
@@ -134,6 +154,9 @@ orte_rml_base_select(void)
             if (NULL == module) {
                 opal_output_verbose(10, orte_rml_base_output,
                                     "orte_rml_base_select: init returned failure");
+                if (priority < 0) {
+                    return_silent = true;
+                }
                 continue;
             }
 
@@ -208,7 +231,12 @@ orte_rml_base_select(void)
         free(rml_wrapper);
     }
 
-    if (NULL == selected_component) return ORTE_ERROR;
+    if (NULL == selected_component) {
+        if (return_silent) {
+            return ORTE_ERR_SILENT;
+        }
+        return ORTE_ERROR;
+    }
     
     return ORTE_SUCCESS;
 }
@@ -227,4 +255,12 @@ orte_rml_base_close(void)
     OBJ_DESTRUCT(&orte_rml_base_subscriptions);
 
     return ORTE_SUCCESS;
+}
+
+void orte_rml_send_callback(int status, orte_process_name_t* sender,
+                            opal_buffer_t* buffer, orte_rml_tag_t tag,
+                            void* cbdata)
+
+{
+    OBJ_RELEASE(buffer);
 }

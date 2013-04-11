@@ -10,8 +10,8 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006      Sun Microsystems, Inc.  All rights reserved.
-#                         Use is subject to license terms.
+# Copyright (c) 2006-2010 Oracle and/or its affiliates.  All rights reserved.
+# Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -31,6 +31,10 @@ indicating use of MPI profiling layer.  However, Open MPI was not
 compiled with support for the MPI profiling layer.  This flag has
 therefore been ignored.
 #
+[no-compiler-specified]
+No underlying compiler was specified in the wrapper compiler data file
+(e.g., mpicc-wrapper-data.txt)
+#
 [no-compiler-found]
 The Open MPI wrapper compiler was unable to find the specified compiler
 %s in your PATH.
@@ -43,7 +47,7 @@ one of several possible environment variables.
 #
 [usage]
 %s [-showme[:<command,compile,link,incdirs,
-              libdirs,libs,version>]] args
+              libdirs,libs,version,help>]] args
 
   -showme:command    Show command used to invoke real compiler
   -showme:compile    Show flags added when compiling
@@ -52,6 +56,7 @@ one of several possible environment variables.
   -showme:libdirs    Show list of library dirs added when linking
   -showme:libs       Show list of libraries added when linking
   -showme:version    Show version of %s
+  -showme:help       This help message
 #
 [file-not-found]
 %s could not find the file %s, needed for %s support.

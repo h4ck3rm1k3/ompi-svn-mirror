@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -15,13 +15,20 @@
  */
 
 #include "orte_config.h"
+
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "orte/constants.h"
 
 #include "opal/mca/mca.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
+#include "orte/mca/sstore/sstore.h"
+#include "orte/mca/sstore/base/base.h"
 
 #include "orte/mca/snapc/snapc.h"
 #include "orte/mca/snapc/base/base.h"
@@ -35,9 +42,9 @@ static orte_snapc_base_component_t none_component = {
         ORTE_SNAPC_BASE_VERSION_2_0_0,
         /* Component name and version */
         "none",
-        OMPI_MAJOR_VERSION,
-        OMPI_MINOR_VERSION,
-        OMPI_RELEASE_VERSION,
+        ORTE_MAJOR_VERSION,
+        ORTE_MINOR_VERSION,
+        ORTE_RELEASE_VERSION,
         
         /* Component open and close functions */
         orte_snapc_base_none_open,
@@ -64,7 +71,9 @@ static orte_snapc_base_module_t none_module = {
     orte_snapc_base_module_finalize,
     orte_snapc_base_none_setup_job,
     orte_snapc_base_none_release_job,
-    orte_snapc_base_none_ft_event
+    orte_snapc_base_none_ft_event,
+    orte_snapc_base_none_start_ckpt,
+    orte_snapc_base_none_end_ckpt
 };
 
 int orte_snapc_base_select(bool seed, bool app)
@@ -119,6 +128,11 @@ int orte_snapc_base_select(bool seed, bool app)
             goto cleanup;
         }
     }
+
+    /*
+     * Select on the SStore framework
+     */
+    orte_sstore_base_select();
 
  cleanup:
     if( NULL != include_list ) {

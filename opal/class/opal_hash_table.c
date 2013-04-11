@@ -25,6 +25,7 @@
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_hash_table.h"
 #include "opal/constants.h"
+#include "opal/util/bit_ops.h"
 
 /*
  * opal_hash_table_t
@@ -70,12 +71,7 @@ static void opal_hash_table_destruct(opal_hash_table_t* ht)
 int opal_hash_table_init(opal_hash_table_t* ht, size_t table_size)
 {
     size_t i;
-    size_t power2 = 1;
-    size_t tmp = table_size;
-    while(tmp) {
-       tmp >>= 1;
-       power2 <<= 1;
-    }
+    size_t power2 = opal_next_poweroftwo (table_size);
 
     ht->ht_mask = power2-1;
     ht->ht_table = (opal_list_t *)malloc(power2 * sizeof(opal_list_t));
@@ -135,7 +131,7 @@ int opal_hash_table_get_value_uint32(opal_hash_table_t* ht, uint32_t key,
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint32_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_get_value_uint32:"
 		   "opal_hash_table_init() has not been called");
@@ -160,7 +156,7 @@ int opal_hash_table_set_value_uint32(opal_hash_table_t* ht,
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint32_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_set_value_uint32:"
 		   "opal_hash_table_init() has not been called");
@@ -195,7 +191,7 @@ int opal_hash_table_remove_value_uint32(opal_hash_table_t* ht, uint32_t key)
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint32_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_remove_value_uint32:"
 		   "opal_hash_table_init() has not been called");
@@ -241,7 +237,7 @@ int opal_hash_table_get_value_uint64(opal_hash_table_t* ht, uint64_t key,
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint64_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_get_value_uint64:"
 		   "opal_hash_table_init() has not been called");
@@ -266,7 +262,7 @@ int opal_hash_table_set_value_uint64(opal_hash_table_t* ht,
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint64_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_set_value_uint64:"
 		   "opal_hash_table_init() has not been called");
@@ -302,7 +298,7 @@ int opal_hash_table_remove_value_uint64(opal_hash_table_t* ht, uint64_t key)
     opal_list_t* list = ht->ht_table + (key & ht->ht_mask);
     opal_uint64_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_remove_value_uint64:"
 		   "opal_hash_table_init() has not been called");
@@ -377,7 +373,7 @@ int opal_hash_table_get_value_ptr(opal_hash_table_t* ht, const void* key,
                                                        key_size);
     opal_ptr_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_get_value_ptr:"
 		   "opal_hash_table_init() has not been called");
@@ -404,7 +400,7 @@ int opal_hash_table_set_value_ptr(opal_hash_table_t* ht, const void* key,
                                                        key_size);
     opal_ptr_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_set_value_ptr:"
 		   "opal_hash_table_init() has not been called");
@@ -445,7 +441,7 @@ int opal_hash_table_remove_value_ptr(opal_hash_table_t* ht,
                                                        key, key_size);
     opal_ptr_hash_node_t *node;
 
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(ht->ht_table_size == 0) {
         opal_output(0, "opal_hash_table_remove_value_ptr: "
 		   "opal_hash_table_init() has not been called");

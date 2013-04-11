@@ -10,6 +10,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2011      Los Alamos National Security, LLC.
+#                         All rights reserved. 
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -49,7 +52,10 @@ no nodes were found or all the available nodes were already used.
 Note that since the -nolocal option was given no processes can be 
 launched on the local node.
 [orte-rmaps-base:no-available-resources]
-There are no nodes allocated to this job.
+No nodes are available for this job, either due to a failure to
+allocate nodes to the job, or allocated nodes being marked
+as unavailable (e.g., down, rebooting, or a process attempting
+to be relocated to another node when none are available).
 [orte-rmaps-base:all-available-resources-used]
 All nodes which are allocated for this job are already filled.
 #
@@ -84,3 +90,117 @@ are cpus in a socket:
   #cpus/socket: %d
 
 Please correct one or both of these values and try again.
+#
+[failed-map]
+Your job failed to map. Either no mapper was available, or none
+of the available mappers was able to perform the requested
+mapping operation. This can happen if you request a map type
+(e.g., loadbalance) and the corresponding mapper was not built.
+#
+[unrecognized-policy]
+The specified %s policy is not recognized:
+
+  Policy: %s
+
+Please check for a typo or ensure that the option is a supported
+one.
+#
+[redefining-policy]
+Conflicting directives for %s policy are causing the policy
+to be redefined:
+
+  New policy:   %s
+  Prior policy:  %s
+
+Please check that only one policy is defined.
+#
+[rmaps:binding-target-not-found]
+A request was made to bind to %s, but an appropriate target could not
+be found on node %s.
+#
+[rmaps:binding-overload]
+A request was made to bind to that would result in binding more
+processes than cpus on a resource:
+
+   Bind to:         %s
+   Node:            %s
+   #processes:  %d
+   #cpus:          %d
+
+You can override this protection by adding the "overload-allowed"
+option to your binding directive.
+#
+[rmaps:no-topology]
+A mapping directive was given that requires knowledge of
+a remote node's topology. However, no topology info is
+available for the following node:
+
+  Node: %s
+
+The job cannot be executed under this condition. Please either
+remove the directive or investigate the lack of topology info.
+#
+[rmaps:no-available-cpus]
+While computing bindings, we found no available cpus on
+the following node:
+
+  Node:  %s
+
+Please check your allocation.
+#
+[rmaps:cpubind-not-supported]
+A request was made to bind a process, but at least one node does NOT
+support binding processes to cpus.
+
+  Node:  %s
+#
+[rmaps:membind-not-supported]
+WARNING: a request was made to bind a process. While the system
+supports binding the process itself, at least one node does NOT
+support binding memory to the process location.
+
+  Node:  %s
+
+This is a warning only; your job will continue, though performance may
+be degraded.
+#
+[rmaps:membind-not-supported-fatal]
+A request was made to bind a process. While the system
+supports binding the process itself, at least one node does NOT
+support binding memory to the process location.
+
+  Node:  %s
+
+The provided memory binding policy requires that we abort the
+job at this time.
+#
+[rmaps:no-bindable-objects]
+No bindable objects of the specified type were available
+on at least one node:
+
+  Node:    %s
+  Target:  %s
+#
+[rmaps:unknown-binding-level]
+Unknown binding level:
+
+  Target:  %s
+  Cache level:  %u
+#
+[orte-rmaps-base:missing-daemon]
+While attempting to build a map of this job, a node
+was detected to be missing a daemon:
+
+  Node:  %s
+
+This usually indicates a mismatch between what the
+allocation provided for the node name versus what was
+actually found on the node.
+#
+[orte-rmaps-base:no-objects]
+No objects of the specified type were found on at least one node:
+
+  Type: %s
+  Node: %s
+
+The map cannot be done as specified.

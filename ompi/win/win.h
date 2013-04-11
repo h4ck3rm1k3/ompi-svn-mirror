@@ -10,7 +10,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -33,9 +33,7 @@
 #include "ompi/group/group.h"
 #include "ompi/mca/osc/osc.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /* flags */
 #define OMPI_WIN_FREED        0x00000001
@@ -108,6 +106,7 @@ struct ompi_predefined_win_t {
 typedef struct ompi_predefined_win_t ompi_predefined_win_t;
 
 OMPI_DECLSPEC extern ompi_predefined_win_t ompi_mpi_win_null;
+OMPI_DECLSPEC extern ompi_predefined_win_t *ompi_mpi_win_null_addr;
 
 int ompi_win_init(void);
 int ompi_win_finalize(void);
@@ -118,10 +117,10 @@ int ompi_win_create(void *base, size_t size, int disp_unit,
 
 int ompi_win_free(ompi_win_t *win);
 
-int ompi_win_set_name(ompi_win_t *win, char *win_name);
-int ompi_win_get_name(ompi_win_t *win, char *win_name, int *length);
+OMPI_DECLSPEC int ompi_win_set_name(ompi_win_t *win, char *win_name);
+OMPI_DECLSPEC int ompi_win_get_name(ompi_win_t *win, char *win_name, int *length);
 
-int ompi_win_group(ompi_win_t *win, ompi_group_t **group);
+OMPI_DECLSPEC int ompi_win_group(ompi_win_t *win, ompi_group_t **group);
 
 /* Note that the defintion of an "invalid" window is closely related
    to the defintion of an "invalid" communicator.  See a big comment
@@ -193,7 +192,5 @@ static inline bool ompi_win_comm_allowed(ompi_win_t *win) {
     return (0 != (OMPI_WIN_ACCESS_EPOCH & mode || OMPI_WIN_FENCE & mode) ? true : false);
 }
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif

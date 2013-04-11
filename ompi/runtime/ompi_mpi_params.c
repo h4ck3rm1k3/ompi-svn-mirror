@@ -9,8 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2009 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  * 
@@ -21,17 +21,21 @@
 
 #include "ompi_config.h"
 
-#if HAVE_TIME_H
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+#ifdef HAVE_TIME_H
 #include <time.h>
 #endif  /* HAVE_TIME_H */
 
 #include "ompi/constants.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/runtime/params.h"
-#include "ompi/datatype/datatype.h"
 #include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 
 /*
  * Global variables
@@ -48,7 +52,6 @@ int ompi_debug_show_mpi_alloc_mem_leaks = 0;
 bool ompi_debug_no_free_handles = false;
 bool ompi_mpi_show_mca_params = false;
 char *ompi_mpi_show_mca_params_file = NULL;
-bool ompi_mpi_paffinity_alone = false;
 bool ompi_mpi_abort_print_stack = false;
 int ompi_mpi_abort_delay = 0;
 bool ompi_mpi_keep_peer_hostnames = true;
@@ -167,8 +170,7 @@ int ompi_mpi_register_params(void)
                     show_default_mca_params = true;
                 } else if (0 == strcasecmp(args[i], "file")) {
                     show_file_mca_params = true;
-                } else if (0 == strcasecmp(args[i], "enviro") || 
-                           0 == strcasecmp(args[i], "env")) {
+                } else if (0 == strncasecmp(args[i], "env", 3)) {
                     show_enviro_mca_params = true;
                 } else if (0 == strcasecmp(args[i], "api")) {
                     show_override_mca_params = true;
@@ -176,6 +178,7 @@ int ompi_mpi_register_params(void)
             }
             opal_argv_free(args);
         }
+        free(param);
     }
 
     /* File to use when dumping the parameters */
@@ -208,14 +211,14 @@ int ompi_mpi_register_params(void)
                                 /* If we do not have stack trace
                                    capability, make this a read-only
                                    MCA param */
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
                                 false, 
 #else
                                 true,
 #endif
                                 (int) ompi_mpi_abort_print_stack,
                                 &value);
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) && defined(HAVE_BACKTRACE)
     /* Only take the value if we have stack trace capability */
     ompi_mpi_abort_print_stack = OPAL_INT_TO_BOOL(value);
 #else
@@ -231,7 +234,7 @@ int ompi_mpi_register_params(void)
                                         "MPI_INIT (vs. making connections lazily -- "
                                         "upon the first MPI traffic between each "
                                         "process peer pair)",
-                                        false, false, 0, NULL);
+                                        true, false, 0, NULL);
     mca_base_param_reg_syn_name(value, "mpi", "preconnect_all", true);
     
     /* Leave pinned parameter */
@@ -254,12 +257,6 @@ int ompi_mpi_register_params(void)
                        "mpi-params:leave-pinned-and-pipeline-selected",
                        true);
     }
-
-    mca_base_param_reg_int_name("mpi", "paffinity_alone",
-                                "If nonzero, assume that this job is the only (set of) process(es) running on each node and bind processes to processors, starting with processor ID 0",
-                                false, false, 
-                                (int) ompi_mpi_paffinity_alone, &value);
-    ompi_mpi_paffinity_alone = OPAL_INT_TO_BOOL(value);
 
     mca_base_param_reg_int_name("mpi", "warn_on_fork",
                                 "If nonzero, issue a warning if program forks under conditions that could cause system errors",
@@ -289,8 +286,7 @@ int ompi_mpi_register_params(void)
         }
     }
 
-    /* The ddt engine has a few parameters */
-    return ompi_ddt_register_params();
+    return OMPI_SUCCESS;
 }
 
 int ompi_show_all_mca_params(int32_t rank, int requested, char *nodename) {
@@ -384,7 +380,7 @@ int ompi_show_all_mca_params(int32_t rank, int requested, char *nodename) {
                 src_string = "default value";
                 break;
             case MCA_BASE_PARAM_SOURCE_ENV:
-                src_string = "environment";
+                src_string = "environment or cmdline";
                 break;
             case MCA_BASE_PARAM_SOURCE_FILE:
                 src_string = "file";

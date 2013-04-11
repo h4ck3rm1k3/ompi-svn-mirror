@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,7 +26,6 @@
 #include <stdlib.h>
 
 #include "opal/class/opal_list.h"
-#include "opal/util/strncpy.h"
 #include "opal/util/argv.h"
 #include "opal/util/output.h"
 #include "opal/util/show_help.h"
@@ -202,6 +203,9 @@ int mca_base_components_open(const char *type_name, int output_id,
                                         type_name,
                                         dummy->version.mca_component_name);
                     opal_list_remove_item(&components_found, item);
+                    /* Make sure to release the component since we are not
+                     * opening it */
+                    mca_base_component_repository_release(component);
                 }
             }
         }
@@ -227,6 +231,61 @@ int mca_base_components_open(const char *type_name, int output_id,
     return ret;
 }
 
+int mca_base_is_component_required(opal_list_t *components_available,
+                                   mca_base_component_t *component,
+                                   bool exclusive,
+                                   bool *is_required)
+{
+    opal_list_item_t *item = NULL;
+    mca_base_component_list_item_t *cli = NULL;
+    mca_base_component_t *comp = NULL;
+
+    /* Sanity check */
+    if( NULL == components_available ||
+        NULL == component) {
+        return OPAL_ERR_BAD_PARAM;
+    }
+
+    *is_required = false;
+
+    /*
+     * Look through the components available for opening
+     */
+    if( exclusive ) {
+        /* Must be the -only- component in the list */
+        if( 1 == opal_list_get_size(components_available) ) {
+            item  = opal_list_get_first(components_available);
+            cli   = (mca_base_component_list_item_t *) item;
+            comp  = (mca_base_component_t *) cli->cli_component;
+
+            if( 0 == strncmp(comp->mca_component_name,
+                             component->mca_component_name,
+                             strlen(component->mca_component_name)) ) {
+                *is_required = true;
+                return OPAL_SUCCESS;
+            }
+        }
+    }
+    else {
+        /* Must be one of the components in the list */
+        for (item  = opal_list_get_first(components_available);
+             item != opal_list_get_end(components_available);
+             item  = opal_list_get_next(item) ) {
+            cli  = (mca_base_component_list_item_t *) item;
+            comp = (mca_base_component_t *) cli->cli_component;
+
+            if( 0 == strncmp(comp->mca_component_name,
+                             component->mca_component_name,
+                             strlen(component->mca_component_name)) ) {
+                *is_required = true;
+                return OPAL_SUCCESS;
+            }
+        }
+    }
+
+    return OPAL_SUCCESS;
+}
+
 
 static int parse_requested(int mca_param, bool *include_mode,
                            char ***requested_component_names)
@@ -239,8 +298,8 @@ static int parse_requested(int mca_param, bool *include_mode,
 
   /* See if the user requested anything */
 
-  if (OPAL_ERROR == mca_base_param_lookup_string(mca_param, &requested)) {
-    return OPAL_ERROR;
+  if (0 > mca_base_param_lookup_string(mca_param, &requested)) {
+      return OPAL_ERROR;
   }
   if (NULL == requested || 0 == strlen(requested)) {
     return OPAL_SUCCESS;
@@ -292,6 +351,7 @@ static int parse_requested(int mca_param, bool *include_mode,
 static int open_components(const char *type_name, int output_id, 
                            opal_list_t *src, opal_list_t *dest)
 {
+    int ret;
     opal_list_item_t *item;
     const mca_base_component_t *component;
     mca_base_component_list_item_t *cli;
@@ -326,17 +386,24 @@ static int open_components(const char *type_name, int output_id,
                                 "component %s has no register function",
                                 component->mca_component_name);
         } else {
-            if (MCA_SUCCESS == component->mca_register_component_params()) {
+            ret = component->mca_register_component_params();
+            if (OPAL_SUCCESS == ret) {
                 registered = true;
                 opal_output_verbose(10, output_id, 
                                     "mca: base: components_open: "
                                     "component %s register function successful",
                                     component->mca_component_name);
-            } else {
-                /* We may end up displaying this twice, but it may go
-                   to separate streams.  So better to be redundant
-                   than to not display the error in the stream where
-                   it was expected. */
+            } else if (OPAL_ERR_NOT_AVAILABLE != ret) {
+                /* If the component returns OPAL_ERR_NOT_AVAILABLE,
+                   it's a cue to "silently ignore me" -- it's not a
+                   failure, it's just a way for the component to say
+                   "nope!".  
+
+                   Otherwise, however, display an error.  We may end
+                   up displaying this twice, but it may go to separate
+                   streams.  So better to be redundant than to not
+                   display the error in the stream where it was
+                   expected. */
                 
                 if (show_errors) {
                     opal_output(0, "mca: base: components_open: "
@@ -359,17 +426,24 @@ static int open_components(const char *type_name, int output_id,
                                 component->mca_component_name);
         } else {
             called_open = true;
-            if (MCA_SUCCESS == component->mca_open_component()) {
+            ret = component->mca_open_component();
+            if (OPAL_SUCCESS == ret) {
                 opened = true;
                 opal_output_verbose(10, output_id, 
                                     "mca: base: components_open: "
                                     "component %s open function successful",
                                     component->mca_component_name);
-            } else {
-                /* We may end up displaying this twice, but it may go
-                   to separate streams.  So better to be redundant
-                   than to not display the error in the stream where
-                   it was expected. */
+            } else if (OPAL_ERR_NOT_AVAILABLE != ret) {
+                /* If the component returns OPAL_ERR_NOT_AVAILABLE,
+                   it's a cue to "silently ignore me" -- it's not a
+                   failure, it's just a way for the component to say
+                   "nope!".  
+
+                   Otherwise, however, display an error.  We may end
+                   up displaying this twice, but it may go to separate
+                   streams.  So better to be redundant than to not
+                   display the error in the stream where it was
+                   expected. */
                 
                 if (show_errors) {
                     opal_output(0, "mca: base: components_open: "
@@ -410,9 +484,9 @@ static int open_components(const char *type_name, int output_id,
            opened_components list */
         
         else {
-            if (OPAL_ERROR == mca_base_param_find(type_name, 
-                                                  component->mca_component_name,
-                                                  "priority")) {
+            if (0 > mca_base_param_find(type_name, 
+                                        component->mca_component_name,
+                                        "priority")) {
                 mca_base_param_register_int(type_name,
                                             component->mca_component_name,
                                             "priority", NULL, 0);

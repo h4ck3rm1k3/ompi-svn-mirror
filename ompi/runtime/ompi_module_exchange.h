@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved.
  * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
@@ -48,17 +48,17 @@
 #ifndef MCA_OMPI_MODULE_EXCHANGE_H
 #define MCA_OMPI_MODULE_EXCHANGE_H
 
-#include "ompi_config.h" 
+#include "ompi_config.h"
 
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 
+#include "opal/dss/dss_types.h"
 #include "opal/mca/mca.h"
 
-#include "orte/types.h"
 
-struct ompi_proc_t;
+#include "ompi/proc/proc.h"
 
 BEGIN_C_DECLS
 
@@ -106,7 +106,7 @@ BEGIN_C_DECLS
  * @retval OMPI_SUCCESS On success
  * @retval OMPI_ERROR   An unspecified error occurred
  */
-OMPI_DECLSPEC int ompi_modex_send(mca_base_component_t *source_component, 
+OMPI_DECLSPEC int ompi_modex_send(const mca_base_component_t *source_component, 
                                   const void *buffer, size_t size);
 
 
@@ -130,6 +130,24 @@ OMPI_DECLSPEC int ompi_modex_send(mca_base_component_t *source_component,
  */
 OMPI_DECLSPEC int ompi_modex_send_string(const char* key,
                                          const void *buffer, size_t size);
+
+/**
+ * Send a value to all other corresponding peer process
+ *
+ * Similar to ompi_modex_send(), but uses a char* key instead of a
+ * component name for indexing, and performs all required conditioning
+ * to deal with heterogeneity.
+ *
+ * @param[in] key          A unique key for data storage / lookup
+ * @param[in] value        A pointer to data value
+ * @param[in] dtype        Data type of the value
+ *
+ * @retval OMPI_SUCCESS On success
+ * @retval OMPI_ERROR   An unspecified error occurred
+ */
+OMPI_DECLSPEC int ompi_modex_send_key_value(const char* key,
+                                            const void *value,
+                                            opal_data_type_t dtype);
 
 
 /**
@@ -169,10 +187,14 @@ OMPI_DECLSPEC int ompi_modex_send_string(const char* key,
  * @retval OMPI_ERR_OUT_OF_RESOURCE No memory could be allocated for the
  *                       buffer.
  */
-OMPI_DECLSPEC int ompi_modex_recv(mca_base_component_t *dest_component,
-                                  struct ompi_proc_t *source_proc,
+OMPI_DECLSPEC int ompi_modex_recv(const mca_base_component_t *dest_component,
+                                  const ompi_proc_t *source_proc,
                                   void **buffer, size_t *size);
 
+
+OMPI_DECLSPEC int ompi_modex_recv_pointer(const mca_base_component_t *component,
+                                          const ompi_proc_t *proc,
+                                          void **buffer, opal_data_type_t type);
 
 /**
  * Receive a buffer from a given peer
@@ -203,9 +225,35 @@ OMPI_DECLSPEC int ompi_modex_recv(mca_base_component_t *dest_component,
  *                       buffer.
  */
 OMPI_DECLSPEC int ompi_modex_recv_string(const char* key,
-                                         struct ompi_proc_t *source_proc,
+                                         const ompi_proc_t *source_proc,
                                          void **buffer, size_t *size);
 
+OMPI_DECLSPEC int ompi_modex_recv_string_pointer(const char* key,
+                                                 const ompi_proc_t *source_proc,
+                                                 void **buffer, opal_data_type_t type);
+
+/**
+ * Recv a value from a given peer
+ *
+ * Similar to ompi_modex_recv(), but uses a char* key instead of a
+ * component name for indexing, and performs all required conditioning
+ * to deal with heterogeneity.
+ *
+ * @param[in] key          A unique key for data storage / lookup
+ * @param[in] source_proc  Peer process to receive from
+ * @param[in] value        A pointer to the address where the data
+ *                         value will be stored
+ * @param[in] dtype        Data type of the value
+ *
+ * @retval OMPI_SUCCESS If a corresponding module value is found and
+ *                      successfully returned to the caller.
+ * @retval OMPI_ERR_NOT_IMPLEMENTED Modex support is not available in
+ *                      this build of Open MPI (systems like the Cray XT)
+ */
+OMPI_DECLSPEC int ompi_modex_recv_key_value(const char* key,
+                                            const ompi_proc_t *source_proc,
+                                            void **value,
+                                            opal_data_type_t dtype);
 
 END_C_DECLS
 

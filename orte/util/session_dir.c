@@ -46,6 +46,7 @@
 #endif  /* HAVE_PWD_H */
 
 #include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/util/os_path.h"
 #include "opal/util/os_dirpath.h"
 #include "opal/util/basename.h"
@@ -69,6 +70,10 @@ static int orte_create_dir(char *directory);
 static bool orte_dir_check_file(const char *root, const char *path);
 static bool orte_dir_check_file_output(const char *root, const char *path);
 
+static char *orte_build_job_session_dir(char *top_dir,
+                                        orte_process_name_t *proc,
+                                        orte_jobid_t jobid);
+
 #define OMPI_PRINTF_FIX_STRING(a) ((NULL == a) ? "(null)" : a)
 
 /****************************
@@ -84,7 +89,8 @@ static int orte_create_dir(char *directory)
 
     /* Sanity check before creating the directory with the proper mode,
      * Make sure it doesn't exist already */
-    if( ORTE_ERR_NOT_FOUND != (ret = opal_os_dirpath_access(directory, my_mode)) ) {
+    if( ORTE_ERR_NOT_FOUND !=
+        (ret = opal_os_dirpath_access(directory, my_mode)) ) {
         /* Failure because opal_os_dirpath_access() indicated that either:
          * - The directory exists and we can access it (no need to create it again), 
          *    return OPAL_SUCCESS, or
@@ -124,6 +130,7 @@ orte_session_dir_get_name(char **fulldirpath,
         *vpidstr = NULL;
     bool prefix_provided = false;
     int exit_status = ORTE_SUCCESS;
+    size_t len;
 #ifndef __WINDOWS__
     int uid;
 	struct passwd *pwdent;
@@ -284,11 +291,13 @@ orte_session_dir_get_name(char **fulldirpath,
     else if (NULL != orte_process_info.tmpdir_base) { /* stored value */
         prefix = strdup(orte_process_info.tmpdir_base);
     }
-    else if( NULL != getenv("OMPI_PREFIX_ENV") ) { /* OMPI Environment var */
-        prefix = strdup(getenv("OMPI_PREFIX_ENV"));
-    }
     else { /* General Environment var */
         prefix = strdup(opal_tmp_directory());
+    }
+    len = strlen(prefix);
+    /* check for a trailing path separator */
+    if (OPAL_PATH_SEP[0] == prefix[len-1]) {
+        prefix[len-1] = '\0';
     }
     
     /* BEFORE doing anything else, check to see if this prefix is
@@ -358,103 +367,60 @@ int orte_session_dir(bool create,
                      char *batchid, orte_process_name_t *proc)
 {
     char *fulldirpath = NULL,
-        *frontend     = NULL,
-        *sav          = NULL;
-    int return_code = ORTE_SUCCESS, rtn;
-    /* This indicates if the prefix was set, and so if it fails then we
-     * should try with the default prefixes.*/
-    bool dbl_check_prefix = false;
-
-    if( NULL != prefix)
-        dbl_check_prefix = true;
-
- try_again:
-    /*
-     * If the first attempt at the path creation failed, try with a null
-     * prefix. unless the original prefix was null, then we fail.
-     */
-    if(!dbl_check_prefix && /* an indicator that we are trying a second time */
-       NULL != prefix) {
-        free(prefix);
-        prefix = NULL;
+    *frontend     = NULL,
+    *sav          = NULL;
+    int rc = ORTE_SUCCESS;
+    char *local_prefix = NULL;
+    
+    /* use the specified prefix, if one was given */
+    if (NULL != prefix) {
+        local_prefix = strdup(prefix);
     }
     
     /*
      * Get the session directory full name
-     * First try it with the specified prefix.
      */
-    if( ORTE_SUCCESS != ( rtn = orte_session_dir_get_name(&fulldirpath, 
-                                                          &prefix,
-                                                          &frontend,
-                                                          hostid, 
-                                                          batchid, proc) ) ) {
-        if (ORTE_ERR_FATAL == rtn) {
-            /* this indicates we definitely need to abort, so
-             * don't try the NULL prefix
-             */
-            return_code = ORTE_ERR_SILENT;
+    if( ORTE_SUCCESS != ( rc = orte_session_dir_get_name(&fulldirpath, 
+                                                         &local_prefix,
+                                                         &frontend,
+                                                         hostid, 
+                                                         batchid, proc) ) ) {
+        if (ORTE_ERR_FATAL == rc) {
+            /* this indicates we should abort quietly */
+            rc = ORTE_ERR_SILENT;
             goto cleanup;
         }
-        return_code = rtn;
-        /*
-         * If the first attempt at the path creation failed, try with a null
-         * prefix. unless the original prefix was null, then we fail :(
-         */
-        if(dbl_check_prefix) {
-            dbl_check_prefix = false;
-            goto try_again;
-        }
-        else {
-            ORTE_ERROR_LOG(return_code);
-            goto cleanup;
-        }
+        /* otherwise, bark a little first */
+        ORTE_ERROR_LOG(rc);
+        goto cleanup;
     }
-
+    
     /*
      * Now that we have the full path, go ahead and create it if necessary
      */
     if( create ) {
-        if( ORTE_SUCCESS != (rtn = orte_create_dir(fulldirpath) ) ) {
-            return_code = rtn;
-            
-            if(dbl_check_prefix) {
-                dbl_check_prefix = false;
-                goto try_again;
-            }
-            else {
-                ORTE_ERROR_LOG(return_code);
-                goto cleanup;
-            }
+        if( ORTE_SUCCESS != (rc = orte_create_dir(fulldirpath) ) ) {
+            ORTE_ERROR_LOG(rc);
+            goto cleanup;
         }
     }
     /*
      * if we are not creating, then just verify that the path is OK
      */
     else {
-        if( ORTE_SUCCESS != (rtn = opal_os_dirpath_access(fulldirpath, 0) )) {
-            /* It is not valid so we give up and return an error */
-            return_code = rtn;
-            
-            if(dbl_check_prefix) {
-                dbl_check_prefix = false;
-                goto try_again;
+        if( ORTE_SUCCESS != (rc = opal_os_dirpath_access(fulldirpath, 0) )) {
+            /* it is okay for the path not to be found - don't error
+             * log that case, but do error log others
+             */
+            if (ORTE_ERR_NOT_FOUND != rc) {
+                ORTE_ERROR_LOG(rc);
             }
-            else {
-                /* it is okay for the path not to be found - don't error
-                 * log that case, but do error log others
-                 */
-                if (ORTE_ERR_NOT_FOUND != return_code) {
-                    ORTE_ERROR_LOG(return_code);
-                }
-                goto cleanup;
-            }
+            goto cleanup;
         }
     }
-
-    return_code = ORTE_SUCCESS;
-
+    
     /*
-     * If we are creating the directory tree, the overwrite the
+     * If we are creating the directory tree, then force overwrite of the
      * global structure fields
      */
     if (create) {
@@ -467,16 +433,18 @@ int orte_session_dir(bool create,
     	    orte_process_info.top_session_dir = NULL;
     	}
     }
-
+    
     /* 
      * Update some of the global structures if they are empty
      */
-    if (NULL == orte_process_info.tmpdir_base)
-        orte_process_info.tmpdir_base = strdup(prefix);
-
-    if (NULL == orte_process_info.top_session_dir)
-        orte_process_info.top_session_dir = strdup(frontend);
+    if (NULL == orte_process_info.tmpdir_base) {
+        orte_process_info.tmpdir_base = strdup(local_prefix);
+    }
     
+    if (NULL == orte_process_info.top_session_dir &&
+        NULL != frontend) {
+        orte_process_info.top_session_dir = strdup(frontend);
+    }
 
     /*
      * Set the process session directory
@@ -491,14 +459,14 @@ int orte_session_dir(bool create,
     	if (NULL == orte_process_info.proc_session_dir) {
     	    orte_process_info.proc_session_dir = strdup(fulldirpath);
     	}
-
+        
         /* Strip off last part of directory structure */
         sav = opal_dirname(fulldirpath);
         free(fulldirpath);
         fulldirpath = sav;
         sav = NULL;
     }
-
+    
     /*
      * Set the job session directory
      */
@@ -513,7 +481,7 @@ int orte_session_dir(bool create,
     	    orte_process_info.job_session_dir = strdup(fulldirpath);
     	}
     }
-
+    
     if (orte_debug_flag) {
     	opal_output(0, "procdir: %s", 
                     OMPI_PRINTF_FIX_STRING(orte_process_info.proc_session_dir));
@@ -524,16 +492,19 @@ int orte_session_dir(bool create,
     	opal_output(0, "tmp: %s", 
                     OMPI_PRINTF_FIX_STRING(orte_process_info.tmpdir_base));
     }
-
- cleanup:
-    if(NULL != fulldirpath)
+    
+cleanup:
+    if (NULL != local_prefix) {
+        free(local_prefix);
+    }
+    if(NULL != fulldirpath) {
         free(fulldirpath);
-    if(NULL != frontend)
+    }
+    if(NULL != frontend) {
         free(frontend);
-    if(NULL != sav)
-        free(sav);
-
-    return return_code;
+    }
+    
+    return rc;
 }
 
 /*
@@ -542,45 +513,34 @@ int orte_session_dir(bool create,
 int
 orte_session_dir_cleanup(orte_jobid_t jobid)
 {
-    int rc;
+    int rc = ORTE_SUCCESS;
     char *tmp;
-    char *jobfam=NULL, *job=NULL, *job_session_dir=NULL;
+    char *job_session_dir=NULL;
 
+    if (!orte_create_session_dirs) {
+        /* didn't create them */
+        return ORTE_SUCCESS;
+    }
+    
     /* need to setup the top_session_dir with the prefix */
     tmp = opal_os_path(false,
                        orte_process_info.tmpdir_base,
                        orte_process_info.top_session_dir, NULL);
 
     /* we can only blow away session directories for our job family */
-    if (0 > asprintf(&jobfam, "%d", ORTE_JOB_FAMILY(ORTE_PROC_MY_NAME->jobid))) {
-        ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+    job_session_dir = orte_build_job_session_dir(tmp, ORTE_PROC_MY_NAME, jobid);
+    if (NULL == job_session_dir) {
         rc = ORTE_ERR_OUT_OF_RESOURCE;
         goto CLEANUP;
     }
     
     if (ORTE_JOBID_WILDCARD != jobid) {
-        
-        if (0 > asprintf(&job, "%d", jobid)) {
-            ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-            rc = ORTE_ERR_OUT_OF_RESOURCE;
-            goto CLEANUP;
-        }
-        
-        job_session_dir = opal_os_path(false, tmp, jobfam, job, NULL );
-        if( NULL == job_session_dir ) {
-            ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
-            rc = ORTE_ERR_OUT_OF_RESOURCE;
-            goto CLEANUP;
-        }
-        
-        opal_os_dirpath_destroy(job_session_dir,
-                                true, orte_dir_check_file);
+        opal_os_dirpath_destroy(job_session_dir, true, orte_dir_check_file);
     } else {
         /* if we want the session_dir removed for ALL jobids, then
          * just recursively blow the whole session away for our job family,
          * saving only output files
          */
-        job_session_dir = opal_os_path(false, tmp, jobfam, NULL);
         opal_os_dirpath_destroy(job_session_dir, true, orte_dir_check_file_output);
     }
     
@@ -615,10 +575,8 @@ orte_session_dir_cleanup(orte_jobid_t jobid)
 
 CLEANUP:
     free(tmp);
-    if (NULL != job) free(job);
-    if (NULL != jobfam) free(jobfam);
     if (NULL != job_session_dir) free(job_session_dir);
-    return ORTE_SUCCESS;
+    return rc;
 }
 
 
@@ -627,31 +585,27 @@ orte_session_dir_finalize(orte_process_name_t *proc)
 {
     int rc;
     char *tmp;
-    char *job, *job_session_dir, *vpid, *proc_session_dir;
+    char *job_session_dir, *vpid, *proc_session_dir;
 
+    if (!orte_create_session_dirs) {
+        /* didn't create them */
+        return ORTE_SUCCESS;
+    }
+    
     /* need to setup the top_session_dir with the prefix */
     tmp = opal_os_path(false,
                        orte_process_info.tmpdir_base,
                        orte_process_info.top_session_dir, NULL);
     
     /* define the proc and job session directories for this process */
-    if (ORTE_SUCCESS != (rc = orte_util_convert_jobid_to_string(&job, proc->jobid))) {
-        ORTE_ERROR_LOG(rc);
-        free(tmp);
-        return rc;
-    }
     if (ORTE_SUCCESS != (rc = orte_util_convert_vpid_to_string(&vpid, proc->vpid))) {
         ORTE_ERROR_LOG(rc);
         free(tmp);
-        free(job);
         return rc;
     }
-    job_session_dir = opal_os_path( false, orte_process_info.top_session_dir,
-                                    job, NULL );
-    if( NULL == job_session_dir ) {
-        ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+    job_session_dir = orte_build_job_session_dir(tmp, proc, proc->jobid);
+    if( NULL == job_session_dir) {
         free(tmp);
-        free(job);
         free(vpid);
         return ORTE_ERR_OUT_OF_RESOURCE;
     }
@@ -659,7 +613,6 @@ orte_session_dir_finalize(orte_process_name_t *proc)
     if( NULL == proc_session_dir ) {
         ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
         free(tmp);
-        free(job);
         free(vpid);
         free(job_session_dir);
         return ORTE_ERR_OUT_OF_RESOURCE;
@@ -668,8 +621,6 @@ orte_session_dir_finalize(orte_process_name_t *proc)
     opal_os_dirpath_destroy(proc_session_dir,
                             false, orte_dir_check_file);
     opal_os_dirpath_destroy(job_session_dir,
-                            false, orte_dir_check_file);
-    opal_os_dirpath_destroy(orte_process_info.top_session_dir,
                             false, orte_dir_check_file);
     opal_os_dirpath_destroy(tmp,
                             false, orte_dir_check_file);
@@ -698,18 +649,6 @@ orte_session_dir_finalize(orte_process_name_t *proc)
         goto CLEANUP;
     }
 
-    if (opal_os_dirpath_is_empty(orte_process_info.top_session_dir)) {
-    	if (orte_debug_flag) {
-    	    opal_output(0, "sess_dir_finalize: found top session dir empty - deleting");
-    	}
-    	rmdir(orte_process_info.top_session_dir);
-    } else {
-    	if (orte_debug_flag) {
-    	    opal_output(0, "sess_dir_finalize: top session dir not empty - leaving");
-    	}
-    	goto CLEANUP;
-    }
-
     if (opal_os_dirpath_is_empty(tmp)) {
     	if (orte_debug_flag) {
     	    opal_output(0, "sess_dir_finalize: found top session dir empty - deleting");
@@ -723,7 +662,6 @@ orte_session_dir_finalize(orte_process_name_t *proc)
 
 CLEANUP:
     free(tmp);
-    free(job);
     free(vpid);
     free(job_session_dir);
     free(proc_session_dir);
@@ -760,3 +698,39 @@ orte_dir_check_file_output(const char *root, const char *path)
     return true;
 }
 
+static char *orte_build_job_session_dir(char *top_dir,
+                                        orte_process_name_t *proc,
+                                        orte_jobid_t jobid)
+{
+    char *jobfam = NULL;
+    char *job_session_dir;
+
+    if (0 > asprintf(&jobfam, "%d", ORTE_JOB_FAMILY(proc->jobid))) {
+        ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+        return NULL;
+    }
+
+    if (ORTE_JOBID_WILDCARD != jobid) {
+        char *job = NULL;
+
+        if (0 > asprintf(&job, "%d", ORTE_LOCAL_JOBID(jobid))) {
+            ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+            job_session_dir = NULL;
+            goto out;
+        }
+        job_session_dir = opal_os_path(false, top_dir, jobfam, job, NULL);
+        free(job);
+        if (NULL == job_session_dir) {
+            ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+        }
+    } else {
+        job_session_dir = opal_os_path(false, top_dir, jobfam, NULL);
+        if( NULL == job_session_dir) {
+            ORTE_ERROR_LOG(ORTE_ERR_OUT_OF_RESOURCE);
+        }
+    }
+
+out:
+    free(jobfam);
+    return job_session_dir;
+}

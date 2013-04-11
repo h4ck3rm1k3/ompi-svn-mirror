@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -20,7 +20,6 @@
 
 #include "ompi_config.h"
 
-#include "opal/class/opal_hash_table.h"
 #include "opal/util/arch.h"
 
 #include "ompi/runtime/ompi_module_exchange.h"
@@ -37,17 +36,17 @@ OBJ_CLASS_INSTANCE(mca_btl_openib_proc_t,
         opal_list_item_t, mca_btl_openib_proc_construct,
         mca_btl_openib_proc_destruct);
 
-void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* proc)
+void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* ib_proc)
 {
-    proc->proc_ompi = 0;
-    proc->proc_ports = NULL;
-    proc->proc_port_count = 0;
-    proc->proc_endpoints = 0;
-    proc->proc_endpoint_count = 0;
-    OBJ_CONSTRUCT(&proc->proc_lock, opal_mutex_t);
+    ib_proc->proc_ompi = 0;
+    ib_proc->proc_ports = NULL;
+    ib_proc->proc_port_count = 0;
+    ib_proc->proc_endpoints = 0;
+    ib_proc->proc_endpoint_count = 0;
+    OBJ_CONSTRUCT(&ib_proc->proc_lock, opal_mutex_t);
     /* add to list of all proc instance */
     OPAL_THREAD_LOCK(&mca_btl_openib_component.ib_lock);
-    opal_list_append(&mca_btl_openib_component.ib_procs, &proc->super);
+    opal_list_append(&mca_btl_openib_component.ib_procs, &ib_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_openib_component.ib_lock);
 }
 
@@ -55,28 +54,29 @@ void mca_btl_openib_proc_construct(mca_btl_openib_proc_t* proc)
  * Cleanup ib proc instance
  */
 
-void mca_btl_openib_proc_destruct(mca_btl_openib_proc_t* proc)
+void mca_btl_openib_proc_destruct(mca_btl_openib_proc_t* ib_proc)
 {
     /* remove from list of all proc instances */
     OPAL_THREAD_LOCK(&mca_btl_openib_component.ib_lock);
-    opal_list_remove_item(&mca_btl_openib_component.ib_procs, &proc->super);
+    opal_list_remove_item(&mca_btl_openib_component.ib_procs, &ib_proc->super);
     OPAL_THREAD_UNLOCK(&mca_btl_openib_component.ib_lock);
 
     /* release resources */
-    if(NULL != proc->proc_endpoints) {
-        free(proc->proc_endpoints);
+    if(NULL != ib_proc->proc_endpoints) {
+        free(ib_proc->proc_endpoints);
     }
-    if (NULL != proc->proc_ports) {
+    if (NULL != ib_proc->proc_ports) {
         int i, j;
-        for (i = 0; i < proc->proc_port_count; ++i) {
-            for (j = 0; j < proc->proc_ports[i].pm_cpc_data_count; ++j) {
-                if (NULL != proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message) {
-                    free(proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message);
+        for (i = 0; i < ib_proc->proc_port_count; ++i) {
+            for (j = 0; j < ib_proc->proc_ports[i].pm_cpc_data_count; ++j) {
+                if (NULL != ib_proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message) {
+                    free(ib_proc->proc_ports[i].pm_cpc_data[j].cbm_modex_message);
                 }
             }
         }
-        free(proc->proc_ports);
+        free(ib_proc->proc_ports);
     }
+    OBJ_DESTRUCT(&ib_proc->proc_lock);
 }
 
 
@@ -146,10 +146,6 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
     module_proc->proc_endpoint_count = 0;
     module_proc->proc_ompi = ompi_proc;
 
-    /* build a unique identifier (of arbitrary
-     * size) to represent the proc */
-    module_proc->proc_guid = ompi_proc->proc_name;
-
     /* query for the peer address info */
     rc = ompi_modex_recv(&mca_btl_openib_component.super.btl_version,
                          ompi_proc,
@@ -171,12 +167,12 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
     modex_message_size = ((char *) &(dummy.end)) - ((char*) &dummy);
 
     /* Unpack the number of modules in the message */
-    offset = message;
+    offset = (char *) message;
     unpack8(&offset, &(module_proc->proc_port_count));
     BTL_VERBOSE(("unpack: %d btls", module_proc->proc_port_count));
     if (module_proc->proc_port_count > 0) {
         module_proc->proc_ports = (mca_btl_openib_proc_modex_t *)
-            malloc(sizeof(mca_btl_openib_proc_modex_t) * 
+            malloc(sizeof(mca_btl_openib_proc_modex_t) *
                    module_proc->proc_port_count);
     } else {
         module_proc->proc_ports = NULL;
@@ -188,7 +184,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         /* Unpack the modex comment message struct */
         size = modex_message_size;
         memcpy(&(module_proc->proc_ports[i].pm_port_info), offset, size);
-#if !defined(WORDS_BIGENDIAN) && OMPI_ENABLE_HETEROGENEOUS_SUPPORT
+#if !defined(WORDS_BIGENDIAN) && OPAL_ENABLE_HETEROGENEOUS_SUPPORT
         MCA_BTL_OPENIB_MODEX_MSG_NTOH(module_proc->proc_ports[i].pm_port_info);
 #endif
         offset += size;
@@ -198,9 +194,9 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         /* Unpack the number of CPCs that follow */
         unpack8(&offset, &(module_proc->proc_ports[i].pm_cpc_data_count));
         BTL_VERBOSE(("unpacked btl %d: number of cpcs to follow %d (offset now %d)",
-                     i, module_proc->proc_ports[i].pm_cpc_data_count, 
+                     i, module_proc->proc_ports[i].pm_cpc_data_count,
                      (int)(offset-((char*)message))));
-        module_proc->proc_ports[i].pm_cpc_data = 
+        module_proc->proc_ports[i].pm_cpc_data = (ompi_btl_openib_connect_base_module_data_t *)
             calloc(module_proc->proc_ports[i].pm_cpc_data_count,
                    sizeof(ompi_btl_openib_connect_base_module_data_t));
         if (NULL == module_proc->proc_ports[i].pm_cpc_data) {
@@ -215,15 +211,15 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
             unpack8(&offset, &u8);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: index %d (offset now %d)",
                          i, j, u8, (int)(offset-(char*)message)));
-            cpcd->cbm_component = 
+            cpcd->cbm_component =
                 ompi_btl_openib_connect_base_get_cpc_byindex(u8);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: component %s",
                          i, j, cpcd->cbm_component->cbc_name));
-            
+
             unpack8(&offset, &cpcd->cbm_priority);
             unpack8(&offset, &cpcd->cbm_modex_message_len);
             BTL_VERBOSE(("unpacked btl %d: cpc %d: priority %d, msg len %d (offset now %d)",
-                         i, j, cpcd->cbm_priority, 
+                         i, j, cpcd->cbm_priority,
                          cpcd->cbm_modex_message_len,
                          (int)(offset-(char*)message)));
             if (cpcd->cbm_modex_message_len > 0) {
@@ -232,7 +228,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
                     BTL_ERROR(("Failed to malloc"));
                     return NULL;
                 }
-                memcpy(cpcd->cbm_modex_message, offset, 
+                memcpy(cpcd->cbm_modex_message, offset,
                        cpcd->cbm_modex_message_len);
                 offset += cpcd->cbm_modex_message_len;
                 BTL_VERBOSE(("unpacked btl %d: cpc %d: blob unpacked %d %x (offset now %d)",
@@ -248,7 +244,7 @@ mca_btl_openib_proc_t* mca_btl_openib_proc_create(ompi_proc_t* ompi_proc)
         module_proc->proc_endpoints = NULL;
     } else {
         module_proc->proc_endpoints = (mca_btl_base_endpoint_t**)
-            malloc(module_proc->proc_port_count * 
+            malloc(module_proc->proc_port_count *
                    sizeof(mca_btl_base_endpoint_t*));
     }
     if (NULL == module_proc->proc_endpoints) {

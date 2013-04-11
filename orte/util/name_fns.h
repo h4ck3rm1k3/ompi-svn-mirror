@@ -2,13 +2,14 @@
  * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -28,6 +29,11 @@
 #define _ORTE_NAME_FNS_H_
 
 #include "orte_config.h"
+
+#ifdef HAVE_STDINT_h
+#include <stdint.h>
+#endif
+
 #include "orte/types.h"
 
 #include "opal/class/opal_list.h"
@@ -38,7 +44,8 @@ typedef uint8_t  orte_ns_cmp_bitmask_t;  /**< Bit mask for comparing process nam
 #define ORTE_NS_CMP_NONE       0x00
 #define ORTE_NS_CMP_JOBID      0x02
 #define ORTE_NS_CMP_VPID       0x04
-#define ORTE_NS_CMP_ALL        0Xff
+#define ORTE_NS_CMP_ALL        0x0f
+#define ORTE_NS_CMP_WILD       0x10
 
 /* useful define to print name args in output messages */
 ORTE_DECLSPEC char* orte_util_print_name_args(const orte_process_name_t *name);
@@ -61,6 +68,7 @@ ORTE_DECLSPEC char* orte_util_print_local_jobid(const orte_jobid_t job);
 #define ORTE_LOCAL_JOBID_PRINT(n) \
     orte_util_print_local_jobid(n)
 
+ORTE_DECLSPEC char *orte_pretty_print_timing(int64_t secs, int64_t usecs);
 
 /* a macro for identifying the job family - i.e., for
  * extracting the mpirun-specific id field of the jobid
@@ -81,13 +89,23 @@ ORTE_DECLSPEC char* orte_util_print_local_jobid(const orte_jobid_t job);
 #define ORTE_LOCAL_JOBID(n) \
     ( (n) & 0x0000ffff)
 
+#define ORTE_CONSTRUCT_JOB_FAMILY(n) \
+    ( ((n) << 16) & 0xffff0000)
+
+#define ORTE_CONSTRUCT_LOCAL_JOBID(local, job) \
+    ( ((local) & 0xffff0000) | ((job) & 0x0000ffff) )
+
 /* a macro for identifying that a proc is a daemon */
-#define ORTE_PROC_IS_DAEMON(n)  \
+#define ORTE_JOBID_IS_DAEMON(n)  \
     !((n) & 0x0000ffff)
+
+/* a macro for obtaining the daemon jobid */
+#define ORTE_DAEMON_JOBID(n) \
+    ((n) & 0xffff0000)
 
 /* List of names for general use */
 struct orte_namelist_t {
-    opal_list_item_t item;      /**< Allows this item to be placed on a list */
+    opal_list_item_t super;      /**< Allows this item to be placed on a list */
     orte_process_name_t name;   /**< Name of a process */
 };
 typedef struct orte_namelist_t orte_namelist_t;
@@ -105,11 +123,17 @@ ORTE_DECLSPEC int orte_util_convert_process_name_to_string(char** name_string,
 ORTE_DECLSPEC int orte_util_create_process_name(orte_process_name_t **name,
                                   orte_jobid_t job,
                                   orte_vpid_t vpid);
+
 ORTE_DECLSPEC int orte_util_compare_name_fields(orte_ns_cmp_bitmask_t fields,
                                   const orte_process_name_t* name1,
                                   const orte_process_name_t* name2);
 /** This funtion returns a guaranteed unique hash value for the passed process name */
 ORTE_DECLSPEC uint64_t orte_util_hash_name(const orte_process_name_t * name);
+ORTE_DECLSPEC uint32_t orte_util_hash_vpid(orte_vpid_t vpid);
+ORTE_DECLSPEC int orte_util_convert_string_to_sysinfo(char **cpu_type, char **cpu_model,
+                                             const char* sysinfo_string);
+ORTE_DECLSPEC int orte_util_convert_sysinfo_to_string(char** sysinfo_string,
+						      const char *cpu_model, const char *cpu_type);
 
 END_C_DECLS
 #endif

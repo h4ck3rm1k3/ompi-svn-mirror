@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2006 The University of Tennessee and The University
@@ -20,9 +20,10 @@
 #ifndef MCA_RML_OOB_RML_OOB_H
 #define MCA_RML_OOB_RML_OOB_H
 
+#include "orte_config.h"
 #include "opal/threads/condition.h"
 #include "opal/threads/mutex.h"
-#include "opal/event/event.h"
+#include "opal/mca/event/event.h"
 #include "orte/mca/rml/rml.h"
 #include "orte/mca/oob/oob.h"
 #include "opal/dss/dss_types.h"
@@ -170,13 +171,14 @@ int orte_rml_oob_ping(const char* uri,
 
 char* orte_rml_oob_get_uri(void);
 int orte_rml_oob_set_uri(const char*);
-int orte_rml_oob_get_new_name(orte_process_name_t *name);
 
 int orte_rml_oob_add_exception(orte_rml_exception_callback_t cbfunc);
 int orte_rml_oob_del_exception(orte_rml_exception_callback_t cbfunc);
 void orte_rml_oob_exception_callback(const orte_process_name_t *peer,
                                     orte_rml_exception_t exception);
 
+
+int orte_rml_oob_purge(orte_process_name_t *peer);
 
 END_C_DECLS
 

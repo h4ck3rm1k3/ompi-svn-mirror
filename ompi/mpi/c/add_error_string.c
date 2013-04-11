@@ -21,9 +21,12 @@
 #include <string.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/errhandler/errcode.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Add_error_string = PMPI_Add_error_string
 #endif
 
@@ -31,7 +34,7 @@
 #include "ompi/mpi/c/profile/defines.h"
 #endif
 
-static const char FUNC_NAME[] = "MPI_Add_error_code";
+static const char FUNC_NAME[] = "MPI_Add_error_string";
 
 
 int MPI_Add_error_string(int errorcode, char *string)

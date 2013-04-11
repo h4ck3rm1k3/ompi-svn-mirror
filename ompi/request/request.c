@@ -3,15 +3,16 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2007 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -30,9 +31,11 @@
 opal_pointer_array_t             ompi_request_f_to_c_table;
 size_t                           ompi_request_waiting = 0;
 size_t                           ompi_request_completed = 0;
+size_t                           ompi_request_failed = 0;
 opal_mutex_t                     ompi_request_lock;
 opal_condition_t                 ompi_request_cond;
 ompi_predefined_request_t        ompi_request_null;
+ompi_predefined_request_t        *ompi_request_null_addr = &ompi_request_null;
 ompi_request_t                   ompi_request_empty;
 ompi_status_public_t             ompi_status_empty;
 ompi_request_fns_t               ompi_request_functions = {
@@ -52,6 +55,7 @@ static void ompi_request_construct(ompi_request_t* req)
     req->req_free         = NULL;
     req->req_cancel       = NULL;
     req->req_complete_cb  = NULL;
+    req->req_complete_cb_data = NULL;
     req->req_f_to_c_index = MPI_UNDEFINED;
     req->req_mpi_object.comm = (struct ompi_communicator_t*) NULL;
 }
@@ -110,7 +114,7 @@ int ompi_request_init(void)
     ompi_request_null.request.req_status.MPI_SOURCE = MPI_PROC_NULL;
     ompi_request_null.request.req_status.MPI_TAG = MPI_ANY_TAG;
     ompi_request_null.request.req_status.MPI_ERROR = MPI_SUCCESS;
-    ompi_request_null.request.req_status._count = 0;
+    ompi_request_null.request.req_status._ucount = 0;
     ompi_request_null.request.req_status._cancelled = 0;
 
     ompi_request_null.request.req_complete = true;
@@ -142,7 +146,7 @@ int ompi_request_init(void)
     ompi_request_empty.req_status.MPI_SOURCE = MPI_PROC_NULL;
     ompi_request_empty.req_status.MPI_TAG = MPI_ANY_TAG;
     ompi_request_empty.req_status.MPI_ERROR = MPI_SUCCESS;
-    ompi_request_empty.req_status._count = 0;
+    ompi_request_empty.req_status._ucount = 0;
     ompi_request_empty.req_status._cancelled = 0;
 
     ompi_request_empty.req_complete = true;
@@ -161,7 +165,7 @@ int ompi_request_init(void)
     ompi_status_empty.MPI_SOURCE = MPI_ANY_SOURCE;
     ompi_status_empty.MPI_TAG = MPI_ANY_TAG;
     ompi_status_empty.MPI_ERROR = MPI_SUCCESS;
-    ompi_status_empty._count = 0;
+    ompi_status_empty._ucount = 0;
     ompi_status_empty._cancelled = 0;
 
     return OMPI_SUCCESS;

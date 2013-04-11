@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,16 +21,13 @@
 
 #include "orte_config.h"
 #include "orte/constants.h"
-#include "orte/types.h"
 
 #if !ORTE_DISABLE_FULL_SUPPORT
 
-#include "opal/util/argv.h"
+#include "opal/util/output.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 
-#include "orte/mca/errmgr/errmgr.h"
-#include "orte/util/show_help.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/plm_private.h"
@@ -78,6 +77,7 @@ orte_plm_base_module_t orte_plm = {
     NULL,   /* cannot remotely spawn by default */
     NULL,   /* cannot terminate job from a proxy */
     NULL,   /* cannot terminate orteds from a proxy */
+    NULL,   /* cannot terminate procs from a proxy */
     NULL,   /* cannot signal job from a proxy */
     orte_plm_proxy_finalize
 };
@@ -96,13 +96,12 @@ int orte_plm_base_open(void)
     /* init selected to be false */
     orte_plm_base.selected = false;
 
-    /* initialize the condition variables for orted comm */
-    OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_lock, opal_mutex_t);
-    OBJ_CONSTRUCT(&orte_plm_globals.orted_cmd_cond, opal_condition_t);
-    
     /* init the next jobid */
-    orte_plm_globals.next_jobid = 0;
+    orte_plm_globals.next_jobid = 1;
     
+    /* default to assigning daemons to nodes at launch */
+    orte_plm_globals.daemon_nodes_assigned_at_launch = true;
+
     /* Open up all the components that we can find */
 
     if (ORTE_SUCCESS != 

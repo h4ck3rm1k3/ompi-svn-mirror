@@ -9,6 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+ * Copyright (c)      2012 Oak Rigde National Laboratory. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -31,17 +34,25 @@
 #define MPI_Add_error_string PMPI_Add_error_string
 #define MPI_Address PMPI_Address
 #define MPI_Allgather PMPI_Allgather
+#define MPI_Iallgather PMPI_Iallgather
 #define MPI_Allgatherv PMPI_Allgatherv
+#define MPI_Iallgatherv PMPI_Iallgatherv
 #define MPI_Alloc_mem PMPI_Alloc_mem
 #define MPI_Allreduce PMPI_Allreduce
+#define MPI_Iallreduce PMPI_Iallreduce
 #define MPI_Alltoall PMPI_Alltoall
+#define MPI_Ialltoall PMPI_Ialltoall
 #define MPI_Alltoallv PMPI_Alltoallv
+#define MPI_Ialltoallv PMPI_Ialltoallv
 #define MPI_Alltoallw PMPI_Alltoallw
+#define MPI_Ialltoallw PMPI_Ialltoallw
 #define MPI_Attr_delete PMPI_Attr_delete
 #define MPI_Attr_get PMPI_Attr_get
 #define MPI_Attr_put PMPI_Attr_put
 #define MPI_Barrier PMPI_Barrier
+#define MPI_Ibarrier PMPI_Ibarrier
 #define MPI_Bcast PMPI_Bcast
+#define MPI_Ibcast PMPI_Ibcast
 #define MPI_Bsend_init PMPI_Bsend_init
 #define MPI_Bsend PMPI_Bsend
 #define MPI_Buffer_attach PMPI_Buffer_attach
@@ -86,6 +97,7 @@
 #define MPI_Comm_spawn PMPI_Comm_spawn
 #define MPI_Comm_spawn_multiple PMPI_Comm_spawn_multiple
 #define MPI_Comm_split PMPI_Comm_split
+#define MPI_Comm_split_type PMPI_Comm_split_type
 #define MPI_Comm_test_inter PMPI_Comm_test_inter
 #define MPI_Dims_create PMPI_Dims_create
 #define MPI_Errhandler_c2f PMPI_Errhandler_c2f
@@ -97,6 +109,7 @@
 #define MPI_Error_class PMPI_Error_class
 #define MPI_Error_string PMPI_Error_string
 #define MPI_Exscan PMPI_Exscan
+#define MPI_Iexscan PMPI_Iexscan
 #define MPI_File_c2f PMPI_File_c2f
 #define MPI_File_call_errhandler PMPI_File_call_errhandler
 #define MPI_File_close PMPI_File_close
@@ -158,11 +171,14 @@
 #define MPI_Finalized PMPI_Finalized
 
 #define MPI_Gather PMPI_Gather
+#define MPI_Igather PMPI_Igather
 #define MPI_Gatherv PMPI_Gatherv
+#define MPI_Igatherv PMPI_Igatherv
 #define MPI_Get_address PMPI_Get_address
 #define MPI_Get_count PMPI_Get_count
 #define MPI_Get_elements PMPI_Get_elements
 #define MPI_Get PMPI_Get
+#define MPI_Get_library_version PMPI_Get_library_version
 #define MPI_Get_processor_name PMPI_Get_processor_name
 #define MPI_Get_version PMPI_Get_version
 #define MPI_Graph_create PMPI_Graph_create
@@ -189,6 +205,10 @@
 #define MPI_Group_union PMPI_Group_union 
 #define MPI_Free_mem PMPI_Free_mem
 #define MPI_Ibsend PMPI_Ibsend
+#define MPI_Message_c2f PMPI_Message_c2f
+#define MPI_Message_f2c PMPI_Message_f2c
+#define MPI_Improbe PMPI_Improbe
+#define MPI_Imrecv PMPI_Imrecv
 #define MPI_Info_c2f PMPI_Info_c2f
 #define MPI_Info_create PMPI_Info_create
 #define MPI_Info_delete PMPI_Info_delete
@@ -214,7 +234,11 @@
 #define MPI_Keyval_create PMPI_Keyval_create 
 #define MPI_Keyval_free PMPI_Keyval_free 
 #define MPI_Lookup_name PMPI_Lookup_name
+#define MPI_Mprobe PMPI_Mprobe
+#define MPI_Mrecv PMPI_Mrecv
+#define MPI_Message_cancel PMPI_Message_cancel
 #define MPI_Op_c2f PMPI_Op_c2f 
+#define MPI_Op_commutative PMPI_Op_commutative 
 #define MPI_Op_create PMPI_Op_create 
 #define MPI_Op_f2c PMPI_Op_f2c 
 #define MPI_Op_free PMPI_Op_free
@@ -231,7 +255,12 @@
 #define MPI_Recv_init PMPI_Recv_init 
 #define MPI_Recv PMPI_Recv 
 #define MPI_Reduce PMPI_Reduce
+#define MPI_Ireduce PMPI_Ireduce
+#define MPI_Reduce_local PMPI_Reduce_local
 #define MPI_Reduce_scatter PMPI_Reduce_scatter
+#define MPI_Ireduce_scatter PMPI_Ireduce_scatter
+#define MPI_Reduce_scatter_block PMPI_Reduce_scatter_block
+#define MPI_Ireduce_scatter_block PMPI_Ireduce_scatter_block
 #define MPI_Register_datarep PMPI_Register_datarep
 #define MPI_Request_c2f PMPI_Request_c2f
 #define MPI_Request_f2c PMPI_Request_f2c
@@ -240,8 +269,11 @@
 #define MPI_Rsend_init PMPI_Rsend_init 
 #define MPI_Rsend PMPI_Rsend 
 #define MPI_Scan PMPI_Scan
+#define MPI_Iscan PMPI_Iscan
 #define MPI_Scatter PMPI_Scatter
+#define MPI_Iscatter PMPI_Iscatter
 #define MPI_Scatterv PMPI_Scatterv
+#define MPI_Iscatterv PMPI_Iscatterv
 #define MPI_Send_init PMPI_Send_init 
 #define MPI_Send PMPI_Send 
 #define MPI_Sendrecv PMPI_Sendrecv 
@@ -270,6 +302,7 @@
 #define MPI_Type_create_hindexed PMPI_Type_create_hindexed
 #define MPI_Type_create_hvector PMPI_Type_create_hvector
 #define MPI_Type_create_indexed_block PMPI_Type_create_indexed_block
+#define MPI_Type_create_hindexed_block PMPI_Type_create_hindexed_block
 #define MPI_Type_create_keyval PMPI_Type_create_keyval
 #define MPI_Type_create_resized PMPI_Type_create_resized
 #define MPI_Type_create_struct PMPI_Type_create_struct

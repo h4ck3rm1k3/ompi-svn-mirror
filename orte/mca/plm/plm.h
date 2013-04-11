@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -53,7 +55,7 @@ BEGIN_C_DECLS
 typedef int (*orte_plm_base_module_init_fn_t)(void);
 
 /*
- * Spawn a job
+ * Spawn a job - this is a non-blocking function!
  */
 typedef int (*orte_plm_base_module_spawn_fn_t)(orte_job_t *jdata);
 
@@ -85,6 +87,11 @@ typedef int (*orte_plm_base_module_terminate_job_fn_t)(orte_jobid_t);
 typedef int (*orte_plm_base_module_terminate_orteds_fn_t)(void);
 
 /**
+ * Terminate an array of specific procs
+ */
+typedef int (*orte_plm_base_module_terminate_procs_fn_t)(opal_pointer_array_t *procs);
+    
+    /**
  * Signal any processes launched for the respective jobid by
  * this component.
  */
@@ -100,6 +107,7 @@ struct orte_plm_base_module_1_0_0_t {
     orte_plm_base_module_remote_spawn_fn_t       remote_spawn;
     orte_plm_base_module_terminate_job_fn_t      terminate_job;
     orte_plm_base_module_terminate_orteds_fn_t   terminate_orteds;
+    orte_plm_base_module_terminate_procs_fn_t    terminate_procs;
     orte_plm_base_module_signal_job_fn_t         signal_job;
     orte_plm_base_module_finalize_fn_t           finalize;
 };

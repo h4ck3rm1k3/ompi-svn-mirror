@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -18,13 +18,11 @@
 
 #include "orte_config.h"
 
-#include "orte/util/name_fns.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 
-#include "orte/util/show_help.h"
 
 #include "orte/mca/rml/base/base.h"
 
@@ -66,7 +64,6 @@ orte_rml_module_t orte_rml_ftrm_module = {
     orte_rml_ftrm_get_contact_info,
     orte_rml_ftrm_set_contact_info,
 
-    orte_rml_ftrm_get_new_name,
     orte_rml_ftrm_ping,
 
     orte_rml_ftrm_send,
@@ -83,7 +80,9 @@ orte_rml_module_t orte_rml_ftrm_module = {
     orte_rml_ftrm_add_exception_handler,
     orte_rml_ftrm_del_exception_handler,
 
-    orte_rml_ftrm_ft_event
+    orte_rml_ftrm_ft_event,
+    
+    orte_rml_ftrm_purge
 };
 
 int rml_ftrm_output_handle;
@@ -137,7 +136,7 @@ static int orte_rml_ftrm_open(void)
     /* Enable this wrapper = RML_SELECT_WRAPPER_PRIORITY
      * ow = -1 or never selected
      */
-#if OPAL_ENABLE_FT == 1
+#if OPAL_ENABLE_FT_CR == 1
     ftrm_priority = value;
 #else
     ftrm_priority = -1;

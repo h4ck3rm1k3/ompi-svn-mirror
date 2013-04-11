@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,10 +22,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/topo/topo.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Graph_map = PMPI_Graph_map
 #endif
 
@@ -34,7 +39,7 @@
 static const char FUNC_NAME[] = "MPI_Graph_map";
 
 
-int MPI_Graph_map(MPI_Comm comm, int nnodes, int *index, int *edges,
+int MPI_Graph_map(MPI_Comm comm, int nnodes, int indx[], int edges[],
                   int *newrank) 
 {
     int err;
@@ -55,7 +60,7 @@ int MPI_Graph_map(MPI_Comm comm, int nnodes, int *index, int *edges,
             return OMPI_ERRHANDLER_INVOKE (comm, MPI_ERR_COMM,
                                            FUNC_NAME);
         }
-        if (1 > nnodes || NULL == index || NULL == edges || NULL == newrank) {
+        if (1 > nnodes || NULL == indx || NULL == edges || NULL == newrank) {
             return OMPI_ERRHANDLER_INVOKE (comm, MPI_ERR_ARG,
                                            FUNC_NAME);
         }
@@ -75,7 +80,7 @@ int MPI_Graph_map(MPI_Comm comm, int nnodes, int *index, int *edges,
 	
         /* call the function */
         if ( MPI_SUCCESS != 
-             (err = func(comm, nnodes, index, edges, newrank))) {
+             (err = func(comm, nnodes, indx, edges, newrank))) {
             OPAL_CR_EXIT_LIBRARY();
             return OMPI_ERRHANDLER_INVOKE(comm, err, FUNC_NAME);
         }

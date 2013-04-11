@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,7 +21,7 @@
 #include "coll_basic.h"
 
 #include "mpi.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/constants.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
@@ -57,7 +58,7 @@ mca_coll_basic_allgatherv_intra(void *sbuf, int scount,
      */
 
     if (MPI_IN_PLACE == sbuf) {
-        ompi_ddt_get_extent(rdtype, &lb, &extent);
+        ompi_datatype_get_extent(rdtype, &lb, &extent);
         send_type = rdtype;
         send_buf = (char*)rbuf;
         for (i = 0; i < rank; ++i) {
@@ -89,22 +90,22 @@ mca_coll_basic_allgatherv_intra(void *sbuf, int scount,
      * datatype.
      */
 
-    err = ompi_ddt_create_indexed(size,rcounts,disps,rdtype,&newtype);
+    err = ompi_datatype_create_indexed(size,rcounts,disps,rdtype,&newtype);
     if (MPI_SUCCESS != err) {
         return err;
     }
     
-    err = ompi_ddt_commit(&newtype);
+    err = ompi_datatype_commit(&newtype);
     if(MPI_SUCCESS != err) {
        return err;
     }
 
-    comm->c_coll.coll_bcast( rbuf, 1 ,newtype,0,comm,
-            comm->c_coll.coll_bcast_module);
+    err = comm->c_coll.coll_bcast( rbuf, 1 ,newtype,0,comm,
+                                   comm->c_coll.coll_bcast_module);
 
-    ompi_ddt_destroy (&newtype);
+    ompi_datatype_destroy (&newtype);
 
-    return MPI_SUCCESS;
+    return err;
 }
 
 
@@ -124,27 +125,25 @@ mca_coll_basic_allgatherv_inter(void *sbuf, int scount,
                                 mca_coll_base_module_t *module)
 {
     int rsize, err, i;
-    int *scounts = NULL, *sdisps = NULL;
+    int *scounts, *sdisps;
 
     rsize = ompi_comm_remote_size(comm);
 
-    scounts = (int *) malloc(rsize * sizeof(int));
-    sdisps = (int *) calloc(rsize, sizeof(int));
-    if (NULL == scounts || NULL == sdisps) {
+    scounts = (int *) malloc(2 * rsize * sizeof(int));
+    sdisps = scounts + rsize;
+    if (NULL == scounts) {
         return OMPI_ERR_OUT_OF_RESOURCE;
     }
 
     for (i = 0; i < rsize; i++) {
         scounts[i] = scount;
+        sdisps[i] = 0;
     }
 
     err = comm->c_coll.coll_alltoallv(sbuf, scounts, sdisps, sdtype,
                                       rbuf, rcounts, disps, rdtype, comm,
                                       comm->c_coll.coll_alltoallv_module);
 
-    if (NULL != sdisps) {
-        free(sdisps);
-    }
     if (NULL != scounts) {
         free(scounts);
     }

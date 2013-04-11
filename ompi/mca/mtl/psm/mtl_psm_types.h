@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      QLogic Corporation. All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -18,27 +20,19 @@
  */
 
 #ifndef MTL_PSM_TYPES_H_HAS_BEEN_INCLUDED
-#define MTL_PSM_TYPS_H_HAS_BEEN_INCLUDED
+#define MTL_PSM_TYPES_H_HAS_BEEN_INCLUDED
 
+#include "ompi_config.h"
 #include "mtl_psm.h"
 
-#include "opal/threads/threads.h"
-#include "opal/threads/condition.h"
-#include "ompi/class/ompi_free_list.h"
-#include "opal/util/cmd_line.h"
-#include "ompi/request/request.h"
 #include "ompi/mca/mtl/mtl.h"
 #include "ompi/mca/mtl/base/base.h"
-#include "ompi/datatype/datatype.h"
-#include "ompi/datatype/convertor.h"
 #include "mtl_psm_endpoint.h" 
 
 #include "psm.h"
 
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /** 
  * MTL Module Interface
@@ -54,6 +48,11 @@ struct mca_mtl_psm_module_t {
     int32_t      ib_service_level;
     uint64_t     ib_pkey;
   
+#if PSM_VERNO >= 0x010d
+    uint64_t     ib_service_id;
+    psm_path_res_t path_res_type;
+#endif
+
     psm_ep_t	 ep;
     psm_mq_t	 mq;
     psm_epid_t	 epid;
@@ -90,9 +89,7 @@ OMPI_DECLSPEC mca_mtl_psm_component_t mca_mtl_psm_component;
 		(tagsel) &= ~0xffff00000000ULL;					\
 	} while (0)
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif  /* MTL_PSM_TYPES_H_HAS_BEEN_INCLUDED */
 

@@ -9,6 +9,8 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -22,15 +24,16 @@ headers += \
 	opal/sys/architecture.h \
 	opal/sys/atomic.h \
 	opal/sys/atomic_impl.h \
-	opal/sys/cache.h \
-	opal/sys/timer.h
+	opal/sys/timer.h \
+        opal/sys/cma.h
 
 include opal/sys/alpha/Makefile.am
 include opal/sys/amd64/Makefile.am
+include opal/sys/arm/Makefile.am
 include opal/sys/ia32/Makefile.am
 include opal/sys/ia64/Makefile.am
 include opal/sys/mips/Makefile.am
 include opal/sys/powerpc/Makefile.am
-include opal/sys/sparc/Makefile.am
 include opal/sys/sparcv9/Makefile.am
 include opal/sys/win32/Makefile.am
+include opal/sys/sync_builtin/Makefile.am

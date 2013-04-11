@@ -1,11 +1,13 @@
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University.
  *                         All rights reserved.
- * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
+ * Copyright (c) 2004-2011 The Trustees of the University of Tennessee.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
+ *                         All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -16,9 +18,12 @@
 
 #include "orte_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include <sys/types.h>
 
-#include "opal/dss/dss.h"
 #include "orte/runtime/data_type_support/orte_dt_support.h"
 
 int orte_dt_compare_std_cntr(orte_std_cntr_t *value1, orte_std_cntr_t *value2, opal_data_type_t type)
@@ -72,7 +77,7 @@ int orte_dt_compare_name(orte_process_name_t *value1,
             return OPAL_VALUE1_GREATER;
         }
     }
-    
+
     /** only way to get here is if all fields are equal or WILDCARD */
     return OPAL_EQUAL;
 }
@@ -140,11 +145,12 @@ int orte_dt_compare_node(orte_node_t *value1, orte_node_t *value2, opal_data_typ
  */
 int orte_dt_compare_proc(orte_proc_t *value1, orte_proc_t *value2, opal_data_type_t type)
 {
+    orte_ns_cmp_bitmask_t mask;
+
     /** check vpids */
-    if (value1->name.vpid > value2->name.vpid) return OPAL_VALUE1_GREATER;
-    if (value1->name.vpid < value2->name.vpid) return OPAL_VALUE2_GREATER;
-    
-    return OPAL_EQUAL;
+    mask = ORTE_NS_CMP_VPID;
+
+    return orte_util_compare_name_fields(mask, &value1->name, &value2->name);
 }
 
 /*
@@ -238,16 +244,6 @@ int orte_dt_compare_tags(orte_rml_tag_t *value1, orte_rml_tag_t *value2, opal_da
 
 /* ORTE_DAEMON_CMD */
 int orte_dt_compare_daemon_cmd(orte_daemon_cmd_flag_t *value1, orte_daemon_cmd_flag_t *value2, opal_data_type_t type)
-{
-    if (*value1 > *value2) return OPAL_VALUE1_GREATER;
-    
-    if (*value2 > *value1) return OPAL_VALUE2_GREATER;
-    
-    return OPAL_EQUAL;
-}
-
-/* ORTE_GRPCOMM_MODE */
-int orte_dt_compare_grpcomm_mode(orte_grpcomm_mode_t *value1, orte_grpcomm_mode_t *value2, opal_data_type_t type)
 {
     if (*value1 > *value2) return OPAL_VALUE1_GREATER;
     

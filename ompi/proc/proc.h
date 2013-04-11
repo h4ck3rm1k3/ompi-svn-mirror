@@ -2,15 +2,15 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Los Alamos National Security, LLC.  All rights
  *                         reserved. 
  * $COPYRIGHT$
  * 
@@ -31,12 +31,14 @@
 #ifndef OMPI_PROC_PROC_H
 #define OMPI_PROC_PROC_H
 
+#include "ompi_config.h"
 #include "ompi/types.h"
 #include "opal/class/opal_list.h"
-#include "opal/threads/mutex.h"
 #include "opal/dss/dss_types.h"
+#include "opal/mca/hwloc/hwloc.h"
 
-#include "orte/runtime/orte_globals.h"
+#include "orte/types.h"
+
 
 BEGIN_C_DECLS
 
@@ -55,15 +57,15 @@ struct ompi_proc_t {
     /** this process' name */
     orte_process_name_t             proc_name;
     /** PML specific proc data */
-    struct mca_pml_base_endpoint_t* proc_pml;
+    struct mca_pml_endpoint_t*      proc_pml;
     /** BML specific proc data */
     struct mca_bml_base_endpoint_t* proc_bml;
     /** architecture of this process */
     uint32_t                        proc_arch;
     /** flags for this proc */
-    uint8_t                         proc_flags;
+    opal_hwloc_locality_t           proc_flags;
     /** Base convertor for the proc described by this process */
-    struct ompi_convertor_t*        proc_convertor;
+    struct opal_convertor_t*        proc_convertor;
     /** A pointer to the name of this host - data is
      * actually stored in the RTE
      */
@@ -90,13 +92,6 @@ OMPI_DECLSPEC extern ompi_proc_t* ompi_proc_local_proc;
 /* ******************************************************************** */
 
 
-/** Process is on the same node as the local process */
-#define OMPI_PROC_FLAG_LOCAL  0x01
-
-
-/* ******************************************************************** */
-
-
 /**
  * Initialize the OMPI process subsystem
  *
@@ -118,19 +113,14 @@ OMPI_DECLSPEC extern ompi_proc_t* ompi_proc_local_proc;
 OMPI_DECLSPEC int ompi_proc_init(void);
 
 /**
- * Set the arch of each proc in the ompi_proc_list
+ * Complete filling up the proc information (arch, name and locality) for all
+ * procs related to this job. This function is to be called only after
+ * the modex exchange has been completed.
  *
- * In some environments, MPI procs are required to exchange their
- * arch via a modex operation during mpi_init. In other environments,
- * the arch is determined by other mechanisms and provided to the
- * proc directly. To support both mechanisms, we provide a separate
- * function to set the arch of the procs -after- the modex operation
- * has completed in mpi_init.
- *
- * @retval OMPI_SUCCESS Archs successfully set
- * @retval OMPI_ERROR   Archs could not be initialized
+ * @retval OMPI_SUCCESS All information correctly set.
+ * @retval OMPI_ERROR   Some info could not be initialized.
  */
-OMPI_DECLSPEC int ompi_proc_set_arch(void);
+OMPI_DECLSPEC int ompi_proc_complete_init(void);
 
 /**
  * Finalize the OMPI Process subsystem

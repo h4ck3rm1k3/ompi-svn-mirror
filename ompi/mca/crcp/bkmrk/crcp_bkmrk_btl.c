@@ -21,10 +21,8 @@
 #include <unistd.h>
 #endif  /* HAVE_UNIST_H */
 
-#include "opal/runtime/opal_cr.h"
-#include "opal/event/event.h"
-#include "orte/util/output.h"
-#include "opal/util/argv.h"
+#include "opal/class/opal_bitmap.h"
+#include "opal/mca/event/event.h"
 #include "opal/util/opal_environ.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/mca.h"
@@ -51,7 +49,7 @@ ompi_crcp_base_coord_btl_add_procs( struct mca_btl_base_module_t* btl,
                                    size_t nprocs,
                                    struct ompi_proc_t** procs,
                                    struct mca_btl_base_endpoint_t** endpoints,
-                                   struct ompi_bitmap_t* reachable,
+                                   struct opal_bitmap_t* reachable,
                                    ompi_crcp_base_btl_state_t* btl_state)
 {
     btl_state->error_code = OMPI_SUCCESS;
@@ -110,7 +108,7 @@ ompi_crcp_base_btl_state_t*
 ompi_crcp_base_coord_btl_prepare_src( struct mca_btl_base_module_t* btl,
                                      struct mca_btl_base_endpoint_t* endpoint,
                                      mca_mpool_base_registration_t* registration,
-                                     struct ompi_convertor_t* convertor,
+                                     struct opal_convertor_t* convertor,
                                      size_t reserve,
                                      size_t* size,
                                      ompi_crcp_base_btl_state_t* btl_state)
@@ -123,7 +121,7 @@ ompi_crcp_base_btl_state_t*
 ompi_crcp_base_coord_btl_prepare_dst( struct mca_btl_base_module_t* btl,
                                      struct mca_btl_base_endpoint_t* endpoint,
                                      mca_mpool_base_registration_t* registration,
-                                     struct ompi_convertor_t* convertor,
+                                     struct opal_convertor_t* convertor,
                                      size_t reserve,
                                      size_t* size,
                                      ompi_crcp_base_btl_state_t* btl_state)

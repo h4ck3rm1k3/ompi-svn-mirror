@@ -24,16 +24,14 @@
 #include "opal/threads/mutex.h"
 #include "opal/class/opal_list.h"
 #include "ompi/proc/proc.h"
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 
 struct mca_pml_ob1_comm_proc_t {
     opal_object_t super;
     uint16_t expected_sequence;    /**< send message sequence number - receiver side */
     struct ompi_proc_t* ompi_proc;
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_ENABLE_MULTI_THREADS
     volatile int32_t send_sequence; /**< send side sequence number */
 #else
     int32_t send_sequence; /**< send side sequence number */
@@ -51,7 +49,7 @@ typedef struct mca_pml_ob1_comm_proc_t mca_pml_ob1_comm_proc_t;
  */
 struct mca_pml_comm_t {
     opal_object_t super;
-#if OMPI_HAVE_THREAD_SUPPORT
+#if OPAL_ENABLE_MULTI_THREADS
     volatile uint32_t recv_sequence;  /**< recv request sequence number - receiver side */
 #else
     uint32_t recv_sequence;  /**< recv request sequence number - receiver side */
@@ -60,6 +58,7 @@ struct mca_pml_comm_t {
     opal_list_t wild_receives;    /**< queue of unmatched wild (source process not specified) receives */
     mca_pml_ob1_comm_proc_t* procs;
     size_t num_procs;
+    size_t last_probed;
 };
 typedef struct mca_pml_comm_t mca_pml_ob1_comm_t;
 
@@ -76,8 +75,6 @@ OBJ_CLASS_DECLARATION(mca_pml_ob1_comm_t);
 
 extern int mca_pml_ob1_comm_init_size(mca_pml_ob1_comm_t* comm, size_t size);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 #endif
 

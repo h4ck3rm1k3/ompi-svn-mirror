@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -20,7 +20,7 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#if HAVE_STRING_H
+#ifdef HAVE_STRING_H
 #include <string.h>
 #endif
 #include <stdio.h>
@@ -47,7 +47,7 @@
 
 #include "orte/mca/iof/base/static-components.h"
 
-orte_iof_base_module_t orte_iof;
+orte_iof_base_module_t orte_iof = {0};
 
 
 #if ORTE_DISABLE_FULL_SUPPORT
@@ -63,11 +63,29 @@ int orte_iof_base_open(void)
 #else
 
 /* class instances */
+static void orte_iof_job_construct(orte_iof_job_t *ptr)
+{
+    ptr->jdata = NULL;
+    OBJ_CONSTRUCT(&ptr->xoff, opal_bitmap_t);
+}
+static void orte_iof_job_destruct(orte_iof_job_t *ptr)
+{
+    if (NULL != ptr->jdata) {
+        OBJ_RELEASE(ptr->jdata);
+    }
+    OBJ_DESTRUCT(&ptr->xoff);
+}
+OBJ_CLASS_INSTANCE(orte_iof_job_t,
+                   opal_object_t,
+                   orte_iof_job_construct,
+                   orte_iof_job_destruct);
+
 static void orte_iof_base_proc_construct(orte_iof_proc_t* ptr)
 {
     ptr->revstdout = NULL;
     ptr->revstderr = NULL;
     ptr->revstddiag = NULL;
+    ptr->sink = NULL;
 }
 static void orte_iof_base_proc_destruct(orte_iof_proc_t* ptr)
 {
@@ -92,6 +110,7 @@ static void orte_iof_base_sink_construct(orte_iof_sink_t* ptr)
     ptr->daemon.jobid = ORTE_JOBID_INVALID;
     ptr->daemon.vpid = ORTE_VPID_INVALID;
     ptr->wev = OBJ_NEW(orte_iof_write_event_t);
+    ptr->xoff = false;
 }
 static void orte_iof_base_sink_destruct(orte_iof_sink_t* ptr)
 {
@@ -111,17 +130,20 @@ OBJ_CLASS_INSTANCE(orte_iof_sink_t,
 
 static void orte_iof_base_read_event_construct(orte_iof_read_event_t* rev)
 {
-    memset(&rev->ev,0,sizeof(rev->ev));
+    rev->fd = -1;
+    rev->active = false;
+    rev->ev = opal_event_alloc();
 }
 static void orte_iof_base_read_event_destruct(orte_iof_read_event_t* rev)
 {
-    opal_event_del(&rev->ev);
-    if (0 <= rev->ev.ev_fd) {
+    opal_event_free(rev->ev);
+    if (0 <= rev->fd) {
         OPAL_OUTPUT_VERBOSE((20, orte_iof_base.iof_output,
                              "%s iof: closing fd %d for process %s",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                             rev->ev.ev_fd, ORTE_NAME_PRINT(&rev->name)));
-        close(rev->ev.ev_fd);
+                             rev->fd, ORTE_NAME_PRINT(&rev->name)));
+        close(rev->fd);
+        rev->fd = -1;
     }
 }
 OBJ_CLASS_INSTANCE(orte_iof_read_event_t,
@@ -134,13 +156,12 @@ static void orte_iof_base_write_event_construct(orte_iof_write_event_t* wev)
     wev->pending = false;
     wev->fd = -1;
     OBJ_CONSTRUCT(&wev->outputs, opal_list_t);
+    wev->ev = opal_event_alloc();
 }
 static void orte_iof_base_write_event_destruct(orte_iof_write_event_t* wev)
 {
-    if (wev->pending) {
-        opal_event_del(&wev->ev);
-    }
-    if (orte_process_info.hnp) {
+    opal_event_free(wev->ev);
+    if (ORTE_PROC_IS_HNP) {
         int xmlfd = fileno(orte_xml_fp);
         if (xmlfd == wev->fd) {
             /* don't close this one - will get it later */
@@ -184,6 +205,7 @@ int orte_iof_base_open(void)
     /* Initialize globals */
     OBJ_CONSTRUCT(&orte_iof_base.iof_components_opened, opal_list_t);
     OBJ_CONSTRUCT(&orte_iof_base.iof_write_output_lock, opal_mutex_t);
+    orte_iof_base.output_limit = UINT_MAX;
 
     /* did the user request we print output to files? */
     if (NULL != orte_output_filename) {
@@ -203,8 +225,22 @@ int orte_iof_base_open(void)
         }
     }
     
+   /* check for maximum number of pending output messages */
+    mca_base_param_reg_int_name("iof", "base_output_limit",
+                                "Maximum backlog of output messages [default: unlimited]",
+                                false, false, -1, &rc);
+    if (0 < rc) {
+        orte_iof_base.output_limit = rc;
+    }
+
+    /* check for files to be sent to stdin of procs */
+    mca_base_param_reg_string_name("iof", "base_input_files",
+                                   "Comma-separated list of input files to be read and sent to stdin of procs (default: NULL)",
+                                   false, false, NULL, &orte_iof_base.input_files);
+
     /* daemons do not need to do this as they do not write out stdout/err */
-    if (!orte_process_info.daemon) {
+    if (!ORTE_PROC_IS_DAEMON ||
+        (ORTE_PROC_IS_DAEMON && ORTE_PROC_IS_CM)) {
         if (orte_xml_output) {
             if (NULL != orte_xml_fp) {
                 /* user wants all xml-formatted output sent to file */

@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007-2008 Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,11 +22,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
-#include "ompi/mca/topo/topo.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/topo/base/base.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Graph_create = PMPI_Graph_create
 #endif
 
@@ -35,8 +39,8 @@
 static const char FUNC_NAME[] = "MPI_Graph_create";
 
 
-int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int *index,
-                     int *edges, int reorder, MPI_Comm *comm_graph) 
+int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int indx[],
+                     int edges[], int reorder, MPI_Comm *comm_graph) 
 {
 
     int err;
@@ -60,17 +64,12 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int *index,
         if (nnodes < 0) {
             return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
                                            FUNC_NAME);
-        } else if (nnodes >= 1 && ((NULL == index) || (NULL == edges))) {
+        } else if (nnodes >= 1 && ((NULL == indx) || (NULL == edges))) {
             return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
                                            FUNC_NAME);
         }
 
         if (nnodes > ompi_comm_size(old_comm)) {
-            return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
-                                           FUNC_NAME);
-        }
-
-        if ((0 > reorder) || (1 < reorder)) {
             return OMPI_ERRHANDLER_INVOKE (old_comm, MPI_ERR_ARG,
                                            FUNC_NAME);
         }
@@ -95,7 +94,7 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int *index,
         }
         if (OMPI_SUCCESS != 
             (err = mca_topo_base_find_available(OMPI_ENABLE_PROGRESS_THREADS,
-                                                OMPI_ENABLE_MPI_THREADS))) {
+                                                OMPI_ENABLE_THREAD_MULTIPLE))) {
             return OMPI_ERRHANDLER_INVOKE(old_comm, err, FUNC_NAME);
         }
     }
@@ -108,11 +107,11 @@ int MPI_Graph_create(MPI_Comm old_comm, int nnodes, int *index,
      * the new graph communicator
      */
 
-    re_order = (1 == reorder) ? true:false;
+    re_order = (0 == reorder) ? false : true;
 
     err = ompi_topo_create ((struct ompi_communicator_t *)old_comm,
                             nnodes,
-                            index,
+                            indx,
                             edges,
                             re_order,
                             (struct ompi_communicator_t **)comm_graph,

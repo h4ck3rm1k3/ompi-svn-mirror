@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2012 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -20,12 +20,11 @@
 
 #include "mpi.h"
 #include "ompi/constants.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/op/op.h"
 #include "coll_tuned.h"
 #include "coll_tuned_topo.h"
 #include "coll_tuned_util.h"
@@ -35,11 +34,9 @@ int ompi_coll_tuned_alltoall_intra_pairwise(void *sbuf, int scount,
                                             void* rbuf, int rcount,
                                             struct ompi_datatype_t *rdtype,
                                             struct ompi_communicator_t *comm,
-					    mca_coll_base_module_t *module)
+                                            mca_coll_base_module_t *module)
 {
-    int line = -1, err = 0;
-    int rank, size, step;
-    int sendto, recvfrom;
+    int line = -1, err = 0, rank, size, step, sendto, recvfrom;
     void * tmpsend, *tmprecv;
     ptrdiff_t lb, sext, rext;
 
@@ -49,9 +46,9 @@ int ompi_coll_tuned_alltoall_intra_pairwise(void *sbuf, int scount,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "coll:tuned:alltoall_intra_pairwise rank %d", rank));
 
-    err = ompi_ddt_get_extent (sdtype, &lb, &sext);
+    err = ompi_datatype_get_extent (sdtype, &lb, &sext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
-    err = ompi_ddt_get_extent (rdtype, &lb, &rext);
+    err = ompi_datatype_get_extent (rdtype, &lb, &rext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
     
@@ -63,8 +60,8 @@ int ompi_coll_tuned_alltoall_intra_pairwise(void *sbuf, int scount,
         recvfrom = (rank + size - step) % size;
 
         /* Determine sending and receiving locations */
-        tmpsend = (char*)sbuf + sendto * sext * scount;
-        tmprecv = (char*)rbuf + recvfrom * rext * rcount;
+        tmpsend = (char*)sbuf + (ptrdiff_t)sendto * sext * (ptrdiff_t)scount;
+        tmprecv = (char*)rbuf + (ptrdiff_t)recvfrom * rext * (ptrdiff_t)rcount;
 
         /* send and receive */
         err = ompi_coll_tuned_sendrecv( tmpsend, scount, sdtype, sendto, 
@@ -90,15 +87,12 @@ int ompi_coll_tuned_alltoall_intra_bruck(void *sbuf, int scount,
                                          void* rbuf, int rcount,
                                          struct ompi_datatype_t *rdtype,
                                          struct ompi_communicator_t *comm,
-					 mca_coll_base_module_t *module)
+                                         mca_coll_base_module_t *module)
 {
-    int i, k, line = -1;
-    int rank, size;
+    int i, k, line = -1, rank, size, err = 0, weallocated = 0;
     int sendto, recvfrom, distance, *displs = NULL, *blen = NULL;
     char *tmpbuf = NULL, *tmpbuf_free = NULL;
     ptrdiff_t rlb, slb, tlb, sext, rext, tsext;
-    int err = 0;
-    int weallocated = 0;
     struct ompi_datatype_t *new_ddt;
 #ifdef blahblah
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
@@ -111,13 +105,13 @@ int ompi_coll_tuned_alltoall_intra_bruck(void *sbuf, int scount,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "coll:tuned:alltoall_intra_bruck rank %d", rank));
 
-    err = ompi_ddt_get_extent (sdtype, &slb, &sext);
+    err = ompi_datatype_get_extent (sdtype, &slb, &sext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
-    err = ompi_ddt_get_true_extent(sdtype, &tlb,  &tsext);
+    err = ompi_datatype_get_true_extent(sdtype, &tlb,  &tsext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
-    err = ompi_ddt_get_extent (rdtype, &rlb, &rext);
+    err = ompi_datatype_get_extent (rdtype, &rlb, &rext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
 
@@ -142,23 +136,23 @@ int ompi_coll_tuned_alltoall_intra_bruck(void *sbuf, int scount,
 #endif
 
     /* tmp buffer allocation for message data */
-    tmpbuf_free = (char *) malloc(tsext + (scount * size - 1) * sext);
+    tmpbuf_free = (char *) malloc(tsext + ((ptrdiff_t)scount * (ptrdiff_t)size - 1) * sext);
     if (tmpbuf_free == NULL) { line = __LINE__; err = -1; goto err_hndl; }
     tmpbuf = tmpbuf_free - slb;
 
     /* Step 1 - local rotation - shift up by rank */
-    err = ompi_ddt_copy_content_same_ddt (sdtype, 
-                                          (int32_t) ((size - rank) * scount),
-                                          tmpbuf, 
-                                          ((char*) sbuf) + rank * scount * sext);
+    err = ompi_datatype_copy_content_same_ddt (sdtype, 
+                                               (int32_t) ((ptrdiff_t)(size - rank) * (ptrdiff_t)scount),
+                                               tmpbuf, 
+                                               ((char*) sbuf) + (ptrdiff_t)rank * (ptrdiff_t)scount * sext);
     if (err<0) {
         line = __LINE__; err = -1; goto err_hndl;
     }
 
     if (rank != 0) {
-        err = ompi_ddt_copy_content_same_ddt (sdtype, (int32_t) (rank * scount),
-                                              tmpbuf + (size - rank) * scount* sext, 
-                                              (char*) sbuf);
+        err = ompi_datatype_copy_content_same_ddt (sdtype, (ptrdiff_t)rank * (ptrdiff_t)scount,
+                                                   tmpbuf + (ptrdiff_t)(size - rank) * (ptrdiff_t)scount* sext, 
+                                                   (char*) sbuf);
         if (err<0) {
             line = __LINE__; err = -1; goto err_hndl;
         }
@@ -174,16 +168,16 @@ int ompi_coll_tuned_alltoall_intra_bruck(void *sbuf, int scount,
         /* create indexed datatype */
         for (i = 1; i < size; i++) {
             if (( i & distance) == distance) {
-                displs[k] = i * scount; 
+                displs[k] = (ptrdiff_t)i * (ptrdiff_t)scount; 
                 blen[k] = scount;
                 k++;
             }
         }
         /* Set indexes and displacements */
-        err = ompi_ddt_create_indexed(k, blen, displs, sdtype, &new_ddt);
+        err = ompi_datatype_create_indexed(k, blen, displs, sdtype, &new_ddt);
         if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
         /* Commit the new datatype */
-        err = ompi_ddt_commit(&new_ddt);
+        err = ompi_datatype_commit(&new_ddt);
         if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
 
         /* Sendreceive */
@@ -195,20 +189,20 @@ int ompi_coll_tuned_alltoall_intra_bruck(void *sbuf, int scount,
         if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
         /* Copy back new data from recvbuf to tmpbuf */
-        err = ompi_ddt_copy_content_same_ddt(new_ddt, 1,tmpbuf, (char *) rbuf);
+        err = ompi_datatype_copy_content_same_ddt(new_ddt, 1,tmpbuf, (char *) rbuf);
         if (err < 0) { line = __LINE__; err = -1; goto err_hndl;  }
 
         /* free ddt */
-        err = ompi_ddt_destroy(&new_ddt);
+        err = ompi_datatype_destroy(&new_ddt);
         if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
     } /* end of for (distance = 1... */
 
     /* Step 3 - local rotation - */
     for (i = 0; i < size; i++) {
 
-        err = ompi_ddt_copy_content_same_ddt (rdtype, (int32_t) rcount,
-                                              ((char*)rbuf) + (((rank - i + size) % size) * rcount * rext), 
-                                              tmpbuf + i * rcount * rext);
+        err = ompi_datatype_copy_content_same_ddt (rdtype, (int32_t) rcount,
+                                                   ((char*)rbuf) + ((ptrdiff_t)((rank - i + size) % size) * (ptrdiff_t)rcount * rext), 
+                                                   tmpbuf + (ptrdiff_t)i * (ptrdiff_t)rcount * rext);
         if (err < 0) { line = __LINE__; err = -1; goto err_hndl;  }
     }
 
@@ -254,18 +248,12 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
                                                void* rbuf, int rcount,
                                                struct ompi_datatype_t *rdtype,
                                                struct ompi_communicator_t *comm,
-					       mca_coll_base_module_t *module,
+                                               mca_coll_base_module_t *module,
                                                int max_outstanding_reqs)
 {
-    int line, error;
-    int ri, si;
-    int rank;
-    int size;
-    int nreqs, nrreqs, nsreqs, total_reqs;
-    char *psnd;
-    char *prcv;
-    ptrdiff_t slb, sext;
-    ptrdiff_t rlb, rext;
+    int line, error, ri, si, rank, size, nreqs, nrreqs, nsreqs, total_reqs;
+    char *psnd, *prcv;
+    ptrdiff_t slb, sext, rlb, rext;
 
     ompi_request_t **reqs = NULL;
 
@@ -277,14 +265,13 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "ompi_coll_tuned_alltoall_intra_linear_sync rank %d", rank));
 
-
-    error = ompi_ddt_get_extent(sdtype, &slb, &sext);
+    error = ompi_datatype_get_extent(sdtype, &slb, &sext);
     if (OMPI_SUCCESS != error) {
         return error;
     }
     sext *= scount;
 
-    error = ompi_ddt_get_extent(rdtype, &rlb, &rext);
+    error = ompi_datatype_get_extent(rdtype, &rlb, &rext);
     if (OMPI_SUCCESS != error) {
         return error;
     }
@@ -292,10 +279,10 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
 
     /* simple optimization */
 
-    psnd = ((char *) sbuf) + (rank * sext);
-    prcv = ((char *) rbuf) + (rank * rext);
+    psnd = ((char *) sbuf) + (ptrdiff_t)rank * sext;
+    prcv = ((char *) rbuf) + (ptrdiff_t)rank * rext;
 
-    error = ompi_ddt_sndrcv(psnd, scount, sdtype, prcv, rcount, rdtype);
+    error = ompi_datatype_sndrcv(psnd, scount, sdtype, prcv, rcount, rdtype);
     if (MPI_SUCCESS != error) {
         return error;
     }
@@ -312,7 +299,7 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
                    (size - 1) : (max_outstanding_reqs));
     reqs = (ompi_request_t**) malloc( 2 * total_reqs * 
                                       sizeof(ompi_request_t*));
-    if (NULL == reqs) { error = -1; goto error_hndl; }
+    if (NULL == reqs) { error = -1; line = __LINE__; goto error_hndl; }
     
     prcv = (char *) rbuf;
     psnd = (char *) sbuf;
@@ -320,67 +307,67 @@ int ompi_coll_tuned_alltoall_intra_linear_sync(void *sbuf, int scount,
     /* Post first batch or ireceive and isend requests  */
     for (nreqs = 0, nrreqs = 0, ri = (rank + 1) % size; nreqs < total_reqs; 
          ri = (ri + 1) % size, ++nreqs, ++nrreqs) {
-       error =
-          MCA_PML_CALL(irecv
-                       (prcv + (ri * rext), rcount, rdtype, ri,
-                        MCA_COLL_BASE_TAG_ALLTOALL, comm, &reqs[nreqs]));
-       if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
+        error =
+            MCA_PML_CALL(irecv
+                         (prcv + (ptrdiff_t)ri * rext, rcount, rdtype, ri,
+                          MCA_COLL_BASE_TAG_ALLTOALL, comm, &reqs[nreqs]));
+        if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
     }
     for ( nsreqs = 0, si =  (rank + size - 1) % size; nreqs < 2 * total_reqs; 
           si = (si + size - 1) % size, ++nreqs, ++nsreqs) {
-       error =
-          MCA_PML_CALL(isend
-                       (psnd + (si * sext), scount, sdtype, si,
-                        MCA_COLL_BASE_TAG_ALLTOALL,
-                        MCA_PML_BASE_SEND_STANDARD, comm, &reqs[nreqs]));
-       if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
+        error =
+            MCA_PML_CALL(isend
+                         (psnd + (ptrdiff_t)si * sext, scount, sdtype, si,
+                          MCA_COLL_BASE_TAG_ALLTOALL,
+                          MCA_PML_BASE_SEND_STANDARD, comm, &reqs[nreqs]));
+        if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
     }
 
     /* Wait for requests to complete */
     if (nreqs == 2 * (size - 1)) {
-       /* Optimization for the case when all requests have been posted  */
-       error = ompi_request_wait_all(nreqs, reqs, MPI_STATUSES_IGNORE);
-       if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
+        /* Optimization for the case when all requests have been posted  */
+        error = ompi_request_wait_all(nreqs, reqs, MPI_STATUSES_IGNORE);
+        if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
        
     } else {
-       /* As requests complete, replace them with corresponding requests:
-          - wait for any request to complete, mark the request as 
-            MPI_REQUEST_NULL
-          - If it was a receive request, replace it with new irecv request 
-            (if any)
-          - if it was a send request, replace it with new isend request (if any)
-       */
-       int ncreqs = 0;
-       while (ncreqs < 2 * (size - 1)) {
-          int completed;
-          error = ompi_request_wait_any(2 * total_reqs, reqs, &completed,
-                                        MPI_STATUS_IGNORE);
-          if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
-          reqs[completed] = MPI_REQUEST_NULL;
-          ncreqs++;
-          if (completed < total_reqs) {
-             if (nrreqs < (size - 1)) {
-                error = 
-                   MCA_PML_CALL(irecv
-                                (prcv + (ri * rext), rcount, rdtype, ri,
-                                 MCA_COLL_BASE_TAG_ALLTOALL, comm, 
-                                 &reqs[completed]));
-                if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
-                ++nrreqs;
-                ri = (ri + 1) % size;
-             }
-          } else {
-             if (nsreqs < (size - 1)) {
-                error = MCA_PML_CALL(isend
-                                     (psnd + (si * sext), scount, sdtype, si,
-                                      MCA_COLL_BASE_TAG_ALLTOALL,
-                                      MCA_PML_BASE_SEND_STANDARD, comm,
+        /* As requests complete, replace them with corresponding requests:
+           - wait for any request to complete, mark the request as 
+           MPI_REQUEST_NULL
+           - If it was a receive request, replace it with new irecv request 
+           (if any)
+           - if it was a send request, replace it with new isend request (if any)
+        */
+        int ncreqs = 0;
+        while (ncreqs < 2 * (size - 1)) {
+            int completed;
+            error = ompi_request_wait_any(2 * total_reqs, reqs, &completed,
+                                          MPI_STATUS_IGNORE);
+            if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
+            reqs[completed] = MPI_REQUEST_NULL;
+            ncreqs++;
+            if (completed < total_reqs) {
+                if (nrreqs < (size - 1)) {
+                    error = 
+                        MCA_PML_CALL(irecv
+                                     (prcv + (ptrdiff_t)ri * rext, rcount, rdtype, ri,
+                                      MCA_COLL_BASE_TAG_ALLTOALL, comm, 
                                       &reqs[completed]));
-                ++nsreqs;
-                si = (si + size - 1) % size; 
-             }
-          }
-       }
+                    if (MPI_SUCCESS != error) { line = __LINE__; goto error_hndl; }
+                    ++nrreqs;
+                    ri = (ri + 1) % size;
+                }
+            } else {
+                if (nsreqs < (size - 1)) {
+                    error = MCA_PML_CALL(isend
+                                         (psnd + (ptrdiff_t)si * sext, scount, sdtype, si,
+                                          MCA_COLL_BASE_TAG_ALLTOALL,
+                                          MCA_PML_BASE_SEND_STANDARD, comm,
+                                          &reqs[completed]));
+                    ++nsreqs;
+                    si = (si + size - 1) % size; 
+                }
+            }
+        }
     }
 
     /* Free the reqs */
@@ -403,11 +390,9 @@ int ompi_coll_tuned_alltoall_intra_two_procs(void *sbuf, int scount,
                                              void* rbuf, int rcount,
                                              struct ompi_datatype_t *rdtype,
                                              struct ompi_communicator_t *comm,
-					     mca_coll_base_module_t *module)
+                                             mca_coll_base_module_t *module)
 {
-    int line = -1, err = 0;
-    int rank;
-    int remote;
+    int line = -1, err = 0, rank, remote;
     void * tmpsend, *tmprecv;
     ptrdiff_t sext, rext, lb;
 
@@ -416,17 +401,17 @@ int ompi_coll_tuned_alltoall_intra_two_procs(void *sbuf, int scount,
     OPAL_OUTPUT((ompi_coll_tuned_stream,
                  "ompi_coll_tuned_alltoall_intra_two_procs rank %d", rank));
 
-    err = ompi_ddt_get_extent (sdtype, &lb, &sext);
+    err = ompi_datatype_get_extent (sdtype, &lb, &sext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
-    err = ompi_ddt_get_extent (rdtype, &lb, &rext);
+    err = ompi_datatype_get_extent (rdtype, &lb, &rext);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl; }
 
     /* exchange data */
     remote  = rank ^ 1;
 
-    tmpsend = (char*)sbuf + remote * sext * scount;
-    tmprecv = (char*)rbuf + remote * rext * rcount;
+    tmpsend = (char*)sbuf + (ptrdiff_t)remote * sext * (ptrdiff_t)scount;
+    tmprecv = (char*)rbuf + (ptrdiff_t)remote * rext * (ptrdiff_t)rcount;
 
     /* send and receive */
     err = ompi_coll_tuned_sendrecv ( tmpsend, scount, sdtype, remote, 
@@ -437,10 +422,10 @@ int ompi_coll_tuned_alltoall_intra_two_procs(void *sbuf, int scount,
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
 
     /* ddt sendrecv your own data */
-    err = ompi_ddt_sndrcv((char*) sbuf + rank * sext * scount, 
-                          (int32_t) scount, sdtype, 
-                          (char*) rbuf + rank * rext * rcount, 
-                          (int32_t) rcount, rdtype);
+    err = ompi_datatype_sndrcv((char*) sbuf + (ptrdiff_t)rank * sext * (ptrdiff_t)scount, 
+                               (int32_t) scount, sdtype, 
+                               (char*) rbuf + (ptrdiff_t)rank * rext * (ptrdiff_t)rcount, 
+                               (int32_t) rcount, rdtype);
     if (err != MPI_SUCCESS) { line = __LINE__; goto err_hndl;  }
 
     /* done */
@@ -476,21 +461,10 @@ int ompi_coll_tuned_alltoall_intra_basic_linear(void *sbuf, int scount,
                                                 struct ompi_communicator_t *comm,
 						mca_coll_base_module_t *module)
 {
-    int i;
-    int rank;
-    int size;
-    int err;
-    int nreqs;
-    char *psnd;
-    char *prcv;
-    MPI_Aint lb;
-    MPI_Aint sndinc;
-    MPI_Aint rcvinc;
-
-    ompi_request_t **req;
-    ompi_request_t **sreq;
-    ompi_request_t **rreq;
-
+    int i, rank, size, err, nreqs;
+    char *psnd, *prcv;
+    MPI_Aint lb, sndinc, rcvinc;
+    ompi_request_t **req, **sreq, **rreq;
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
     mca_coll_tuned_comm_t *data = tuned_module->tuned_data;
 
@@ -503,13 +477,13 @@ int ompi_coll_tuned_alltoall_intra_basic_linear(void *sbuf, int scount,
                  "ompi_coll_tuned_alltoall_intra_basic_linear rank %d", rank));
 
 
-    err = ompi_ddt_get_extent(sdtype, &lb, &sndinc);
+    err = ompi_datatype_get_extent(sdtype, &lb, &sndinc);
     if (OMPI_SUCCESS != err) {
         return err;
     }
     sndinc *= scount;
 
-    err = ompi_ddt_get_extent(rdtype, &lb, &rcvinc);
+    err = ompi_datatype_get_extent(rdtype, &lb, &rcvinc);
     if (OMPI_SUCCESS != err) {
         return err;
     }
@@ -517,10 +491,10 @@ int ompi_coll_tuned_alltoall_intra_basic_linear(void *sbuf, int scount,
 
     /* simple optimization */
 
-    psnd = ((char *) sbuf) + (rank * sndinc);
-    prcv = ((char *) rbuf) + (rank * rcvinc);
+    psnd = ((char *) sbuf) + (ptrdiff_t)rank * sndinc;
+    prcv = ((char *) rbuf) + (ptrdiff_t)rank * rcvinc;
 
-    err = ompi_ddt_sndrcv(psnd, scount, sdtype, prcv, rcount, rdtype);
+    err = ompi_datatype_sndrcv(psnd, scount, sdtype, prcv, rcount, rdtype);
     if (MPI_SUCCESS != err) {
         return err;
     }
@@ -545,7 +519,7 @@ int ompi_coll_tuned_alltoall_intra_basic_linear(void *sbuf, int scount,
          i = (i + 1) % size, ++rreq, ++nreqs) {
         err =
             MCA_PML_CALL(irecv_init
-                         (prcv + (i * rcvinc), rcount, rdtype, i,
+                         (prcv + (ptrdiff_t)i * rcvinc, rcount, rdtype, i,
                           MCA_COLL_BASE_TAG_ALLTOALL, comm, rreq));
         if (MPI_SUCCESS != err) {
             ompi_coll_tuned_free_reqs(req, rreq - req);
@@ -561,7 +535,7 @@ int ompi_coll_tuned_alltoall_intra_basic_linear(void *sbuf, int scount,
          i = (i + size - 1) % size, ++sreq, ++nreqs) {
         err =
             MCA_PML_CALL(isend_init
-                         (psnd + (i * sndinc), scount, sdtype, i,
+                         (psnd + (ptrdiff_t)i * sndinc, scount, sdtype, i,
                           MCA_COLL_BASE_TAG_ALLTOALL,
                           MCA_PML_BASE_SEND_STANDARD, comm, sreq));
         if (MPI_SUCCESS != err) {
@@ -620,8 +594,11 @@ int ompi_coll_tuned_alltoall_intra_check_forced_init (coll_tuned_force_algorithm
                                  "alltoall_algorithm",
                                  "Which alltoall algorithm is used. Can be locked down to choice of: 0 ignore, 1 basic linear, 2 pairwise, 3: modified bruck, 4: linear with sync, 5:two proc only.",
                                  false, false, 0, NULL);
+    if (mca_param_indices->algorithm_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->algorithm_param_index, &(requested_alg));
-    if( requested_alg > max_alg ) {
+    if( 0 > requested_alg || requested_alg > max_alg ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
             opal_output( 0, "Alltoall algorithm #%d is not available (range [0..%d]). Switching back to ignore(0)\n",
                          requested_alg, max_alg );
@@ -652,12 +629,15 @@ int ompi_coll_tuned_alltoall_intra_check_forced_init (coll_tuned_force_algorithm
                                  NULL);
 
     mca_param_indices->max_requests_param_index
-       = mca_base_param_reg_int(&mca_coll_tuned_component.super.collm_version,
-                                "alltoall_algorithm_max_requests",
-                                "Maximum number of outstanding send or recv requests.  Only has meaning for synchronized algorithms.",
-                                false, false, 
-                                ompi_coll_tuned_init_max_requests, /* get system wide default */
-                                NULL);
+        = mca_base_param_reg_int(&mca_coll_tuned_component.super.collm_version,
+                                 "alltoall_algorithm_max_requests",
+                                 "Maximum number of outstanding send or recv requests.  Only has meaning for synchronized algorithms.",
+                                 false, false, 
+                                 ompi_coll_tuned_init_max_requests, /* get system wide default */
+                                 NULL);
+    if (mca_param_indices->max_requests_param_index < 0) {
+        return mca_param_indices->algorithm_param_index;
+    }
     mca_base_param_lookup_int(mca_param_indices->max_requests_param_index, &(max_requests));
     if( max_requests <= 1 ) {
         if( 0 == ompi_comm_rank( MPI_COMM_WORLD ) ) {
@@ -678,7 +658,7 @@ int ompi_coll_tuned_alltoall_intra_do_forced(void *sbuf, int scount,
                                              void* rbuf, int rcount,
                                              struct ompi_datatype_t *rdtype,
                                              struct ompi_communicator_t *comm,
-					     mca_coll_base_module_t *module)
+                                             mca_coll_base_module_t *module)
 {
     mca_coll_tuned_module_t *tuned_module = (mca_coll_tuned_module_t*) module;
     mca_coll_tuned_comm_t *data = tuned_module->tuned_data;
@@ -707,7 +687,7 @@ int ompi_coll_tuned_alltoall_intra_do_this(void *sbuf, int scount,
                                            void* rbuf, int rcount,
                                            struct ompi_datatype_t *rdtype,
                                            struct ompi_communicator_t *comm,
-					   mca_coll_base_module_t *module,
+                                           mca_coll_base_module_t *module,
                                            int algorithm, int faninout, int segsize, 
                                            int max_requests)
 {

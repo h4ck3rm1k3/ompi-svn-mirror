@@ -11,6 +11,7 @@
  *                         All rights reserved.5A
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
  * Copyright (c) 2007      Voltaire. All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -30,6 +31,8 @@
 #include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
 #include "ompi/runtime/params.h"
+#include "ompi/class/ompi_free_list.h"
+#include "ompi/class/ompi_rb_tree.h"
 #include "mpool_base_tree.h"
 
 
@@ -77,9 +80,9 @@ int mca_mpool_base_tree_init(void) {
     OBJ_CONSTRUCT(&tree_lock, opal_mutex_t);
     rc = ompi_free_list_init_new(&mca_mpool_base_tree_item_free_list, 
             sizeof(mca_mpool_base_tree_item_t), 
-            CACHE_LINE_SIZE,
+            opal_cache_line_size,
             OBJ_CLASS(mca_mpool_base_tree_item_t), 
-            0,CACHE_LINE_SIZE,
+            0,opal_cache_line_size,
             0, -1 , 4, NULL);
     if(OMPI_SUCCESS == rc) { 
         rc = ompi_rb_tree_init(&mca_mpool_base_tree, mca_mpool_base_tree_node_compare);
@@ -102,6 +105,13 @@ int mca_mpool_base_tree_insert(mca_mpool_base_tree_item_t* item) {
 
 /* 
  * remove an item from the rb tree 
+ * Does not put the item back onto the free list. That
+ * must be done separately by calling mca_mpool_base_tree_item_put.
+ * This allows a caller to remove an item from the tree 
+ * before safely cleaning up the item and only then returning it
+ * to the free list. If the item is returned to the free list too soon
+ * race conditions can occur
+ *
  */
 int mca_mpool_base_tree_delete(mca_mpool_base_tree_item_t* item) { 
     int rc;
@@ -110,9 +120,6 @@ int mca_mpool_base_tree_delete(mca_mpool_base_tree_item_t* item) {
     rc = ompi_rb_tree_delete(&mca_mpool_base_tree, item->key);
     OPAL_THREAD_UNLOCK(&tree_lock);
 
-    if(OMPI_SUCCESS == rc) { 
-        mca_mpool_base_tree_item_put(item); 
-    }
     return rc;
 }
 

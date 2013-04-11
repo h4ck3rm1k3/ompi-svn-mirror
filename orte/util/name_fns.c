@@ -2,13 +2,14 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2006 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -22,7 +23,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "orte/util/show_help.h"
 #include "opal/util/printf.h"
 #include "opal/threads/tsd.h"
 
@@ -72,12 +72,13 @@ buffer_cleanup(void *value)
 {
     int i;
     orte_print_args_buffers_t *ptr;
-    
+
     if (NULL != value) {
         ptr = (orte_print_args_buffers_t*)value;
         for (i=0; i < ORTE_PRINT_NAME_ARG_NUM_BUFS; i++) {
             free(ptr->buffers[i]);
         }
+        free (ptr);
     }
 }
 
@@ -86,6 +87,15 @@ get_print_name_buffer(void)
 {
     orte_print_args_buffers_t *ptr;
     int ret, i;
+    
+    if (!fns_init) {
+        /* setup the print_args function */
+        if (ORTE_SUCCESS != (ret = opal_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
+            ORTE_ERROR_LOG(ret);
+            return NULL;
+        }
+        fns_init = true;
+    }
     
     ret = opal_tsd_getspecific(print_args_tsd_key, (void**)&ptr);
     if (OPAL_SUCCESS != ret) return NULL;
@@ -105,7 +115,7 @@ get_print_name_buffer(void)
 char* orte_util_print_name_args(const orte_process_name_t *name)
 {
     orte_print_args_buffers_t *ptr;
-    char *job, *vpid;
+    char *job, *vpid; 
     
     /* protect against NULL names */
     if (NULL == name) {
@@ -123,7 +133,7 @@ char* orte_util_print_name_args(const orte_process_name_t *name)
         return ptr->buffers[ptr->cntr-1];
     }
     
-    /* get the jobid and vpid strings first - this will protect us from
+    /* get the jobid, vpid strings first - this will protect us from
      * stepping on each other's buffer. This also guarantees
      * that the print_args function has been initialized, so
      * we don't need to duplicate that here
@@ -154,17 +164,7 @@ char* orte_util_print_name_args(const orte_process_name_t *name)
 char* orte_util_print_jobids(const orte_jobid_t job)
 {
     orte_print_args_buffers_t *ptr;
-    int rc;
     unsigned long tmp1, tmp2;
-    
-    if (!fns_init) {
-        /* setup the print_args function */
-        if (ORTE_SUCCESS != (rc = opal_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
-            ORTE_ERROR_LOG(rc);
-            return NULL;
-        }
-        fns_init = true;
-    }
     
     ptr = get_print_name_buffer();
     
@@ -195,17 +195,7 @@ char* orte_util_print_jobids(const orte_jobid_t job)
 char* orte_util_print_job_family(const orte_jobid_t job)
 {
     orte_print_args_buffers_t *ptr;
-    int rc;
     unsigned long tmp1;
-    
-    if (!fns_init) {
-        /* setup the print_args function */
-        if (ORTE_SUCCESS != (rc = opal_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
-            ORTE_ERROR_LOG(rc);
-            return NULL;
-        }
-        fns_init = true;
-    }
     
     ptr = get_print_name_buffer();
     
@@ -235,17 +225,7 @@ char* orte_util_print_job_family(const orte_jobid_t job)
 char* orte_util_print_local_jobid(const orte_jobid_t job)
 {
     orte_print_args_buffers_t *ptr;
-    int rc;
     unsigned long tmp1;
-    
-    if (!fns_init) {
-        /* setup the print_args function */
-        if (ORTE_SUCCESS != (rc = opal_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
-            ORTE_ERROR_LOG(rc);
-            return NULL;
-        }
-        fns_init = true;
-    }
     
     ptr = get_print_name_buffer();
     
@@ -275,16 +255,6 @@ char* orte_util_print_local_jobid(const orte_jobid_t job)
 char* orte_util_print_vpids(const orte_vpid_t vpid)
 {
     orte_print_args_buffers_t *ptr;
-    int rc;
-    
-    if (!fns_init) {
-        /* setup the print_args function */
-        if (ORTE_SUCCESS != (rc = opal_tsd_key_create(&print_args_tsd_key, buffer_cleanup))) {
-            ORTE_ERROR_LOG(rc);
-            return NULL;
-        }
-        fns_init = true;
-    }
     
     ptr = get_print_name_buffer();
     
@@ -410,7 +380,7 @@ int orte_util_convert_string_to_process_name(orte_process_name_t *name,
     orte_jobid_t job;
     orte_vpid_t vpid;
     int return_code=ORTE_SUCCESS;
-    
+
     /* set default */
     name->jobid = ORTE_JOBID_INVALID;
     name->vpid = ORTE_VPID_INVALID;
@@ -471,7 +441,7 @@ int orte_util_convert_string_to_process_name(orte_process_name_t *name,
 int orte_util_convert_process_name_to_string(char **name_string,
                                              const orte_process_name_t* name)
 {
-    char *tmp;
+    char *tmp, *tmp2;
     
     if (NULL == name) { /* got an error */
         ORTE_ERROR_LOG(ORTE_ERR_BAD_PARAM);
@@ -491,13 +461,17 @@ int orte_util_convert_process_name_to_string(char **name_string,
     }
 
     if (ORTE_VPID_WILDCARD == name->vpid) {
-        asprintf(name_string, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, ORTE_SCHEMA_WILDCARD_STRING);
+        asprintf(&tmp2, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, ORTE_SCHEMA_WILDCARD_STRING);
     } else if (ORTE_VPID_INVALID == name->vpid) {
-        asprintf(name_string, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, ORTE_SCHEMA_INVALID_STRING);
+        asprintf(&tmp2, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, ORTE_SCHEMA_INVALID_STRING);
     } else {
-        asprintf(name_string, "%s%c%lu", tmp, ORTE_SCHEMA_DELIMITER_CHAR, (unsigned long)name->vpid);
+        asprintf(&tmp2, "%s%c%lu", tmp, ORTE_SCHEMA_DELIMITER_CHAR, (unsigned long)name->vpid);
     }
+
+    asprintf(name_string, "%s", tmp2);
+
     free(tmp);
+    free(tmp2);
 
     return ORTE_SUCCESS;
 }
@@ -506,7 +480,8 @@ int orte_util_convert_process_name_to_string(char **name_string,
 /****    CREATE PROCESS NAME    ****/
 int orte_util_create_process_name(orte_process_name_t **name,
                                   orte_jobid_t job,
-                                  orte_vpid_t vpid)
+                                  orte_vpid_t vpid
+                                  )
 {
     *name = NULL;
     
@@ -518,6 +493,7 @@ int orte_util_create_process_name(orte_process_name_t **name,
 
     (*name)->jobid = job;
     (*name)->vpid = vpid;
+
     return ORTE_SUCCESS;
 }
 
@@ -536,15 +512,20 @@ int orte_util_compare_name_fields(orte_ns_cmp_bitmask_t fields,
     }
     
     /* in this comparison function, we check for exact equalities.
-    * In the case of wildcards, we check to ensure that the fields
-    * actually match those values - thus, a "wildcard" in this
-    * function does not actually stand for a wildcard value, but
-    * rather a specific value
-    */
+     * In the case of wildcards, we check to ensure that the fields
+     * actually match those values - thus, a "wildcard" in this
+     * function does not actually stand for a wildcard value, but
+     * rather a specific value - UNLESS the CMP_WILD bitmask value
+     * is set
+     */
     
     /* check job id */
-    
     if (ORTE_NS_CMP_JOBID & fields) {
+        if (ORTE_NS_CMP_WILD & fields &&
+            (ORTE_JOBID_WILDCARD == name1->jobid ||
+             ORTE_JOBID_WILDCARD == name2->jobid)) {
+            goto check_vpid;
+        }
         if (name1->jobid < name2->jobid) {
             return OPAL_VALUE2_GREATER;
         } else if (name1->jobid > name2->jobid) {
@@ -553,17 +534,22 @@ int orte_util_compare_name_fields(orte_ns_cmp_bitmask_t fields,
     }
     
     /* get here if jobid's are equal, or not being checked
-    * now check vpid
-    */
-    
+     * now check vpid
+     */
+ check_vpid:
     if (ORTE_NS_CMP_VPID & fields) {
+        if (ORTE_NS_CMP_WILD & fields &&
+            (ORTE_VPID_WILDCARD == name1->vpid ||
+             ORTE_VPID_WILDCARD == name2->vpid)) {
+            return OPAL_EQUAL;
+        }
         if (name1->vpid < name2->vpid) {
             return OPAL_VALUE2_GREATER;
         } else if (name1->vpid > name2->vpid) {
             return OPAL_VALUE1_GREATER;
         }
     }
-    
+
     /* only way to get here is if all fields are being checked and are equal,
     * or jobid not checked, but vpid equal,
     * only vpid being checked, and equal
@@ -582,3 +568,111 @@ uint64_t  orte_util_hash_name(const orte_process_name_t * name) {
     
     return hash;
 }
+/* hash a vpid based on Robert Jenkin's algorithm - note
+ * that the precise values of the constants in the algo are
+ * irrelevant.
+ */
+uint32_t  orte_util_hash_vpid(orte_vpid_t vpid) {
+    uint32_t hash;
+    
+    hash = vpid;
+    hash = (hash + 0x7ed55d16) + (hash<<12);
+    hash = (hash ^ 0xc761c23c) ^ (hash>>19);
+    hash = (hash + 0x165667b1) + (hash<<5);
+    hash = (hash + 0xd3a2646c) ^ (hash<<9);
+    hash = (hash + 0xfd7046c5) + (hash<<3);
+    hash = (hash ^ 0xb55a4f09) ^ (hash>>16);
+    return hash;
+}
+
+/* sysinfo conversion to and from string */
+int orte_util_convert_string_to_sysinfo(char **cpu_type, char **cpu_model,
+					const char* sysinfo_string)
+{
+    char *temp, *token;
+    int return_code=ORTE_SUCCESS;
+    
+    /* check for NULL string - error */
+    if (NULL == sysinfo_string) {
+        ORTE_ERROR_LOG(ORTE_ERR_BAD_PARAM);
+        return ORTE_ERR_BAD_PARAM;
+    }
+
+    temp = strdup(sysinfo_string);  /** copy input string as the strtok process is destructive */
+    token = strtok(temp, ORTE_SCHEMA_DELIMITER_STRING); /** get first field -> cpu_type */
+    
+    /* check for error */
+    if (NULL == token) {
+        ORTE_ERROR_LOG(ORTE_ERR_BAD_PARAM);
+        return ORTE_ERR_BAD_PARAM;
+    } 
+    
+    /* If type is a valid string get the value otherwise leave cpu_type untouched.
+     */
+    if (0 != strcmp(token, ORTE_SCHEMA_INVALID_STRING)) {
+        *cpu_type = strdup(token);
+    } 
+
+    token = strtok(NULL, ORTE_SCHEMA_DELIMITER_STRING);  /** get next field -> cpu_model */
+    
+    /* check for error */
+    if (NULL == token) {
+        ORTE_ERROR_LOG(ORTE_ERR_BAD_PARAM);
+        return ORTE_ERR_BAD_PARAM;
+    }
+    
+    /* If type is a valid string get the value otherwise leave cpu_type untouched.
+     */
+    if (0 != strcmp(token, ORTE_SCHEMA_INVALID_STRING)) {
+        *cpu_model = strdup(token);
+    } 
+
+    free(temp);
+
+    return return_code;
+}
+
+int orte_util_convert_sysinfo_to_string(char **sysinfo_string,
+					const char *cpu_type, const char *cpu_model)
+{
+    char *tmp;
+    
+    /* check for no sysinfo values (like empty cpu_type) - where encountered, insert the
+     * invalid string so we can correctly parse the name string when
+     * it is passed back to us later
+     */
+    if (NULL == cpu_type) {
+        asprintf(&tmp, "%s", ORTE_SCHEMA_INVALID_STRING);
+    } else {
+        asprintf(&tmp, "%s", cpu_type);
+    }
+
+    if (NULL == cpu_model) {
+        asprintf(sysinfo_string, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, ORTE_SCHEMA_INVALID_STRING);
+    } else {
+        asprintf(sysinfo_string, "%s%c%s", tmp, ORTE_SCHEMA_DELIMITER_CHAR, cpu_model);
+    }
+    free(tmp);
+    return ORTE_SUCCESS;
+}
+
+char *orte_pretty_print_timing(int64_t secs, int64_t usecs)
+{
+    unsigned long minutes, seconds;
+    float fsecs;
+    char *timestring;
+    
+    seconds = secs + (usecs / 1000000l);
+    minutes = seconds / 60l;
+    seconds = seconds % 60l;
+    if (0 == minutes && 0 == seconds) {
+        fsecs = ((float)(secs)*1000000.0 + (float)usecs) / 1000.0;
+        asprintf(&timestring, "%8.2f millisecs", fsecs);
+    } else {
+        asprintf(&timestring, "%3lu:%02lu min:sec", minutes, seconds);
+    }
+    
+    return timestring;
+}
+
+

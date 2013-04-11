@@ -43,6 +43,7 @@
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/state/state.h"
 
 #include "orte/mca/iof/base/base.h"
 
@@ -60,7 +61,8 @@ int orte_iof_base_write_output(orte_process_name_t *name, orte_iof_tag_t stream,
                          "%s write:output setting up to write %d bytes to %s for %s on fd %d",
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), numbytes,
                          (ORTE_IOF_STDIN & stream) ? "stdin" : ((ORTE_IOF_STDOUT & stream) ? "stdout" : ((ORTE_IOF_STDERR & stream) ? "stderr" : "stddiag")),
-                         ORTE_NAME_PRINT(name), channel->fd));
+                         ORTE_NAME_PRINT(name), 
+                         (NULL == channel) ? -1 : channel->fd));
 
     /* setup output object */
     output = OBJ_NEW(orte_iof_write_output_t);
@@ -251,9 +253,6 @@ construct:
     output->numbytes = k;
     
 process:
-    /* lock us up to protect global operations */
-    OPAL_THREAD_LOCK(&orte_iof_base.iof_write_output_lock);
-    
     /* add this data to the write list for this fd */
     opal_list_append(&channel->outputs, &output->super);
 
@@ -266,12 +265,9 @@ process:
         OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
                              "%s write:output adding write event",
                              ORTE_NAME_PRINT(ORTE_PROC_MY_NAME)));
-        opal_event_add(&channel->ev, 0);
+        opal_event_add(channel->ev, 0);
         channel->pending = true;
     }
-    
-    /* unlock and go */
-    OPAL_THREAD_UNLOCK(&orte_iof_base.iof_write_output_lock);
     
     return num_buffered;
 }
@@ -289,20 +285,28 @@ void orte_iof_base_write_handler(int fd, short event, void *cbdata)
                          ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
                          wev->fd));
 
-    /* lock us up to protect global operations */
-    OPAL_THREAD_LOCK(&orte_iof_base.iof_write_output_lock);
-    
     while (NULL != (item = opal_list_remove_first(&wev->outputs))) {
         output = (orte_iof_write_output_t*)item;
+        if (0 == output->numbytes) {
+            /* indicates we are to close this stream */
+            OBJ_RELEASE(sink);
+            return;
+        }
         num_written = write(wev->fd, output->data, output->numbytes);
         if (num_written < 0) {
             if (EAGAIN == errno || EINTR == errno) {
                 /* push this item back on the front of the list */
                 opal_list_prepend(&wev->outputs, item);
+                /* if the list is getting too large, abort */
+                if (orte_iof_base.output_limit < opal_list_get_size(&wev->outputs)) {
+                    opal_output(0, "IO Forwarding is running too far behind - something is blocking us from writing");
+                    ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+                    goto ABORT;
+                }
                 /* leave the write event running so it will call us again
                  * when the fd is ready.
                  */
-                goto DEPART;
+                return;
             }
             /* otherwise, something bad happened so all we can do is abort
              * this attempt
@@ -312,20 +316,23 @@ void orte_iof_base_write_handler(int fd, short event, void *cbdata)
         } else if (num_written < output->numbytes) {
             /* incomplete write - adjust data to avoid duplicate output */
             memmove(output->data, &output->data[num_written], output->numbytes - num_written);
-            /* push this item back on the  front of the list */
+            /* push this item back on the front of the list */
             opal_list_prepend(&wev->outputs, item);
+            /* if the list is getting too large, abort */
+            if (orte_iof_base.output_limit < opal_list_get_size(&wev->outputs)) {
+                opal_output(0, "IO Forwarding is running too far behind - something is blocking us from writing");
+                ORTE_TERMINATE(ORTE_ERROR_DEFAULT_EXIT_CODE);
+                goto ABORT;
+            }
             /* leave the write event running so it will call us again
              * when the fd is ready
              */
-            goto DEPART;
+            return;
         }
         OBJ_RELEASE(output);
     }
 ABORT:
-    opal_event_del(&wev->ev);
+    opal_event_del(wev->ev);
     wev->pending = false;
 
-DEPART:
-    /* unlock and go */
-    OPAL_THREAD_UNLOCK(&orte_iof_base.iof_write_output_lock);
 }

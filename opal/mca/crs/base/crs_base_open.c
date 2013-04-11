@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -8,6 +8,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Evergrid, Inc. All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.
+ *                         All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -18,9 +20,13 @@
 
 #include "opal_config.h"
 
+#ifdef HAVE_STRING_H
+#include <string.h>
+#endif
+
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "opal/include/opal/constants.h"
+#include "opal/constants.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
 #include "opal/util/output.h"
@@ -43,7 +49,6 @@ opal_crs_base_module_t opal_crs = {
 };
 opal_list_t opal_crs_base_components_available;
 opal_crs_base_component_t opal_crs_base_selected_component;
-char * opal_crs_base_snapshot_dir = NULL;
 
 /**
  * Function for finding and opening either all MCA components,
@@ -68,14 +73,6 @@ int opal_crs_base_open(void)
     }
     opal_output_set_verbosity(opal_crs_base_output, value);
 
-    /* Base snapshot directory */
-    mca_base_param_reg_string_name("crs",
-                                   "base_snapshot_dir",
-                                   "The base directory to use when storing snapshots",
-                                   true, false,
-                                   strdup("/tmp"),
-                                   &opal_crs_base_snapshot_dir);
-
     /* 
      * Which CRS component to open
      *  - NULL or "" = auto-select
@@ -85,8 +82,14 @@ int opal_crs_base_open(void)
     mca_base_param_reg_string_name("crs", NULL,
                                    "Which CRS component to use (empty = auto-select)",
                                    false, false,
-                                   "none", &str_value);
-    
+                                   NULL, &str_value);
+
+    if( !opal_cr_is_enabled ) {
+        opal_output_verbose(10, opal_crs_base_output,
+                            "crs:open: FT is not enabled, skipping!");
+        return OPAL_SUCCESS;
+    }
+
     /* Open up all available components */
     if (OPAL_SUCCESS != (ret = mca_base_components_open("crs", 
                                                         opal_crs_base_output, 
@@ -105,5 +108,6 @@ int opal_crs_base_open(void)
     if( NULL != str_value ) {
         free(str_value);
     }
+
     return exit_status;
 }

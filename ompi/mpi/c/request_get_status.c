@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,11 +20,14 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/request/request.h"
 #include "ompi/request/grequest.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Request_get_status = PMPI_Request_get_status
 #endif
 
@@ -41,6 +44,10 @@ static const char FUNC_NAME[] = "MPI_Request_get_status";
 int MPI_Request_get_status(MPI_Request request, int *flag,
                            MPI_Status *status) 
 {
+#if OMPI_ENABLE_PROGRESS_THREADS == 0
+    int do_it_once = 0;
+#endif
+
     MEMCHECKER(
         memchecker_request(&request);
     );
@@ -49,7 +56,7 @@ int MPI_Request_get_status(MPI_Request request, int *flag,
 
     if( MPI_PARAM_CHECK ) {
         OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
-        if( (NULL == flag) || (NULL == status) ) {
+        if( (NULL == flag) ) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_ARG, FUNC_NAME);
         } else if (NULL == request) {
             return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_REQUEST,
@@ -57,6 +64,9 @@ int MPI_Request_get_status(MPI_Request request, int *flag,
         }
     }
 
+#if OMPI_ENABLE_PROGRESS_THREADS == 0
+ recheck_request_status:
+#endif
     opal_atomic_mb();
     if( (request == MPI_REQUEST_NULL) || (request->req_state == OMPI_REQUEST_INACTIVE) ) {
         *flag = true;
@@ -78,9 +88,16 @@ int MPI_Request_get_status(MPI_Request request, int *flag,
         }
         return MPI_SUCCESS;
     }
-    *flag = false;
 #if OMPI_ENABLE_PROGRESS_THREADS == 0
-    opal_progress();
+    if( 0 == do_it_once ) {
+        /* If we run the opal_progress then check the status of the
+           request before leaving. We will call the opal_progress only
+           once per call. */
+        opal_progress();
+        do_it_once++;
+        goto recheck_request_status;
+    }
 #endif
+    *flag = false;
     return MPI_SUCCESS;
 }

@@ -1,13 +1,17 @@
 /*
- * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
+ *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
+ * Copyright (c) 2011      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
  *                         All rights reserved.
  * $COPYRIGHT$
  *
@@ -22,11 +26,13 @@
 #include <sys/types.h>
 
 #include "opal/util/argv.h"
-#include "opal/class/opal_list.h"
+#include "opal/mca/hwloc/base/base.h"
 
 #include "orte/mca/errmgr/errmgr.h"
+#include "orte/mca/rmaps/base/base.h"
 #include "opal/dss/dss.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/error_strings.h"
 #include "orte/runtime/orte_globals.h"
 
 #include "orte/runtime/data_type_support/orte_dt_support.h"
@@ -120,6 +126,7 @@ int orte_dt_std_print(char **output, char *prefix, void *src, opal_data_type_t t
         case ORTE_STD_CNTR:
             orte_dt_quick_print(output, "ORTE_STD_CNTR", prefix, src, ORTE_STD_CNTR_T);
             break;
+
         case ORTE_VPID:
             orte_dt_quick_print(output, "ORTE_VPID", prefix, src, ORTE_VPID_T);
             break;
@@ -155,10 +162,6 @@ int orte_dt_std_print(char **output, char *prefix, void *src, opal_data_type_t t
             orte_dt_quick_print(output, "ORTE_DAEMON_CMD", prefix, src, ORTE_DAEMON_CMD_T);
             break;
 
-        case ORTE_GRPCOMM_MODE:
-            orte_dt_quick_print(output, "ORTE_GRPCOMM_MODE", prefix, src, ORTE_GRPCOMM_MODE_T);
-            break;
-            
         case ORTE_IOF_TAG:
             orte_dt_quick_print(output, "ORTE_IOF_TAG", prefix, src, ORTE_IOF_TAG_T);
             break;
@@ -201,6 +204,8 @@ int orte_dt_print_job(char **output, char *prefix, orte_job_t *src, opal_data_ty
     char *tmp, *tmp2, *tmp3, *pfx2, *pfx;
     int32_t i;
     int rc;
+    orte_app_context_t *app;
+    orte_proc_t *proc;
 
     /* set default result */
     *output = NULL;
@@ -212,16 +217,21 @@ int orte_dt_print_job(char **output, char *prefix, orte_job_t *src, opal_data_ty
         asprintf(&pfx2, "%s", prefix);
     }
 
-    asprintf(&tmp, "\n%sData for job: %s\tNum apps: %ld\tControls: %0x\tStdin target: %s\tState: %0x\tAbort: %s", pfx2,
+    asprintf(&tmp, "\n%sData for job: %s\tRecovery: %s(%s)\n%s\tNum apps: %ld\tControls: %0x\tStdin target: %s\tState: %s\tAbort: %s", pfx2,
              ORTE_JOBID_PRINT(src->jobid),
+             (src->enable_recovery) ? "ENABLED" : "DISABLED",
+             (src->recovery_defined) ? "DEFINED" : "DEFAULT",
+             pfx2,
              (long)src->num_apps, src->controls, ORTE_VPID_PRINT(src->stdin_target),
-             src->state, src->abort ? "True" : "False");
-
+             orte_job_state_to_str(src->state), src->abort ? "True" : "False");
     asprintf(&pfx, "%s\t", pfx2);
     free(pfx2);
     
-    for (i=0; i < src->num_apps; i++) {
-        opal_dss.print(&tmp2, pfx, src->apps->addr[i], ORTE_APP_CONTEXT);
+    for (i=0; i < src->apps->size; i++) {
+        if (NULL == (app = (orte_app_context_t*)opal_pointer_array_get_item(src->apps, i))) {
+            continue;
+        }
+        opal_dss.print(&tmp2, pfx, app, ORTE_APP_CONTEXT);
         asprintf(&tmp3, "%s\n%s", tmp, tmp2);
         free(tmp);
         free(tmp2);
@@ -248,21 +258,22 @@ int orte_dt_print_job(char **output, char *prefix, orte_job_t *src, opal_data_ty
     tmp = tmp2;
 
     for (i=0; i < src->procs->size; i++) {
-        if (NULL != src->procs->addr[i]) {
-            if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx, src->procs->addr[i], ORTE_PROC))) {
-                ORTE_ERROR_LOG(rc);
-                return rc;
-            }
-            asprintf(&tmp3, "%s%s", tmp, tmp2);
-            free(tmp);
-            free(tmp2);
-            tmp = tmp3;
+        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(src->procs, i))) {
+            continue;
         }
+        if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx, proc, ORTE_PROC))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        asprintf(&tmp3, "%s%s", tmp, tmp2);
+        free(tmp);
+        free(tmp2);
+        tmp = tmp3;
     }
 
-    asprintf(&tmp2, "%s\n%s\tNum launched: %ld\tNum reported: %ld\n%s\tNum terminated: %ld\tOversubscribe override?: %s",
-             tmp, pfx, (long)src->num_launched, (long)src->num_reported, pfx,
-             (long)src->num_terminated, src->oversubscribe_override ? "True" : "False");
+    asprintf(&tmp2, "%s\n%s\tNum launched: %ld\tNum reported: %ld\tNum terminated: %ld",
+             tmp, pfx, (long)src->num_launched, (long)src->num_reported,
+             (long)src->num_terminated);
     free(tmp);
     tmp = tmp2;
     
@@ -281,7 +292,8 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
     char *tmp, *tmp2, *tmp3, *pfx2, *pfx;
     int32_t i;
     int rc;
-    
+    orte_proc_t *proc;
+
     /* set default result */
     *output = NULL;
     
@@ -314,7 +326,7 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
         /* just provide a simple output for users */
         if (0 == src->num_procs) {
             /* no procs mapped yet, so just show allocation */
-            asprintf(&tmp, "\n%sData for node: Name: %s\tNum slots: %ld\tMax slots: %ld",
+            asprintf(&tmp, "\n%sData for node: %s\tNum slots: %ld\tMax slots: %ld",
                      pfx2, (NULL == src->name) ? "UNKNOWN" : src->name,
                      (long)src->slots, (long)src->slots_max);
             /* does this node have any aliases? */
@@ -329,7 +341,7 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
             *output = tmp;
             return ORTE_SUCCESS;
         }
-        asprintf(&tmp, "\n%sData for node: Name: %s\tNum procs: %ld",
+        asprintf(&tmp, "\n%sData for node: %s\tNum procs: %ld",
                  pfx2, (NULL == src->name) ? "UNKNOWN" : src->name,
                  (long)src->num_procs);
         /* does this node have any aliases? */
@@ -343,10 +355,10 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
         goto PRINT_PROCS;
     }
     
-    asprintf(&tmp, "\n%sData for node: Name: %s\t%s\tLaunch id: %ld\tArch: %0x\tState: %0x",
+    asprintf(&tmp, "\n%sData for node: %s\t%s\tLaunch id: %ld\tState: %0x",
              pfx2, (NULL == src->name) ? "UNKNOWN" : src->name,
              pfx2, (long)src->launch_id,
-             src->arch, src->state);
+              src->state);
     /* does this node have any aliases? */
     if (NULL != src->alias) {
         for (i=0; NULL != src->alias[i]; i++) {
@@ -355,11 +367,6 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
             tmp = tmp2;
         }
     }
-    
-    asprintf(&tmp2, "%s\n%s\tNum boards: %ld\tNum sockets/board: %ld\tNum cores/socket: %ld", tmp, pfx2,
-             (long)src->boards, (long)src->sockets_per_board, (long)src->cores_per_socket);
-    free(tmp);
-    tmp = tmp2;
     
     if (NULL == src->daemon) {
         asprintf(&tmp2, "%s\n%s\tDaemon: %s\tDaemon launched: %s", tmp, pfx2,
@@ -371,8 +378,9 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
     free(tmp);
     tmp = tmp2;
     
-    asprintf(&tmp2, "%s\n%s\tNum slots: %ld\tSlots in use: %ld", tmp, pfx2,
-             (long)src->slots, (long)src->slots_inuse);
+    asprintf(&tmp2, "%s\n%s\tNum slots: %ld\tSlots in use: %ld\tOversubscribed: %s", tmp, pfx2,
+             (long)src->slots, (long)src->slots_inuse,
+             (src->oversubscribed) ? "TRUE" : "FALSE");
     free(tmp);
     tmp = tmp2;
     
@@ -386,6 +394,24 @@ int orte_dt_print_node(char **output, char *prefix, orte_node_t *src, opal_data_
     free(tmp);
     tmp = tmp2;
     
+#if OPAL_HAVE_HWLOC
+    if (orte_display_topo_with_map && NULL != src->topology) {
+        char *pfx3;
+        asprintf(&tmp2, "%s\n%s\tDetected Resources:\n", tmp, pfx2);
+        free(tmp);
+        tmp = tmp2;
+    
+        tmp2 = NULL;
+        asprintf(&pfx3, "%s\t\t", pfx2);
+        opal_dss.print(&tmp2, pfx3, src->topology, OPAL_HWLOC_TOPO);
+        free(pfx3);
+        asprintf(&tmp3, "%s%s", tmp, tmp2);
+        free(tmp);
+        free(tmp2);
+        tmp = tmp3;            
+    }
+#endif
+
     asprintf(&tmp2, "%s\n%s\tNum procs: %ld\tNext node_rank: %ld", tmp, pfx2,
              (long)src->num_procs, (long)src->next_node_rank);
     free(tmp);
@@ -396,19 +422,20 @@ PRINT_PROCS:
     free(pfx2);
     
     for (i=0; i < src->procs->size; i++) {
-        if (NULL != src->procs->addr[i]) {
-            if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx, src->procs->addr[i], ORTE_PROC))) {
-                ORTE_ERROR_LOG(rc);
-                return rc;
-            }
-            asprintf(&tmp3, "%s%s", tmp, tmp2);
-            free(tmp);
-            free(tmp2);
-            tmp = tmp3;
+        if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(src->procs, i))) {
+            continue;
         }
+        if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx, proc, ORTE_PROC))) {
+            ORTE_ERROR_LOG(rc);
+            return rc;
+        }
+        asprintf(&tmp3, "%s%s", tmp, tmp2);
+        free(tmp);
+        free(tmp2);
+        tmp = tmp3;
     }
     free(pfx);
-
+    
     /* set the return */
     *output = tmp;
     
@@ -418,34 +445,10 @@ PRINT_PROCS:
 /*
  * PROC
  */
-static char* orte_dt_print_proc_state(orte_proc_state_t state)
-{
-    switch(state) {
-        case ORTE_PROC_STATE_INIT:
-            return "init";
-        case ORTE_PROC_STATE_LAUNCHED:
-            return "launched";
-        case ORTE_PROC_STATE_RUNNING:
-            return "running";
-        case ORTE_PROC_STATE_TERMINATED:
-            return "terminated";
-        case ORTE_PROC_STATE_ABORTED:
-            return "aborted";
-        case ORTE_PROC_STATE_FAILED_TO_START:
-            return "failed-to-start";
-        case ORTE_PROC_STATE_ABORTED_BY_SIG:
-            return "aborted-by-signal";
-        case ORTE_PROC_STATE_TERM_WO_SYNC:
-            return "terminated-without-sync";
-        default:
-            return NULL;
-    }
-}
-
 int orte_dt_print_proc(char **output, char *prefix, orte_proc_t *src, opal_data_type_t type)
 {
     char *tmp, *tmp2, *pfx2;
-    
+
     /* set default result */
     *output = NULL;
     
@@ -458,22 +461,12 @@ int orte_dt_print_proc(char **output, char *prefix, orte_proc_t *src, opal_data_
     
     if (orte_xml_output) {
         /* need to create the output in XML format */
-        tmp = orte_dt_print_proc_state(src->state);
-        if (NULL == tmp) {
-            if (0 == src->pid) {
-                asprintf(output, "%s<process rank=\"%s\"/>\n", pfx2, ORTE_VPID_PRINT(src->name.vpid));
-            } else {
-                asprintf(output, "%s<process rank=\"%s\" pid=\"%d\"/>\n", pfx2,
-                         ORTE_VPID_PRINT(src->name.vpid), (int)src->pid);
-            }
+        if (0 == src->pid) {
+            asprintf(output, "%s<process rank=\"%s\" status=\"%s\"/>\n", pfx2,
+                     ORTE_VPID_PRINT(src->name.vpid), orte_proc_state_to_str(src->state));
         } else {
-            if (0 == src->pid) {
-                asprintf(output, "%s<process rank=\"%s\" status=\"%s\"/>\n", pfx2,
-                         ORTE_VPID_PRINT(src->name.vpid), tmp);
-            } else {
-                asprintf(output, "%s<process rank=\"%s\" pid=\"%d\" status=\"%s\"/>\n", pfx2,
-                         ORTE_VPID_PRINT(src->name.vpid), (int)src->pid, tmp);
-            }
+            asprintf(output, "%s<process rank=\"%s\" pid=\"%d\" status=\"%s\"/>\n", pfx2,
+                     ORTE_VPID_PRINT(src->name.vpid), (int)src->pid, orte_proc_state_to_str(src->state));
         }
         free(pfx2);
         return ORTE_SUCCESS;
@@ -481,9 +474,10 @@ int orte_dt_print_proc(char **output, char *prefix, orte_proc_t *src, opal_data_
     
     if (!orte_devel_level_output) {
         /* just print a very simple output for users */
-        asprintf(&tmp, "\n%sProcess OMPI jobid: %s Process rank: %s", pfx2,
-                 ORTE_JOBID_PRINT(src->name.jobid),
+        asprintf(&tmp, "\n%sProcess OMPI jobid: %s App: %ld Process rank: %s", pfx2,
+                 ORTE_JOBID_PRINT(src->name.jobid), (long)src->app_idx,
                  ORTE_VPID_PRINT(src->name.vpid));
+        
         /* set the return */
         *output = tmp;
         free(pfx2);
@@ -492,14 +486,30 @@ int orte_dt_print_proc(char **output, char *prefix, orte_proc_t *src, opal_data_
 
     asprintf(&tmp, "\n%sData for proc: %s", pfx2, ORTE_NAME_PRINT(&src->name));
     
-    asprintf(&tmp2, "%s\n%s\tPid: %ld\tLocal rank: %lu\tNode rank: %lu", tmp, pfx2,
-             (long)src->pid, (unsigned long)src->local_rank, (unsigned long)src->node_rank);
+    asprintf(&tmp2, "%s\n%s\tPid: %ld\tLocal rank: %lu\tNode rank: %lu\tApp rank: %d", tmp, pfx2,
+             (long)src->pid, (unsigned long)src->local_rank, (unsigned long)src->node_rank, src->app_rank);
     free(tmp);
     tmp = tmp2;
     
-    asprintf(&tmp2, "%s\n%s\tState: %0x\tApp_context: %ld\tSlot list: %s", tmp, pfx2,
-             src->state, (long)src->app_idx,
-             (NULL == src->slot_list) ? "NULL" : src->slot_list);
+#if OPAL_HAVE_HWLOC
+    {
+        char *locale=NULL;
+
+        if (NULL != src->locale) {
+            hwloc_bitmap_list_asprintf(&locale, src->locale->cpuset);
+        }
+        asprintf(&tmp2, "%s\n%s\tState: %s\tRestarts: %d\tApp_context: %ld\tLocale: %s\tBinding: %s[%u]", tmp, pfx2,
+                 orte_proc_state_to_str(src->state), src->restarts, (long)src->app_idx,
+                 (NULL == locale) ? "UNKNOWN" : locale,
+                 (NULL == src->cpu_bitmap) ? "NULL" : src->cpu_bitmap, src->bind_idx);
+        if (NULL != locale) {
+            free(locale);
+        }
+    }
+#else
+    asprintf(&tmp2, "%s\n%s\tState: %s\tRestarts: %d\tApp_context: %ld", tmp, pfx2,
+             orte_proc_state_to_str(src->state), src->restarts, (long)src->app_idx);
+#endif
     free(tmp);
     
     /* set the return */
@@ -527,9 +537,13 @@ int orte_dt_print_app_context(char **output, char *prefix, orte_app_context_t *s
         asprintf(&pfx2, "%s", prefix);
     }
     
-    asprintf(&tmp, "\n%sData for app_context: index %lu\tapp: %s\n%s\tNum procs: %lu",
-             pfx2, (unsigned long)src->idx, src->app,
-             pfx2, (unsigned long)src->num_procs);
+    asprintf(&tmp, "\n%sData for app_context: index %lu\tapp: %s\n%s\tNum procs: %lu\tFirstRank: %s\tRecovery: %s\tMax Restarts: %d",
+             pfx2, (unsigned long)src->idx,
+             (NULL == src->app) ? "NULL" : src->app,
+             pfx2, (unsigned long)src->num_procs,
+             ORTE_VPID_PRINT(src->first_rank),
+             (src->recovery_defined) ? "DEFINED" : "DEFAULT",
+             src->max_restarts);
     
     count = opal_argv_count(src->argv);
     for (i=0; i < count; i++) {
@@ -545,11 +559,20 @@ int orte_dt_print_app_context(char **output, char *prefix, orte_app_context_t *s
         tmp = tmp2;
     }
     
-    asprintf(&tmp2, "%s\n%s\tWorking dir: %s (user: %d)\n%s\tHostfile: %s\tAdd-Hostfile: %s", tmp, pfx2, src->cwd, (int) src->user_specified_cwd,
+    asprintf(&tmp2, "%s\n%s\tWorking dir: %s (user: %d)\n%s\tPrefix: %s\n%s\tHostfile: %s\tAdd-Hostfile: %s", tmp,
+             pfx2, (NULL == src->cwd) ? "NULL" : src->cwd, (int) src->user_specified_cwd,
+             pfx2, (NULL == src->prefix_dir) ? "NULL" : src->prefix_dir,
              pfx2, (NULL == src->hostfile) ? "NULL" : src->hostfile,
              (NULL == src->add_hostfile) ? "NULL" : src->add_hostfile);
     free(tmp);
     tmp = tmp2;
+    
+    count = opal_argv_count(src->add_host);
+    for (i=0; i < count; i++) {
+        asprintf(&tmp2, "%s\n%s\tAdd_host[%lu]: %s", tmp, pfx2, (unsigned long)i, src->add_host[i]);
+        free(tmp);
+        tmp = tmp2;
+    }
     
     count = opal_argv_count(src->dash_host);
     for (i=0; i < count; i++) {
@@ -558,6 +581,21 @@ int orte_dt_print_app_context(char **output, char *prefix, orte_app_context_t *s
         tmp = tmp2;
     }
     
+    asprintf(&tmp2, "%s\n%s\tPreload binary: %s\tPreload libs: %s\tUsed on node: %s\n%s\tPreload files dest: %s\n%s\tPreload files src dir: %s", tmp,
+             pfx2, (src->preload_binary) ? "TRUE" : "FALSE", (src->preload_libs) ? "TRUE" : "FALSE",
+             (src->used_on_node) ? "TRUE" : "FALSE",
+             pfx2, (NULL == src->preload_files_dest_dir) ? "NULL" : src->preload_files_dest_dir,
+             pfx2, (NULL == src->preload_files_src_dir) ? "NULL" : src->preload_files_src_dir);
+    free(tmp);
+    tmp = tmp2;
+
+#if OPAL_ENABLE_FT_CR == 1
+    asprintf(&tmp2, "%s\n%s\tSStore Load: %s", tmp,
+             pfx2, src->sstore_load);
+    free(tmp);
+    tmp = tmp2;
+#endif
+
     /* set the return */
     *output = tmp;
     
@@ -573,8 +611,8 @@ int orte_dt_print_map(char **output, char *prefix, orte_job_map_t *src, opal_dat
     char *tmp=NULL, *tmp2, *tmp3, *pfx, *pfx2;
     int32_t i, j;
     int rc;
-    orte_node_t **nodes;
-    orte_proc_t **procs;
+    orte_node_t *node;
+    orte_proc_t *proc;
     
     /* set default result */
     *output = NULL;
@@ -590,23 +628,21 @@ int orte_dt_print_map(char **output, char *prefix, orte_job_map_t *src, opal_dat
         /* need to create the output in XML format */
         asprintf(&tmp, "<map>\n");
         /* loop through nodes */
-        nodes = (orte_node_t**)src->nodes->addr;
         for (i=0; i < src->nodes->size; i++) {
-            if (NULL == nodes[i]) {
-                break;
+            if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(src->nodes, i))) {
+                continue;
             }
-            orte_dt_print_node(&tmp2, "\t", nodes[i], ORTE_NODE);
+            orte_dt_print_node(&tmp2, "\t", node, ORTE_NODE);
             asprintf(&tmp3, "%s%s", tmp, tmp2);
             free(tmp2);
             free(tmp);
             tmp = tmp3;
             /* for each node, loop through procs and print their rank */
-            procs = (orte_proc_t**)nodes[i]->procs->addr;
-            for (j=0; j < nodes[i]->procs->size; j++) {
-                if (NULL == procs[j]) {
-                    break;
+            for (j=0; j < node->procs->size; j++) {
+                if (NULL == (proc = (orte_proc_t*)opal_pointer_array_get_item(node->procs, j))) {
+                    continue;
                 }
-                orte_dt_print_proc(&tmp2, "\t\t", procs[j], ORTE_PROC);
+                orte_dt_print_proc(&tmp2, "\t\t", proc, ORTE_PROC);
                 asprintf(&tmp3, "%s%s", tmp, tmp2);
                 free(tmp2);
                 free(tmp);
@@ -627,11 +663,25 @@ int orte_dt_print_map(char **output, char *prefix, orte_job_map_t *src, opal_dat
     asprintf(&pfx, "%s\t", pfx2);
     
     if (orte_devel_level_output) {
-        asprintf(&tmp, "\n%sMap generated by mapping policy: %04x\n%s\tNpernode: %ld\tOversubscribe allowed: %s\tCPU Lists: %s",
-                 pfx2, src->policy, pfx2, (long)src->npernode,
-                 (src->oversubscribe) ? "TRUE" : "FALSE",
-                 (src->cpu_lists) ? "TRUE" : "FALSE");
-        
+#if OPAL_HAVE_HWLOC
+        asprintf(&tmp, "\n%sMapper requested: %s  Last mapper: %s  Mapping policy: %s  Ranking policy: %s  Binding policy: %s[%s]  Cpu set: %s  PPR: %s",
+                 pfx2, (NULL == src->req_mapper) ? "NULL" : src->req_mapper,
+                 (NULL == src->last_mapper) ? "NULL" : src->last_mapper,
+                 orte_rmaps_base_print_mapping(src->mapping),
+                 orte_rmaps_base_print_ranking(src->ranking),
+                 opal_hwloc_base_print_binding(src->binding),
+                 opal_hwloc_base_print_level(src->bind_level),
+                 (NULL == opal_hwloc_base_cpu_set) ? "NULL" : opal_hwloc_base_cpu_set,
+                 (NULL == src->ppr) ? "NULL" : src->ppr);
+#else
+        asprintf(&tmp, "\n%sMapper requested: %s  Last mapper: %s  Mapping policy: %s  Ranking policy: %s  PPR: %s",
+                 pfx2, (NULL == src->req_mapper) ? "NULL" : src->req_mapper,
+                 (NULL == src->last_mapper) ? "NULL" : src->last_mapper,
+                 orte_rmaps_base_print_mapping(src->mapping),
+                 orte_rmaps_base_print_ranking(src->ranking),
+                 (NULL == src->ppr) ? "NULL" : src->ppr);
+#endif
+
         if (ORTE_VPID_INVALID == src->daemon_vpid_start) {
             asprintf(&tmp2, "%s\n%sNum new daemons: %ld\tNew daemon starting vpid INVALID\n%sNum nodes: %ld",
                      tmp, pfx, (long)src->num_new_daemons, pfx, (long)src->num_nodes);
@@ -649,18 +699,19 @@ int orte_dt_print_map(char **output, char *prefix, orte_job_map_t *src, opal_dat
     
     
     for (i=0; i < src->nodes->size; i++) {
-        if (NULL != src->nodes->addr[i]) {
-            if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx2, src->nodes->addr[i], ORTE_NODE))) {
-                ORTE_ERROR_LOG(rc);
-                free(pfx);
-                free(tmp);
-                return rc;
-            }
-            asprintf(&tmp3, "%s\n%s", tmp, tmp2);
-            free(tmp);
-            free(tmp2);
-            tmp = tmp3;
+        if (NULL == (node = (orte_node_t*)opal_pointer_array_get_item(src->nodes, i))) {
+            continue;
         }
+        if (ORTE_SUCCESS != (rc = opal_dss.print(&tmp2, pfx2, node, ORTE_NODE))) {
+            ORTE_ERROR_LOG(rc);
+            free(pfx);
+            free(tmp);
+            return rc;
+        }
+        asprintf(&tmp3, "%s\n%s", tmp, tmp2);
+        free(tmp);
+        free(tmp2);
+        tmp = tmp3;
     }
     
     if (!orte_devel_level_output) {

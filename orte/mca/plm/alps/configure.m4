@@ -10,6 +10,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2011      Los Alamos National Security, LLC.
+#                         All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -19,6 +22,10 @@
 
 # MCA_plm_alps_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_plm_alps_CONFIG],[
-	OMPI_CHECK_ALPS([plm_alps], [$1], [$2])
+AC_DEFUN([MCA_orte_plm_alps_CONFIG],[
+    AC_CONFIG_FILES([orte/mca/plm/alps/Makefile])
+
+	ORTE_CHECK_ALPS([plm_alps], [plm_alps_happy="yes"], [plm_alps_happy="no"])
+
+    AS_IF([test "$plm_alps_happy" = "yes" -a "$orte_without_full_support" = 0], [$1], [$2])
 ])dnl

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -20,11 +20,12 @@
 
 #include "orte/util/name_fns.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/mca/rml/base/base.h"
+#include "orte/mca/rml/rml_types.h"
 #include "orte/mca/rml/rml.h"
 
 #include "rml_ftrm.h"
@@ -65,23 +66,6 @@ int orte_rml_ftrm_module_finalize(void)
 
     if( NULL != orte_rml_ftrm_wrapped_module.finalize ) {
         if( ORTE_SUCCESS != (ret = orte_rml_ftrm_wrapped_module.finalize() ) ) {
-            return ret;
-        }
-    }
-
-    return ORTE_SUCCESS;
-}
-
-
-int orte_rml_ftrm_get_new_name(orte_process_name_t *name)
-{
-    int ret;
-
-    opal_output_verbose(20, rml_ftrm_output_handle,
-                        "orte_rml_ftrm: get_new_name()");
-
-    if( NULL != orte_rml_ftrm_wrapped_module.get_new_name ) {
-        if( ORTE_SUCCESS != (ret = orte_rml_ftrm_wrapped_module.get_new_name(name) ) ) {
             return ret;
         }
     }
@@ -453,3 +437,18 @@ int orte_rml_ftrm_ft_event(int state)
     return ORTE_SUCCESS;
 }
 
+int orte_rml_ftrm_purge(orte_process_name_t *peer)
+{
+    int ret;
+    
+    opal_output_verbose(20, rml_ftrm_output_handle,
+                        "orte_rml_ftrm: purge()");
+    
+    if( NULL != orte_rml_ftrm_wrapped_module.purge ) {
+        if( ORTE_SUCCESS != (ret = orte_rml_ftrm_wrapped_module.purge(peer) ) ) {
+            return ret;
+        }
+    }
+    
+    return ORTE_SUCCESS;
+}

@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2007 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -11,6 +11,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -60,8 +61,8 @@
 #include "opal/util/argv.h"
 #include "opal/util/show_help.h"
 #include "opal/util/opal_environ.h"
+#include "opal/util/error.h"
 #include "opal/util/output.h"
-#include "opal/util/os_path.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 
@@ -149,7 +150,7 @@ int
 main(int argc, char *argv[])
 {
     int ret, exit_status = OPAL_SUCCESS;
-    char *fname;
+    char *fname = NULL;
     opal_crs_state_type_t cr_state;
 
     /***************
@@ -209,7 +210,7 @@ static int initialize(int argc, char *argv[]) {
      * to ensure installdirs is setup properly
      * before calling mca_base_open();
      */
-    if( OPAL_SUCCESS != (ret = opal_init_util()) ) {
+    if( OPAL_SUCCESS != (ret = opal_init_util(&argc, &argv)) ) {
         return ret;
     }
 
@@ -253,7 +254,7 @@ static int initialize(int argc, char *argv[]) {
     /*
      * Initialize OPAL
      */
-    if (OPAL_SUCCESS != (ret = opal_init())) {
+    if (OPAL_SUCCESS != (ret = opal_init(&argc, &argv))) {
         exit_status = ret;
         goto cleanup;
     }
@@ -277,6 +278,7 @@ static int parse_args(int argc, char *argv[]) {
     opal_cmd_line_t cmd_line;
     char **app_env = NULL, **global_env = NULL;
     char * tmp_env_var = NULL;
+    char *argv0 = NULL;
 
     memset(&opal_checkpoint_globals, 0, sizeof(opal_checkpoint_globals_t));
 
@@ -288,6 +290,27 @@ static int parse_args(int argc, char *argv[]) {
     mca_base_open();
     mca_base_cmd_line_setup(&cmd_line);
     ret = opal_cmd_line_parse(&cmd_line, true, argc, argv);
+
+    if (OPAL_SUCCESS != ret) {
+        if (OPAL_ERR_SILENT != ret) {
+            fprintf(stderr, "%s: command line error (%s)\n", argv[0],
+                    opal_strerror(ret));
+        }
+        return 1;
+    }
+    if (opal_checkpoint_globals.help) {
+        char *str, *args = NULL;
+        args = opal_cmd_line_get_usage_msg(&cmd_line);
+        str = opal_show_help_string("help-opal-checkpoint.txt", "usage", true,
+                                    args);
+        if (NULL != str) {
+            printf("%s", str);
+            free(str);
+        }
+        free(args);
+        /* If we show the help message, that should be all we do */
+        exit(0);
+    }
     
     /** 
      * Put all of the MCA arguments in the environment 
@@ -314,16 +337,6 @@ static int parse_args(int argc, char *argv[]) {
     /**
      * Now start parsing our specific arguments
      */
-    if (OPAL_SUCCESS != ret || 
-        opal_checkpoint_globals.help ||
-        1 >= argc) {
-        char *args = NULL;
-        args = opal_cmd_line_get_usage_msg(&cmd_line);
-        opal_show_help("help-opal-checkpoint.txt", "usage", true,
-                       args);
-        free(args);
-        return OPAL_ERROR;
-    }
 
     if( NULL == opal_checkpoint_globals.snapshot_name )
         opal_checkpoint_globals.snapshot_name = strdup("");
@@ -332,7 +345,16 @@ static int parse_args(int argc, char *argv[]) {
     }
 
     /* get the remaining bits */
+    argv0 = strdup(argv[0]);
     opal_cmd_line_get_tail(&cmd_line, &argc, &argv);
+
+    if (0 == argc) {
+        fprintf(stderr, "%s: Nothing to do\n", argv0);
+        fprintf(stderr, "Type '%s --help' for usage.\n", argv0);
+        free(argv0);
+        return OPAL_ERROR;
+    }
+    free(argv0);
 
     opal_checkpoint_globals.pid = atoi(argv[0]);
     if ( 0 >= opal_checkpoint_globals.pid ) {

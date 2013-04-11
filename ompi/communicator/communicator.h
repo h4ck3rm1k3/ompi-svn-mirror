@@ -3,15 +3,15 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
- * Copyright (c) 2006-2009 University of Houston.  All rights reserved.
+ * Copyright (c) 2006-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2010 University of Houston.  All rights reserved.
  * Copyright (c) 2009      Sun Microsystems, Inc. All rights reserved.
  * $COPYRIGHT$
  * 
@@ -23,6 +23,7 @@
 #ifndef OMPI_COMMUNICATOR_H
 #define OMPI_COMMUNICATOR_H
 
+#include "ompi_config.h"
 #include "opal/class/opal_object.h"
 #include "ompi/errhandler/errhandler.h"
 #include "opal/threads/mutex.h"
@@ -30,7 +31,6 @@
 #include "mpi.h"
 #include "ompi/group/group.h"
 #include "ompi/mca/coll/coll.h"
-#include "orte/mca/rml/rml_types.h"
 #include "ompi/proc/proc.h"
 
 BEGIN_C_DECLS
@@ -46,6 +46,7 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 #define OMPI_COMM_DYNAMIC    0x00000040
 #define OMPI_COMM_INVALID    0x00000080
 #define OMPI_COMM_PML_ADDED  0x00000100
+#define OMPI_COMM_EXTRA_RETAIN 0x00000200
 
 /* some utility #defines */
 #define OMPI_COMM_IS_INTER(comm) ((comm)->c_flags & OMPI_COMM_INTER)
@@ -57,11 +58,13 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
 #define OMPI_COMM_IS_DYNAMIC(comm) ((comm)->c_flags & OMPI_COMM_DYNAMIC)
 #define OMPI_COMM_IS_INVALID(comm) ((comm)->c_flags & OMPI_COMM_INVALID)
 #define OMPI_COMM_IS_PML_ADDED(comm) ((comm)->c_flags & OMPI_COMM_PML_ADDED)
+#define OMPI_COMM_IS_EXTRA_RETAIN(comm) ((comm)->c_flags & OMPI_COMM_EXTRA_RETAIN)
 
 #define OMPI_COMM_SET_DYNAMIC(comm) ((comm)->c_flags |= OMPI_COMM_DYNAMIC)
 #define OMPI_COMM_SET_INVALID(comm) ((comm)->c_flags |= OMPI_COMM_INVALID)
 
 #define OMPI_COMM_SET_PML_ADDED(comm) ((comm)->c_flags |= OMPI_COMM_PML_ADDED)
+#define OMPI_COMM_SET_EXTRA_RETAIN(comm) ((comm)->c_flags |= OMPI_COMM_EXTRA_RETAIN)
 
 /* a set of special tags: */
 
@@ -89,6 +92,10 @@ OMPI_DECLSPEC OBJ_CLASS_DECLARATION(ompi_communicator_t);
  */
 #define OMPI_COMM_BLOCK_WORLD      16
 #define OMPI_COMM_BLOCK_OTHERS     8
+
+/* A macro comparing two CIDs */
+#define OMPI_COMM_CID_IS_LOWER(comm1,comm2) ( ((comm1)->c_contextid < (comm2)->c_contextid)? 1:0)
+
 
 OMPI_DECLSPEC extern opal_pointer_array_t ompi_mpi_communicators;
 
@@ -228,8 +235,18 @@ struct ompi_predefined_communicator_t {
 typedef struct ompi_predefined_communicator_t ompi_predefined_communicator_t;
 
 OMPI_DECLSPEC extern ompi_communicator_t *ompi_mpi_comm_parent;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_world;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_self;
 OMPI_DECLSPEC extern ompi_predefined_communicator_t ompi_mpi_comm_null;
 
+/*
+ * These variables are for the MPI F03 bindings (F03 must bind Fortran
+ * varaiables to symbols; it cannot bind Fortran variables to the
+ * address of a C variable).
+ */
+OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_world_addr;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_self_addr;
+OMPI_DECLSPEC extern ompi_predefined_communicator_t *ompi_mpi_comm_null_addr;
 
 
 /**
@@ -308,9 +325,9 @@ static inline ompi_communicator_t *ompi_comm_lookup(uint32_t cid)
 
 static inline struct ompi_proc_t* ompi_comm_peer_lookup(ompi_communicator_t* comm, int peer_id)
 {
-#if OMPI_ENABLE_DEBUG
+#if OPAL_ENABLE_DEBUG
     if(peer_id >= comm->c_remote_group->grp_proc_count) {
-        opal_output(0, "ompi_comm_lookup_peer: invalid peer index (%d)", peer_id);
+        opal_output(0, "ompi_comm_peer_lookup: invalid peer index (%d)", peer_id);
         return (struct ompi_proc_t *) NULL;
     }
 #endif
@@ -368,6 +385,21 @@ int ompi_topo_create (ompi_communicator_t *old_comm,
  */
 OMPI_DECLSPEC int ompi_comm_split (ompi_communicator_t *comm, int color, int key,
                                    ompi_communicator_t** newcomm, bool pass_on_topo);
+
+/**
+ * split a communicator based on type and key. Parameters
+ * are identical to the MPI-counterpart of the function.
+ *
+ * @param comm: input communicator
+ * @param color
+ * @param key
+ *
+ * @
+ */
+OMPI_DECLSPEC int ompi_comm_split_type(ompi_communicator_t *comm, 
+                                       int split_type, int key,
+                                       struct ompi_info_t *info,
+                                       ompi_communicator_t** newcomm);
 
 /**
  * dup a communicator. Parameter are identical to the MPI-counterpart
@@ -460,7 +492,7 @@ struct ompi_proc_t **ompi_comm_get_rprocs ( ompi_communicator_t *local_comm,
                                             ompi_communicator_t *bridge_comm,
                                             int local_leader,
                                             int remote_leader,
-                                            orte_rml_tag_t tag,
+                                            int tag,
                                             int rsize);
 
 /**
@@ -508,10 +540,12 @@ void ompi_comm_reg_finalize(void);
 extern int ompi_comm_num_dyncomm;
 
 
-/* check in the communicator destructor whether a block if cid's 
-   can be reused.
+/* check whether any of the processes has requested support for 
+   MPI_THREAD_MULTIPLE. Note, that this produces global
+   information across MPI_COMM_WORLD, in contrary to the local
+   flag ompi_mpi_thread_provided 
 */
-OMPI_DECLSPEC void  ompi_comm_checkfor_blockreset ( ompi_communicator_t *comm );
+OMPI_DECLSPEC int ompi_comm_cid_init ( void );
 
 
 END_C_DECLS

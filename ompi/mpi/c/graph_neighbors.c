@@ -9,7 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos Nat Security, LLC. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,10 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/topo/topo.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Graph_neighbors = PMPI_Graph_neighbors
 #endif
 
@@ -35,7 +39,7 @@ static const char FUNC_NAME[] = "MPI_Graph_neighbors";
 
 
 int MPI_Graph_neighbors(MPI_Comm comm, int rank, int maxneighbors,
-                        int *neighbors) 
+                        int neighbors[]) 
 {
     int err;
     mca_topo_base_module_graph_neighbors_fn_t func;

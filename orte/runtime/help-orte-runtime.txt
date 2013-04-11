@@ -41,3 +41,9 @@ If you believe this is in error, please contact your system administrator
 to have the list of prohibited locations changed. Otherwise, please identify
 a different location to be used (use -h to see the cmd line option), or
 simply let the system pick a default location.
+#
+#
+[orte_nidmap:too_many_nodes]
+An error occurred while trying to pack the information about the job. More nodes
+have been found than the %d expected. Please check your configuration files such
+as the mapping.

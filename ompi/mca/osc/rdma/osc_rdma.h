@@ -9,6 +9,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007      Los Alamos National Security, LLC.  All rights
  *                         reserved. 
+ * Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,12 +20,15 @@
 #ifndef OMPI_OSC_RDMA_H
 #define OMPI_OSC_RDMA_H
 
+#include "ompi_config.h"
 #include "opal/class/opal_list.h"
 #include "opal/class/opal_free_list.h"
 #include "opal/class/opal_hash_table.h"
+#include "opal/threads/threads.h"
 
 #include "ompi/win/win.h"
 #include "ompi/communicator/communicator.h"
+#include "ompi/request/request.h"
 #include "ompi/mca/osc/osc.h"
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/bml/bml.h"
@@ -41,9 +45,6 @@ typedef struct ompi_osc_rdma_buffer_t ompi_osc_rdma_buffer_t;
 struct ompi_osc_rdma_component_t {
     /** Extend the basic osc component interface */
     ompi_osc_base_component_t super;
-
-    /** store the state of progress threads for this instance of OMPI */
-    bool c_have_progress_threads;
 
     /** lock access to datastructures in the component structure */
     opal_mutex_t c_lock;
@@ -66,14 +67,6 @@ struct ompi_osc_rdma_component_t {
     /** free list of ompi_osc_rdma_longreq_t structures */
     opal_free_list_t c_longreqs;
 
-    /** list of outstanding requests, of type ompi_osc_pt2pt_longreq_t */
-    opal_list_t c_pending_requests;
-
-#if OMPI_ENABLE_PROGRESS_THREADS
-    opal_thread_t c_thread;
-    bool c_thread_run;
-#endif
-
     bool c_btl_registered;
 
     uint32_t c_sequence_number;
@@ -82,7 +75,7 @@ typedef struct ompi_osc_rdma_component_t ompi_osc_rdma_component_t;
 
 
 struct ompi_osc_rdma_btl_t {
-    uint64_t peer_seg_key;
+    uint8_t  peer_seg[MCA_BTL_SEG_MAX_SIZE];
     mca_bml_base_btl_t *bml_btl;
     int      rdma_order;
     int32_t  num_sent;
@@ -234,7 +227,26 @@ int ompi_osc_rdma_component_select(struct ompi_win_t *win,
                                    struct ompi_info_t *info,
                                    struct ompi_communicator_t *comm);
 
-int ompi_osc_rdma_component_progress(void);
+/* helper function that properly sets up request handling */
+int ompi_osc_rdma_component_irecv(void *buf,
+                                   size_t count,
+                                   struct ompi_datatype_t *datatype,
+                                   int src,
+                                   int tag,
+                                   struct ompi_communicator_t *comm,
+                                   struct ompi_request_t **request,
+                                   ompi_request_complete_fn_t callback,
+                                   void *data);
+
+int ompi_osc_rdma_component_isend(void *buf,
+                                   size_t count,
+                                   struct ompi_datatype_t *datatype,
+                                   int dest,
+                                   int tag,
+                                   struct ompi_communicator_t *comm,
+                                   struct ompi_request_t **request,
+                                   ompi_request_complete_fn_t callback,
+                                   void *data);
 
 int ompi_osc_rdma_peer_info_free(ompi_osc_rdma_peer_info_t *peer_info);
 
@@ -247,7 +259,7 @@ int ompi_osc_rdma_module_put(void *origin_addr,
                              int origin_count,
                              struct ompi_datatype_t *origin_dt,
                              int target,
-                             int target_disp,
+                             OPAL_PTRDIFF_TYPE target_disp,
                              int target_count,
                              struct ompi_datatype_t *target_dt,
                              struct ompi_win_t *win);
@@ -256,7 +268,7 @@ int ompi_osc_rdma_module_accumulate(void *origin_addr,
                                     int origin_count,
                                     struct ompi_datatype_t *origin_dt,
                                     int target,
-                                    int target_disp,
+                                    OPAL_PTRDIFF_TYPE target_disp,
                                     int target_count,
                                     struct ompi_datatype_t *target_dt,
                                     struct ompi_op_t *op,
@@ -266,7 +278,7 @@ int ompi_osc_rdma_module_get(void *origin_addr,
                              int origin_count,
                              struct ompi_datatype_t *origin_dt,
                              int target,
-                             int target_disp,
+                             OPAL_PTRDIFF_TYPE target_disp,
                              int target_count,
                              struct ompi_datatype_t *target_dt,
                              struct ompi_win_t *win);

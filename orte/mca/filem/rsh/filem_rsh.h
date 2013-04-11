@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -29,9 +29,7 @@
 #include "opal/mca/mca.h"
 #include "orte/mca/filem/filem.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 #define ORTE_FILEM_RSH_ASK   0
 #define ORTE_FILEM_RSH_ALLOW 1
@@ -47,6 +45,9 @@ extern "C" {
         /** RSH cp command: rsh = rcp, ssh = scp */
         char * cp_command;
 
+        /** Unix cp command */
+        char * cp_local_command;
+
         /** SSH remote login command */	
         char * remote_sh_command;
     };
@@ -55,6 +56,7 @@ extern "C" {
 
     extern int orte_filem_rsh_max_incomming;
     extern int orte_filem_rsh_max_outgoing;
+    extern int orte_filem_rsh_progress_meter;
 
     int orte_filem_rsh_component_query(mca_base_module_t **module, int *priority);
 
@@ -76,8 +78,6 @@ extern "C" {
     int orte_filem_rsh_wait( orte_filem_base_request_t *request);
     int orte_filem_rsh_wait_all( opal_list_t *request_list);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_FILEM_RSH_EXPORT_H */

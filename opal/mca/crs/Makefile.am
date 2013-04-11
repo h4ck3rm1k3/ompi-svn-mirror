@@ -10,7 +10,7 @@
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
 # Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
-# Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2008-2010 Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -23,9 +23,6 @@ include $(top_srcdir)/Makefile.man-page-rules
 # main library setup
 noinst_LTLIBRARIES = libmca_crs.la
 libmca_crs_la_SOURCES =
-
-# header setup
-nobase_opal_HEADERS =
 
 # local files
 headers = crs.h
@@ -42,10 +39,8 @@ $(nodist_man_MANS): $(top_builddir)/opal/include/opal_config.h
 
 # Conditionally install the header files
 if WANT_INSTALL_HEADERS
-nobase_opal_HEADERS += $(headers)
-opaldir = $(includedir)/openmpi/opal/mca/crs
-else
-opaldir = $(includedir)
+opaldir = $(includedir)/openmpi/$(subdir)
+nobase_opal_HEADERS = $(headers)
 endif
 
 include base/Makefile.am

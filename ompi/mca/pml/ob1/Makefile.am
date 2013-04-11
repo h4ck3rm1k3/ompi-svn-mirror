@@ -9,7 +9,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
-#
+# Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
+# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2012      NVIDIA Corporation.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,7 +19,10 @@
 # $HEADER$
 #
 
-EXTRA_DIST = post_configure.sh pml_ob1_endpoint.c pml_ob1_endpoint.h .windows
+dist_pkgdata_DATA = \
+	help-mpi-pml-ob1.txt
+
+EXTRA_DIST = post_configure.sh .windows
 
 ob1_sources  = \
 	pml_ob1.c \
@@ -43,7 +48,13 @@ ob1_sources  = \
 	pml_ob1_sendreq.h \
 	pml_ob1_start.c 
 
-if OMPI_BUILD_pml_ob1_DSO
+# If we have CUDA support requested, build the CUDA file also
+if MCA_ompi_cuda_support
+ob1_sources += \
+    pml_ob1_cuda.c
+endif
+
+if MCA_BUILD_ompi_pml_ob1_DSO
 component_noinst =
 component_install = mca_pml_ob1.la
 else

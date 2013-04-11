@@ -20,13 +20,20 @@
 #define OMPI_SYS_ARCH_ATOMIC_H 1
 
 
-#if OMPI_WANT_SMP_LOCKS
+#if OPAL_WANT_SMP_LOCKS
 
 /* BWB - FIX ME! */
+#ifdef __linux__
+#define MB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define RMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define WMB() __asm__ __volatile__(".set mips2; sync; .set mips0": : :"memory")
+#define SMP_SYNC ".set mips2; sync; .set mips0"
+#else
 #define MB() __asm__ __volatile__("sync": : :"memory")
 #define RMB() __asm__ __volatile__("sync": : :"memory")
 #define WMB() __asm__ __volatile__("sync": : :"memory")
 #define SMP_SYNC "sync"
+#endif
 
 #else
 
@@ -46,8 +53,10 @@
 #define OPAL_HAVE_ATOMIC_MEM_BARRIER 1
 
 #define OPAL_HAVE_ATOMIC_CMPSET_32 1
-#define OPAL_HAVE_ATOMIC_CMPSET_64 1
 
+#ifdef __mips64
+#define OPAL_HAVE_ATOMIC_CMPSET_64 1
+#endif
 
 /**********************************************************************
  *
@@ -89,21 +98,27 @@ static inline int opal_atomic_cmpset_32(volatile int32_t *addr,
                                         int32_t oldval, int32_t newval)
 {
     int32_t ret;
-    int32_t tmp;
 
-   __asm__ __volatile__ ("\t"
-                         ".set noreorder        \n"
-                         "1:                \n\t"
-                         "ll     %0, %2         \n\t" /* load *addr into ret */
-                         "bne    %0, %3, 2f   \n\t" /* done if oldval != ret */
-                         "or     %5, %4, 0      \n\t" /* ret = newval */
-                         "sc     %5, %2         \n\t" /* store ret in *addr */
+   __asm__ __volatile__ (".set noreorder        \n"
+                         ".set noat             \n"
+                         "1:                    \n"
+#ifdef __linux__
+                         ".set mips2         \n\t"
+#endif
+                         "ll     %0, %2         \n" /* load *addr into ret */
+                         "bne    %0, %z3, 2f    \n" /* done if oldval != ret */
+                         "or     $1, %z4, 0     \n" /* tmp = newval (delay slot) */
+                         "sc     $1, %2         \n" /* store tmp in *addr */
+#ifdef __linux__
+                         ".set mips0         \n\t"
+#endif
                          /* note: ret will be 0 if failed, 1 if succeeded */
-			 "bne    %5, 1, 1b   \n\t"
-                         "2:                 \n\t"
+                         "beqz   $1, 1b         \n" /* if 0 jump back to 1b */
+			 "nop                   \n" /* fill delay slots */
+                         "2:                    \n"
                          ".set reorder          \n"
                          : "=&r"(ret), "=m"(*addr)
-                         : "m"(*addr), "r"(oldval), "r"(newval), "r"(tmp)
+                         : "m"(*addr), "r"(oldval), "r"(newval)
                          : "cc", "memory");
    return (ret == oldval);
 }
@@ -133,27 +148,26 @@ static inline int opal_atomic_cmpset_rel_32(volatile int32_t *addr,
     return opal_atomic_cmpset_32(addr, oldval, newval);
 }
 
-
+#ifdef OPAL_HAVE_ATOMIC_CMPSET_64
 static inline int opal_atomic_cmpset_64(volatile int64_t *addr,
                                         int64_t oldval, int64_t newval)
 {
     int64_t ret;
-    int64_t tmp;
 
-   __asm__ __volatile__ ("\t"
-                         ".set noreorder        \n"
-                         "1:                \n\t"
+   __asm__ __volatile__ (".set noreorder        \n"
+                         ".set noat             \n"
+                         "1:                    \n\t"
                          "lld    %0, %2         \n\t" /* load *addr into ret */
-                         "bne    %0, %3, 2f   \n\t" /* done if oldval != ret */
-                         "or     %5, %4, 0      \n\t" /* tmp = newval */
-                         "scd    %5, %2         \n\t" /* store tmp in *addr */
+                         "bne    %0, %z3, 2f    \n\t" /* done if oldval != ret */
+                         "or     $1, %4, 0      \n\t" /* tmp = newval (delay slot) */
+                         "scd    $1, %2         \n\t" /* store tmp in *addr */
                          /* note: ret will be 0 if failed, 1 if succeeded */
-			 "bne    %5, 1, 1b   \n"
-                         "2:                 \n\t"
+                         "beqz   $1, 1b         \n\t" /* if 0 jump back to 1b */
+			 "nop                   \n\t" /* fill delay slot */
+                         "2:                    \n\t"
                          ".set reorder          \n"
                          : "=&r" (ret), "=m" (*addr)
-                         : "m" (*addr), "r" (oldval), "r" (newval),
-			   "r"(tmp)
+                         : "m" (*addr), "r" (oldval), "r" (newval)
                          : "cc", "memory");
 
    return (ret == oldval);
@@ -183,6 +197,7 @@ static inline int opal_atomic_cmpset_rel_64(volatile int64_t *addr,
     opal_atomic_wmb();
     return opal_atomic_cmpset_64(addr, oldval, newval);
 }
+#endif /* OPAL_HAVE_ATOMIC_CMPSET_64 */
 
 #endif /* OMPI_GCC_INLINE_ASSEMBLY */
 

@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.
+ *                         All rights reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,6 +25,7 @@
 
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
+#include "opal/util/argv.h"
 
 #include "orte/util/proc_info.h"
 #include "orte/mca/errmgr/errmgr.h"
@@ -38,7 +41,7 @@ int orte_plm_base_finalize(void)
     orte_plm.finalize();
 
     /* if we are the HNP, then stop our receive */
-    if (orte_process_info.hnp) {
+    if (ORTE_PROC_IS_HNP) {
         if (ORTE_SUCCESS != (rc = orte_plm_base_comm_stop())) {
             ORTE_ERROR_LOG(rc);
             return rc;
@@ -58,12 +61,8 @@ int orte_plm_base_close(void)
     
     /* Close all open components */
     mca_base_components_close(orte_plm_globals.output, 
-                                &orte_plm_base.available_components, NULL);
+                              &orte_plm_base.available_components, NULL);
     OBJ_DESTRUCT(&orte_plm_base.available_components);
-
-    /* clearout the orted cmd locks */
-    OBJ_DESTRUCT(&orte_plm_globals.orted_cmd_lock);
-    OBJ_DESTRUCT(&orte_plm_globals.orted_cmd_cond);
     
     return ORTE_SUCCESS;
 }

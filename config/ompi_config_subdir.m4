@@ -10,6 +10,7 @@ dnl Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 dnl                         University of Stuttgart.  All rights reserved.
 dnl Copyright (c) 2004-2005 The Regents of the University of California.
 dnl                         All rights reserved.
+dnl Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
 dnl $COPYRIGHT$
 dnl 
 dnl Additional copyrights may follow
@@ -127,12 +128,12 @@ dnl    esac
 
     export CFLAGS CPPFLAGS
     export CXXFLAGS CXXCPPFLAGS
-    export FFLAGS
+    export FCFLAGS
     export LDFLAGS LIBS
     sub_configure="$SHELL '$subdir_srcdir/configure'"
-    AC_MSG_NOTICE([running $sub_configure $subdir_args --cache-file=$subdir_cache_file --srcdir=$subdir_srcdir])
+    AC_MSG_NOTICE([running $sub_configure $subdir_args --cache-file=$subdir_cache_file --srcdir=$subdir_srcdir --disable-option-checking])
     eval "$sub_configure $subdir_args \
-	--cache-file=\"\$subdir_cache_file\" --srcdir=\"$subdir_srcdir\""
+	--cache-file=\"\$subdir_cache_file\" --srcdir=\"$subdir_srcdir\" --disable-option-checking"
     if test "$?" = "0"; then
 	eval $subdir_success
 	AC_MSG_NOTICE([$sub_configure succeeded for $subdir_dir])

@@ -2,14 +2,15 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -37,9 +38,9 @@
 #include "orte/runtime/runtime.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/util/name_fns.h"
+#include "orte/util/show_help.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "ompi/communicator/communicator.h"
-#include "ompi/proc/proc.h"
 #include "ompi/runtime/mpiruntime.h"
 #include "ompi/runtime/params.h"
 #include "ompi/debuggers/debuggers.h"
@@ -52,7 +53,7 @@ ompi_mpi_abort(struct ompi_communicator_t* comm,
                int errcode,
                bool kill_remote_of_intercomm)
 {
-    int count = 0, i;
+    int count = 0, i, ret;
     char *msg, *host, hostname[MAXHOSTNAMELEN];
     pid_t pid = 0;
     orte_process_name_t *abort_procs;
@@ -75,8 +76,8 @@ ompi_mpi_abort(struct ompi_communicator_t* comm,
     }
     pid = getpid();
 
-    /* Should we print a stack trace? */
-
+    /* Should we print a stack trace?  Not aggregated because they
+       might be different on all processes. */
     if (ompi_mpi_abort_print_stack) {
         char **messages;
         int len, i;
@@ -135,9 +136,21 @@ ompi_mpi_abort(struct ompi_communicator_t* comm,
        communicators are not setup yet). Sorry, Charlie... */
 
     if (!orte_initialized || !ompi_mpi_initialized || ompi_mpi_finalized) {
-        fprintf(stderr, "[%s:%d] Abort %s completed successfully; not able to guarantee that all other processes were killed!\n",
-                host, (int) pid, ompi_mpi_finalized ? 
-                "after MPI_FINALIZE" : "before MPI_INIT");
+        if (orte_show_help_is_available()) {
+            orte_show_help("help-mpi-runtime.txt", 
+                           "ompi mpi abort:cannot guarantee all killed",
+                           true,
+                           (ompi_mpi_finalized ? 
+                            "After MPI_FINALIZE was invoked" :
+                            (ompi_mpi_init_started ?
+                             "Before MPI_INIT completed" : 
+                             "Before MPI_INIT was invoked")),
+                           host, (int) pid);
+        } else {
+            fprintf(stderr, "[%s:%d] Local abort %s completed successfully; not able to aggregate error messages, and not able to guarantee that all other processes were killed!\n",
+                    host, (int) pid, ompi_mpi_finalized ? 
+                    "after MPI_FINALIZE" : "before MPI_INIT");
+        }
         exit(errcode);
     }
 
@@ -188,12 +201,20 @@ ompi_mpi_abort(struct ompi_communicator_t* comm,
     }
 
     if (nabort_procs > 0) {
-#if 0
-        int ret = orte_errmgr.abort_procs_request(abort_procs, nabort_procs);
-        if (OMPI_SUCCESS != ret) {
-            orte_errmgr.abort(ret, "Open MPI failed to abort procs as requested (%d). Exiting.", ret);
+        /* This must be implemented for MPI_Abort() to work according to the
+         * standard language for a 'high-quality' implementation.
+         * It would be nifty if we could differentiate between the
+         * abort scenarios:
+         *      - MPI_Abort()
+         *      - MPI_ERRORS_ARE_FATAL
+         *      - Victim of MPI_Abort()
+         */
+        /*
+         * Abort peers in this communicator group. Does not include self.
+         */
+        if( ORTE_SUCCESS != (ret = orte_errmgr.abort_peers(abort_procs, nabort_procs)) ) {
+            orte_errmgr.abort(ret, "Open MPI failed to abort all of the procs requested (%d).", ret);
         }
-#endif
     }
 
     /* now that we've aborted everyone else, gracefully die. */

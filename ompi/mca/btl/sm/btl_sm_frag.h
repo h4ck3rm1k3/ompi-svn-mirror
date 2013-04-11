@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2009 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -22,9 +23,7 @@
 #ifndef MCA_BTL_SM_SEND_FRAG_H
 #define MCA_BTL_SM_SEND_FRAG_H
 
-#include <sys/types.h>
 #include "ompi_config.h"
-#include "ompi/class/ompi_free_list.h"
 #include "btl_sm.h"
 
 
@@ -46,12 +45,20 @@ struct mca_btl_sm_hdr_t {
 };
 typedef struct mca_btl_sm_hdr_t mca_btl_sm_hdr_t;
 
+struct mca_btl_sm_segment_t {
+    mca_btl_base_segment_t base;
+#if OMPI_BTL_SM_HAVE_KNEM || OMPI_BTL_SM_HAVE_CMA 
+    uint64_t key;
+#endif
+};
+typedef struct mca_btl_sm_segment_t mca_btl_sm_segment_t;
+
 /**
  * shared memory send fragment derived type.
  */
 struct mca_btl_sm_frag_t {
     mca_btl_base_descriptor_t base;
-    mca_btl_base_segment_t segment;
+    mca_btl_sm_segment_t segment;
     struct mca_btl_base_endpoint_t *endpoint;
     size_t size;
     /* pointer written to the FIFO, this is the base of the shared memory region */
@@ -61,10 +68,13 @@ struct mca_btl_sm_frag_t {
 typedef struct mca_btl_sm_frag_t mca_btl_sm_frag_t;
 typedef struct mca_btl_sm_frag_t mca_btl_sm_frag1_t;
 typedef struct mca_btl_sm_frag_t mca_btl_sm_frag2_t;
+typedef struct mca_btl_sm_frag_t mca_btl_sm_user_t;
+
 
 OBJ_CLASS_DECLARATION(mca_btl_sm_frag_t);
 OBJ_CLASS_DECLARATION(mca_btl_sm_frag1_t);
 OBJ_CLASS_DECLARATION(mca_btl_sm_frag2_t);
+OBJ_CLASS_DECLARATION(mca_btl_sm_user_t);
 
 #define MCA_BTL_SM_FRAG_ALLOC_EAGER(frag, rc)                           \
 {                                                                       \
@@ -79,6 +89,14 @@ OBJ_CLASS_DECLARATION(mca_btl_sm_frag2_t);
     OMPI_FREE_LIST_GET(&mca_btl_sm_component.sm_frags_max, item, rc);   \
     frag = (mca_btl_sm_frag_t*)item;                                    \
 }
+
+#define MCA_BTL_SM_FRAG_ALLOC_USER(frag, rc)                             \
+{                                                                       \
+	ompi_free_list_item_t* item;                                        \
+	OMPI_FREE_LIST_GET(&mca_btl_sm_component.sm_frags_user, item, rc);   \
+	frag = (mca_btl_sm_frag_t*)item;                                    \
+}
+
 
 #define MCA_BTL_SM_FRAG_RETURN(frag)                                      \
 {                                                                         \

@@ -2,14 +2,16 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -30,12 +32,12 @@
 
 #include "opal/dss/dss.h"
 
-#include "orte/mca/rml/rml_types.h"
+#include "orte/mca/rml/rml.h"
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/mca/odls/odls_types.h"
 #include "orte/util/name_fns.h"
+#include "orte/mca/state/state.h"
 #include "orte/runtime/orte_globals.h"
-#include "orte/orted/orted.h"
 
 #include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
@@ -44,10 +46,18 @@
 
 static void restart_stdin(int fd, short event, void *cbdata)
 {
+    orte_timer_t *tm = (orte_timer_t*)cbdata;
+
     if (NULL != mca_iof_hnp_component.stdinev &&
-        !orte_job_term_ordered) {
+        !orte_job_term_ordered &&
+        !mca_iof_hnp_component.stdinev->active) {
         mca_iof_hnp_component.stdinev->active = true;
-        opal_event_add(&(mca_iof_hnp_component.stdinev->ev), 0);
+        opal_event_add(mca_iof_hnp_component.stdinev->ev, 0);
+    }
+
+    /* if this was a timer callback, then release the timer */
+    if (NULL != tm) {
+        OBJ_RELEASE(tm);
     }
 }
 
@@ -58,6 +68,8 @@ bool orte_iof_hnp_stdin_check(int fd)
     if( isatty(fd) && (getpgrp() != tcgetpgrp(fd)) ) {
         return false;
     }
+#elif defined(__WINDOWS__)
+    return false;
 #endif  /* !defined(__WINDOWS__) */
     return true;
 }
@@ -68,9 +80,9 @@ void orte_iof_hnp_stdin_cb(int fd, short event, void *cbdata)
     
     if (should_process) {
         mca_iof_hnp_component.stdinev->active = true;
-        opal_event_add(&(mca_iof_hnp_component.stdinev->ev), 0);
+        opal_event_add(mca_iof_hnp_component.stdinev->ev, 0);
     } else {
-        opal_event_del(&(mca_iof_hnp_component.stdinev->ev));
+        opal_event_del(mca_iof_hnp_component.stdinev->ev);
         mca_iof_hnp_component.stdinev->active = false;
     }
 }
@@ -83,9 +95,10 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
     orte_iof_read_event_t *rev = (orte_iof_read_event_t*)cbdata;
     unsigned char data[ORTE_IOF_BASE_MSG_MAX];
     int32_t numbytes;
-    opal_list_item_t *item;
+    opal_list_item_t *item, *prev_item;
     orte_iof_proc_t *proct;
     int rc;
+    orte_ns_cmp_bitmask_t mask;
     
     OPAL_THREAD_LOCK(&mca_iof_hnp_component.lock);
     
@@ -106,7 +119,7 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
         
         /* non-blocking, retry */
         if (EAGAIN == errno || EINTR == errno) {
-            opal_event_add(&rev->ev, 0);
+            opal_event_add(rev->ev, 0);
             OPAL_THREAD_UNLOCK(&mca_iof_hnp_component.lock);
             return;
         } 
@@ -124,6 +137,10 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
     
     /* is this read from our stdin? */
     if (ORTE_IOF_STDIN & rev->tag) {
+        /* The event has fired, so it's no longer active until we
+           re-add it */
+        mca_iof_hnp_component.stdinev->active = false;
+    
         /* if job termination has been ordered, just ignore the
          * data and delete the read event
          */
@@ -143,9 +160,10 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                 continue;
             }
             
+            mask = ORTE_NS_CMP_ALL;
+
             /* if the daemon is me, then this is a local sink */
-            if (ORTE_PROC_MY_NAME->jobid == sink->daemon.jobid &&
-                ORTE_PROC_MY_NAME->vpid == sink->daemon.vpid) {
+            if (OPAL_EQUAL == orte_util_compare_name_fields(mask, ORTE_PROC_MY_NAME, &sink->daemon)) {
                 OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
                                      "%s read %d bytes from stdin - writing to %s",
                                      ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), numbytes,
@@ -157,11 +175,9 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                 if (NULL != sink->wev) {
                     if (ORTE_IOF_MAX_INPUT_BUFFERS < orte_iof_base_write_output(&rev->name, rev->tag, data, numbytes, sink->wev)) {
                         /* getting too backed up - stop the read event for now if it is still active */
-                        if (mca_iof_hnp_component.stdinev->active) {
-                            OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
-                                                 "buffer backed up - holding"));
-                            mca_iof_hnp_component.stdinev->active = false;
-                        }
+
+                        OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
+                                             "buffer backed up - holding"));
                         OPAL_THREAD_UNLOCK(&mca_iof_hnp_component.lock);
                         return;
                     }
@@ -180,10 +196,18 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                  * sent - this will tell the daemon to close
                  * the fd for stdin to that proc
                  */
-                orte_iof_hnp_send_data_to_endpoint(&sink->daemon, &sink->name, ORTE_IOF_STDIN, data, numbytes);
+                if( ORTE_SUCCESS != (rc = orte_iof_hnp_send_data_to_endpoint(&sink->daemon, &sink->name, ORTE_IOF_STDIN, data, numbytes))) {
+                    /* if the addressee is unknown, remove the sink from the list */
+                    if( ORTE_ERR_ADDRESSEE_UNKNOWN == rc ) {
+                        prev_item = opal_list_get_prev(item);
+                        opal_list_remove_item(&mca_iof_hnp_component.sinks, item);
+                        OBJ_RELEASE(item);
+                        item = prev_item;
+                    }
+                }
             }
         }
-        /* if num_bytes was zero, then we need to terminate the event */
+        /* if num_bytes was zero, or we read the last piece of the file, then we need to terminate the event */
         if (0 == numbytes) {
             /* this will also close our stdin file descriptor */
             OBJ_RELEASE(mca_iof_hnp_component.stdinev);
@@ -195,7 +219,7 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                 restart_stdin(fd, 0, NULL);
             } else {
                 /* delay for awhile and then restart */
-                ORTE_TIMER_EVENT(0, 10000, restart_stdin);
+                ORTE_TIMER_EVENT(0, 10000, restart_stdin, ORTE_INFO_PRI);
             }
         }
         /* nothing more to do */
@@ -247,8 +271,8 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
              item != opal_list_get_end(&mca_iof_hnp_component.procs);
              item = opal_list_get_next(item)) {
             proct = (orte_iof_proc_t*)item;
-            if (proct->name.jobid == rev->name.jobid &&
-                proct->name.vpid == rev->name.vpid) {
+            mask = ORTE_NS_CMP_ALL;
+            if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &proct->name, &rev->name)) {
                 /* found it - release corresponding event. This deletes
                  * the read event and closes the file descriptor
                  */
@@ -263,24 +287,9 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                 if (NULL == proct->revstdout &&
                     NULL == proct->revstderr &&
                     NULL == proct->revstddiag) {
-                    opal_buffer_t cmdbuf;
-                    orte_daemon_cmd_flag_t command;
                     /* this proc's iof is complete */
                     opal_list_remove_item(&mca_iof_hnp_component.procs, item);
-                    /* setup a cmd to notify that the iof is complete */
-                    OBJ_CONSTRUCT(&cmdbuf, opal_buffer_t);
-                    command = ORTE_DAEMON_IOF_COMPLETE;
-                    if (ORTE_SUCCESS != (rc = opal_dss.pack(&cmdbuf, &command, 1, ORTE_DAEMON_CMD))) {
-                        ORTE_ERROR_LOG(rc);
-                        goto CLEANUP;
-                    }
-                    if (ORTE_SUCCESS != (rc = opal_dss.pack(&cmdbuf, &proct->name, 1, ORTE_NAME))) {
-                        ORTE_ERROR_LOG(rc);
-                        goto CLEANUP;
-                    }
-                    ORTE_MESSAGE_EVENT(ORTE_PROC_MY_NAME, &cmdbuf, ORTE_RML_TAG_DAEMON, orte_daemon_cmd_processor);
-                CLEANUP:
-                    OBJ_DESTRUCT(&cmdbuf);
+                    ORTE_ACTIVATE_PROC_STATE(&proct->name, ORTE_PROC_STATE_IOF_COMPLETE);
                     OBJ_RELEASE(proct);
                 }
                 break;
@@ -306,8 +315,9 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
                 continue;
             }
             /* is this the desired proc? */
-            if (sink->name.jobid == rev->name.jobid &&
-                sink->name.vpid == rev->name.vpid) {
+            mask = ORTE_NS_CMP_ALL;
+
+            if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &sink->name, &rev->name)) {
                 /* output to the corresponding file */
                 orte_iof_base_write_output(&rev->name, rev->tag, data, numbytes, sink->wev);
                 /* done */
@@ -324,8 +334,8 @@ void orte_iof_hnp_read_local_handler(int fd, short event, void *cbdata)
     }
     
     /* re-add the event */
-    opal_event_add(&rev->ev, 0);
+    opal_event_add(rev->ev, 0);
 
-     OPAL_THREAD_UNLOCK(&mca_iof_hnp_component.lock);
+    OPAL_THREAD_UNLOCK(&mca_iof_hnp_component.lock);
     return;
 }

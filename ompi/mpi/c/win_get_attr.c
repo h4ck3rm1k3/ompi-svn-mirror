@@ -19,10 +19,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/attribute/attribute.h"
 #include "ompi/win/win.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Win_get_attr = PMPI_Win_get_attr
 #endif
 
@@ -45,6 +48,8 @@ int MPI_Win_get_attr(MPI_Win win, int win_keyval,
            return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_WIN, FUNC_NAME);
        } else if ((NULL == attribute_val) || (NULL == flag)) {
            return OMPI_ERRHANDLER_INVOKE(win, MPI_ERR_ARG, FUNC_NAME);
+        } else if (MPI_KEYVAL_INVALID == win_keyval) {
+            return OMPI_ERRHANDLER_INVOKE(win, MPI_ERR_KEYVAL, FUNC_NAME);
        }
     }
 

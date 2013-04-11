@@ -9,7 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2009      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      IBM Corporation.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,20 +21,36 @@
 #include "opal_config.h"
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #ifdef HAVE_SHLWAPI_H
 #include <shlwapi.h>
 #endif
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
 #ifdef HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
+#ifdef HAVE_SYS_VFS_H
+#include <sys/vfs.h>
+#endif
+#ifdef HAVE_SYS_STATFS_H
+#include <sys/statfs.h>
+#endif
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
 
+#include "opal/util/output.h"
 #include "opal/util/path.h"
 #include "opal/util/os_path.h"
 #include "opal/util/argv.h"
-#include "opal/util/output.h"
 
 static void path_env_load(char *path, int *pargc, char ***pargv);
 static char *list_env_get(char *var, char **list);
@@ -65,7 +82,7 @@ char *opal_path_find(char *fname, char **pathv, int mode, char **envv)
 
     /* If absolute path is given, return it without searching. */
     if( opal_path_is_absolute(fname) ) {
-        return opal_path_access(fname, "", mode);
+        return opal_path_access(fname, NULL, mode);
     }
 
     /* Initialize. */
@@ -327,12 +344,14 @@ static char *list_env_get(char *var, char **list)
 char* opal_find_absolute_path( char* app_name )
 {
     char* abs_app_name;
+    char cwd[OPAL_PATH_MAX], *pcwd;
 
     if( opal_path_is_absolute(app_name) ) { /* already absolute path */
         abs_app_name = app_name;
-    } else if( '.' == app_name[0] ) { /* the app is in the current directory */
-        char cwd[OMPI_PATH_MAX], *pcwd;
-        pcwd = getcwd( cwd, OMPI_PATH_MAX );
+    } else if ( '.' == app_name[0] ||
+               NULL != strchr(app_name, OPAL_PATH_SEP[0])) {
+        /* the app is in the current directory or below it */
+        pcwd = getcwd( cwd, OPAL_PATH_MAX );
         if( NULL == pcwd ) {
             /* too bad there is no way we can get the app absolute name */
             return NULL;
@@ -344,7 +363,7 @@ char* opal_find_absolute_path( char* app_name )
     }
     
     if( NULL != abs_app_name ) {
-        char* resolved_path = (char*)malloc(OMPI_PATH_MAX);
+        char* resolved_path = (char*)malloc(OPAL_PATH_MAX);
 #if !defined(__WINDOWS__)
         realpath( abs_app_name, resolved_path );
 #else
@@ -357,3 +376,160 @@ char* opal_find_absolute_path( char* app_name )
     }
     return NULL;
 }
+
+
+/**
+ * @brief Figure out, whether fname is on network file system
+ *
+ * Try to figure out, whether the file name specified through fname is
+ * on any network file system (currently NFS, Lustre, Panasas and GPFS).
+ *
+ * If the file is not created, the parent directory is checked.
+ * This allows checking for NFS prior to opening the file.
+ *
+ * @param[in]     fname        File name to check
+ *
+ * @retval true                If fname is on NFS, Lustre, Panasas or GPFS
+ * @retval false               otherwise
+ *
+ *
+ * Linux:
+ *   statfs(const char *path, struct statfs *buf);
+ *          with fsid_t  f_fsid;  (in kernel struct{ int val[2] };)
+ *          return 0 success, -1 on failure with errno set.
+ *   statvfs (const char *path, struct statvfs *buf);
+ *          with unsigned long  f_fsid;   -- returns wrong info
+ *          return 0 success, -1 on failure with errno set.
+ * Solaris:
+ *   statvfs (const char *path, struct statvfs *buf);
+ *          with f_basetype, contains a string of length FSTYPSZ
+ *          return 0 success, -1 on failure with errno set.
+ * FreeBSD:
+ *   statfs(const char *path, struct statfs *buf);
+ *          with f_fstypename, contains a string of length MFSNAMELEN
+ *          return 0 success, -1 on failure with errno set.
+ *          compliant with: 4.4BSD.
+ * Mac OSX (10.6.2):
+ *   statvfs(const char * restrict path, struct statvfs * restrict buf);
+ *          with fsid    Not meaningful in this implementation.
+ *          is just a wrapper around statfs()
+ *   statfs(const char *path, struct statfs *buf);
+ *          with f_fstypename, contains a string of length MFSTYPENAMELEN
+ *          return 0 success, -1 on failure with errno set.
+ * Windows (interix):
+ *      statvfs(const char *path, struct statvfs *buf);
+ *          with unsigned long f_fsid
+ *          return 0 success, -1 on failure with errno set.
+ */
+#ifndef LL_SUPER_MAGIC
+#define LL_SUPER_MAGIC                    0x0BD00BD0     /* Lustre magic number */
+#endif
+#ifndef NFS_SUPER_MAGIC
+#define NFS_SUPER_MAGIC                   0x6969
+#endif
+#ifndef PAN_KERNEL_FS_CLIENT_SUPER_MAGIC
+#define PAN_KERNEL_FS_CLIENT_SUPER_MAGIC  0xAAD7AAEA     /* Panasas FS */
+#endif
+#ifndef GPFS_SUPER_MAGIC
+#define GPFS_SUPER_MAGIC  0x47504653    /* Thats GPFS in ASCII */
+#endif
+
+#define MASK2        0xffff
+#define MASK4    0xffffffff
+
+bool opal_path_nfs(char *fname)
+{
+#if !defined(__WINDOWS__)
+    int i;
+    int rc;
+    int trials;
+    char * file = strdup (fname);
+#if defined(__SVR4) && defined(__sun)
+    struct statvfs buf;
+#elif defined(__linux__) || defined (__BSD) || (defined(__APPLE__) && defined(__MACH__))
+    struct statfs buf;
+#endif
+    /*
+     * Be sure to update the test (test/util/opal_path_nfs.c) 
+     * while adding a new Network/Cluster Filesystem here
+     */
+    static struct fs_types_t {
+        unsigned long long f_fsid;
+        unsigned long long f_mask;
+        const char * f_fsname;
+    } fs_types[] = {
+        {LL_SUPER_MAGIC,                   MASK4, "lustre"},
+        {NFS_SUPER_MAGIC,                  MASK2, "nfs"},
+        {PAN_KERNEL_FS_CLIENT_SUPER_MAGIC, MASK4, "panfs"},
+        {GPFS_SUPER_MAGIC, MASK4, "gpfs"}
+    };
+#define FS_TYPES_NUM (int)(sizeof (fs_types)/sizeof (fs_types[0]))
+
+    /*
+     * First, get the OS-dependent struct stat(v)fs buf
+     * This may return the ESTALE error on NFS, if the underlying file/path has changed
+     */
+again:
+    trials = 5;
+    do {
+#if defined(__SVR4) && defined(__sun)
+        rc = statvfs (file, &buf);
+#elif defined(__linux__) || defined (__BSD) || (defined(__APPLE__) && defined(__MACH__))
+        rc = statfs (file, &buf);
+#endif
+    } while (-1 == rc && ESTALE == errno && (0 < --trials));
+
+    /* In case some error with the current filename, try the directory */
+    if (-1 == rc) {
+        char * last_sep;
+
+        OPAL_OUTPUT_VERBOSE((10, 0, "opal_path_nfs: stat(v)fs on file:%s failed errno:%d directory:%s\n",
+                             fname, errno, file));
+
+        last_sep = strrchr(file, OPAL_PATH_SEP[0]);
+        /* Stop the search, when we have searched past root '/' */
+        if (NULL == last_sep || (1 == strlen(last_sep) && 
+            OPAL_PATH_SEP[0] == *last_sep)) {
+            free (file); 
+            return false;
+        }
+        *last_sep = '\0';
+
+        goto again;
+    }
+
+    /* Next, extract the magic value */
+#if defined(__SVR4) && defined(__sun)
+    for (i = 0; i < FS_TYPES_NUM; i++) 
+        if (0 == strncasecmp (fs_types[i].f_fsname, buf.f_basetype, FSTYPSZ))
+            goto found;
+#elif (defined(__APPLE__) && defined(__MACH__))
+    for (i = 0; i < FS_TYPES_NUM; i++)
+        if (0 == strncasecmp (fs_types[i].f_fsname, buf.f_fstypename, MFSTYPENAMELEN))
+            goto found;
+#elif defined(__BSD)
+    for (i = 0; i < FS_TYPES_NUM; i++)
+        if (0 == strncasecmp (fs_types[i].f_fsname, buf.f_fstypename, MFSNAMELEN))
+            goto found;
+#elif defined(__linux__)
+    for (i = 0; i < FS_TYPES_NUM; i++)
+        if (fs_types[i].f_fsid == (buf.f_type & fs_types[i].f_mask))
+            goto found;
+#endif
+
+    free (file);
+    return false;
+
+found:
+    OPAL_OUTPUT_VERBOSE((10, 0, "opal_path_nfs: file:%s on fs:%s\n",
+                         fname, fs_types[i].f_fsname));
+    free (file);
+    return true;
+
+#undef FS_TYPES_NUM
+
+#else
+    return false;
+#endif /* __WINDOWS__ */
+}
+

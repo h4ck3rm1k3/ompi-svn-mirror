@@ -1,4 +1,5 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Exscan 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 
@@ -14,13 +15,15 @@
 int MPI_Exscan(void *\fIsendbuf\fP, void *\fIrecvbuf\fP, int \fIcount\fP, 
 	MPI_Datatype \fIdatatype\fP, MPI_Op \fIop\fP, MPI_Comm \fIcomm\fP)
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
-MPI_SCAN(\fISENDBUF, RECVBUF, COUNT, DATATYPE, OP, COMM, IERROR\fP)
+MPI_EXSCAN(\fISENDBUF, RECVBUF, COUNT, DATATYPE, OP, COMM, IERROR\fP)
 	<type>	\fISENDBUF(*), RECVBUF(*)\fP
 	INTEGER	\fICOUNT, DATATYPE, OP, COMM, IERROR\fP 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -28,6 +31,7 @@ void MPI::Intracomm::Exscan(const void* \fIsendbuf\fP, void* \fIrecvbuf\fP,
 	int \fIcount\fP, const MPI::Datatype& \fIdatatype\fP,
 	const MPI::Op& \fIop\fP) const
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
@@ -107,7 +111,7 @@ Almost all MPI routines return an error value; C routines as
 the value of the function and Fortran routines in the last argument. C++
 functions do not return errors. If the default error handler is set to
 MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism
-will be used to throw an MPI:Exception object.
+will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for

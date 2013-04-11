@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2008 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
@@ -10,6 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -37,11 +39,11 @@
 #endif
 #endif
 
-
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/mca/odls/odls_types.h"
+#include "orte/mca/rml/rml.h"
 
 #include "orte/mca/iof/iof.h"
 #include "orte/mca/iof/base/base.h"
@@ -54,6 +56,8 @@ static void stdin_write_handler(int fd, short event, void *cbdata);
 
 
 /* API FUNCTIONS */
+static int init(void);
+
 static int orted_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_tag, int fd);
 
 static int orted_pull(const orte_process_name_t* src_name,
@@ -62,6 +66,8 @@ static int orted_pull(const orte_process_name_t* src_name,
 
 static int orted_close(const orte_process_name_t* peer,
                        orte_iof_tag_t source_tag);
+
+static int finalize(void);
 
 static int orted_ft_event(int state);
 
@@ -74,12 +80,39 @@ static int orted_ft_event(int state);
  */
 
 orte_iof_base_module_t orte_iof_orted_module = {
+    init,
     orted_push,
     orted_pull,
     orted_close,
+    NULL,
+    finalize,
     orted_ft_event
 };
 
+static int init(void)
+{
+    int rc;
+
+    /* post a non-blocking RML receive to get messages
+     from the HNP IOF component */
+    if (ORTE_SUCCESS != (rc = orte_rml.recv_buffer_nb(ORTE_NAME_WILDCARD,
+                                                      ORTE_RML_TAG_IOF_PROXY,
+                                                      ORTE_RML_PERSISTENT,
+                                                      orte_iof_orted_recv,
+                                                      NULL))) {
+        ORTE_ERROR_LOG(rc);
+        return rc;
+        
+    }
+    
+    /* setup the local global variables */
+    OBJ_CONSTRUCT(&mca_iof_orted_component.lock, opal_mutex_t);
+    OBJ_CONSTRUCT(&mca_iof_orted_component.sinks, opal_list_t);
+    OBJ_CONSTRUCT(&mca_iof_orted_component.procs, opal_list_t);
+    mca_iof_orted_component.xoff = false;
+    
+    return ORTE_SUCCESS;
+}
 
 /**
  * Push data from the specified file descriptor
@@ -94,8 +127,9 @@ static int orted_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_ta
     orte_iof_sink_t *sink;
     char *outfile;
     int fdout;
-    orte_odls_job_t *jobdat=NULL;
+    orte_job_t *jobdat=NULL;
     int np, numdigs;
+    orte_ns_cmp_bitmask_t mask;
 
     OPAL_OUTPUT_VERBOSE((1, orte_iof_base.iof_output,
                          "%s iof:orted pushing fd %d for process %s",
@@ -118,8 +152,10 @@ static int orted_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_ta
          item != opal_list_get_end(&mca_iof_orted_component.procs);
          item = opal_list_get_next(item)) {
         proct = (orte_iof_proc_t*)item;
-        if (proct->name.jobid == dst_name->jobid &&
-            proct->name.vpid == dst_name->vpid) {
+        
+        mask = ORTE_NS_CMP_ALL;
+
+        if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &proct->name, dst_name)) {
             /* found it */
             goto SETUP;
         }
@@ -132,15 +168,7 @@ static int orted_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_ta
     /* see if we are to output to a file */
     if (NULL != orte_output_filename) {
         /* get the local jobdata for this proc */
-        for (item = opal_list_get_first(&orte_local_jobdata);
-             item != opal_list_get_end(&orte_local_jobdata);
-             item = opal_list_get_next(item)) {
-            jobdat = (orte_odls_job_t*)item;
-            if (jobdat->jobid == proct->name.jobid) {
-                break;
-            }
-        }
-        if (NULL == jobdat) {
+        if (NULL == (jobdat = orte_get_job_data_object(proct->name.jobid))) {
             ORTE_ERROR_LOG(ORTE_ERR_NOT_FOUND);
             return ORTE_ERR_NOT_FOUND;
         }
@@ -152,7 +180,9 @@ static int orted_push(const orte_process_name_t* dst_name, orte_iof_tag_t src_ta
             np = np / 10;
         }
         /* construct the filename */
-        asprintf(&outfile, "%s.%0*lu", orte_output_filename, numdigs, (unsigned long)proct->name.vpid);
+        asprintf(&outfile, "%s.%d.%0*lu", orte_output_filename,
+                 (int)ORTE_LOCAL_JOBID(proct->name.jobid),
+                 numdigs, (unsigned long)proct->name.vpid);
         /* create the file */
         fdout = open(outfile, O_CREAT|O_RDWR|O_TRUNC, 0644);
         free(outfile);
@@ -186,11 +216,11 @@ SETUP:
      */
     if (NULL != proct->revstdout && NULL != proct->revstderr && NULL != proct->revstddiag) {
         proct->revstdout->active = true;
-        opal_event_add(&(proct->revstdout->ev), 0);
+        opal_event_add(proct->revstdout->ev, 0);
         proct->revstderr->active = true;
-        opal_event_add(&(proct->revstderr->ev), 0);
+        opal_event_add(proct->revstderr->ev, 0);
         proct->revstddiag->active = true;
-        opal_event_add(&(proct->revstddiag->ev), 0);
+        opal_event_add(proct->revstddiag->ev, 0);
     }
     return ORTE_SUCCESS;
 }
@@ -251,6 +281,7 @@ static int orted_close(const orte_process_name_t* peer,
 {
     opal_list_item_t *item, *next_item;
     orte_iof_sink_t* sink;
+    orte_ns_cmp_bitmask_t mask;
 
     OPAL_THREAD_LOCK(&mca_iof_orted_component.lock);
     
@@ -260,8 +291,9 @@ static int orted_close(const orte_process_name_t* peer,
         sink = (orte_iof_sink_t*)item;
         next_item = opal_list_get_next(item);
         
-        if((sink->name.jobid == peer->jobid) &&
-           (sink->name.vpid == peer->vpid) &&
+        mask = ORTE_NS_CMP_ALL;
+
+        if (OPAL_EQUAL == orte_util_compare_name_fields(mask, &sink->name, peer) &&
            (source_tag & sink->tag)) {
 
             /* No need to delete the event or close the file
@@ -278,6 +310,26 @@ static int orted_close(const orte_process_name_t* peer,
     return ORTE_SUCCESS;
 }
 
+static int finalize(void)
+{
+    int rc;
+    opal_list_item_t *item;
+    
+    OPAL_THREAD_LOCK(&mca_iof_orted_component.lock);
+    while ((item = opal_list_remove_first(&mca_iof_orted_component.sinks)) != NULL) {
+        OBJ_RELEASE(item);
+    }
+    OBJ_DESTRUCT(&mca_iof_orted_component.sinks);
+    while ((item = opal_list_remove_first(&mca_iof_orted_component.procs)) != NULL) {
+        OBJ_RELEASE(item);
+    }
+    OBJ_DESTRUCT(&mca_iof_orted_component.procs);
+    /* Cancel the RML receive */
+    rc = orte_rml.recv_cancel(ORTE_NAME_WILDCARD, ORTE_RML_TAG_IOF_PROXY);
+    OPAL_THREAD_UNLOCK(&mca_iof_orted_component.lock);
+    OBJ_DESTRUCT(&mca_iof_orted_component.lock);
+    return rc;
+}
 
 /*
  * FT event
@@ -331,7 +383,7 @@ static void stdin_write_handler(int fd, short event, void *cbdata)
                  * when the fd is ready.
                  */
                 wev->pending = true;
-                opal_event_add(&wev->ev, 0);
+                opal_event_add(wev->ev, 0);
                 goto CHECK;
             }            
             /* otherwise, something bad happened so all we can do is declare an
@@ -361,7 +413,7 @@ static void stdin_write_handler(int fd, short event, void *cbdata)
              * when the fd is ready. 
              */
             wev->pending = true;
-            opal_event_add(&wev->ev, 0);
+            opal_event_add(wev->ev, 0);
             goto CHECK;
         }
         OBJ_RELEASE(output);

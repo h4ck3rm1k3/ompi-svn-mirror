@@ -81,7 +81,7 @@
 
 #include "ompi_config.h"
 
-#if HAVE_STDLIB_H
+#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
 
@@ -173,12 +173,9 @@ int ompi_attr_create_predefined(void)
     if (OMPI_SUCCESS != ret) {
         return ret;
     }
-    
-    /* check the app_num - if it was set, then define it - otherwise, don't */
-    if (orte_process_info.app_num >= 0) {
-        ret = set_f(MPI_APPNUM, orte_process_info.app_num);
-    }
-    
+
+    ret = set_f(MPI_APPNUM, orte_process_info.app_num);
+
     return ret;
 }
 
@@ -275,5 +272,5 @@ static int set_f(int keyval, MPI_Fint value)
     return ompi_attr_set_fortran_mpi1(COMM_ATTR, MPI_COMM_WORLD,
                                       &MPI_COMM_WORLD->c_keyhash,
                                       keyval, value,
-                                      true, true);
+                                      true);
 }

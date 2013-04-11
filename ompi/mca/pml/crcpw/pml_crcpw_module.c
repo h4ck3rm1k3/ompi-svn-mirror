@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2009 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2006 The University of Tennessee and The University
@@ -9,6 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2006 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -21,13 +22,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ompi/class/ompi_bitmap.h"
 #include "ompi/mca/pml/pml.h"
-#include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 #include "ompi/mca/pml/crcpw/pml_crcpw.h"
 #include "ompi/mca/bml/base/base.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "ompi/class/ompi_free_list.h"
 
@@ -48,6 +46,10 @@ mca_pml_crcpw_module_t mca_pml_crcpw_module = {
         mca_pml_crcpw_iprobe,
         mca_pml_crcpw_probe,
         mca_pml_crcpw_start,
+        mca_pml_crcpw_improbe,
+        mca_pml_crcpw_mprobe,
+        mca_pml_crcpw_imrecv,
+        mca_pml_crcpw_mrecv,
         mca_pml_crcpw_dump,
         mca_pml_crcpw_ft_event,
 
@@ -56,23 +58,31 @@ mca_pml_crcpw_module_t mca_pml_crcpw_module = {
     }
 };
 
-#define PML_CRCP_STATE_ALLOC(pml_state, rc)       \
-do {                                              \
-  ompi_free_list_item_t* item;                    \
-  OMPI_FREE_LIST_WAIT(&pml_state_list, item, rc); \
-  pml_state = (ompi_crcp_base_pml_state_t*)item;  \
+#define PML_CRCP_STATE_ALLOC(pml_state, rc)         \
+do {                                                \
+  if( !pml_crcpw_is_finalized ) {                   \
+    ompi_free_list_item_t* item;                    \
+    OMPI_FREE_LIST_WAIT(&pml_state_list, item, rc); \
+    pml_state = (ompi_crcp_base_pml_state_t*)item;  \
+  }                                                 \
 } while(0); 
 
-#define PML_CRCP_STATE_RETURN(pml_state)   \
-do {                                       \
-   OMPI_FREE_LIST_RETURN(&pml_state_list,  \
-   (ompi_free_list_item_t*)pml_state);     \
+#define PML_CRCP_STATE_RETURN(pml_state)    \
+do {                                        \
+  if( !pml_crcpw_is_finalized ) {           \
+    OMPI_FREE_LIST_RETURN(&pml_state_list,  \
+    (ompi_free_list_item_t*)pml_state);     \
+  }                                         \
 } while(0);
 
 int mca_pml_crcpw_enable(bool enable)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
+
+    if( OPAL_UNLIKELY(NULL == ompi_crcp.pml_enable) ) {
+        return mca_pml_crcpw_module.wrapped_pml_module.pml_enable(enable);
+    }
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -110,7 +120,11 @@ int mca_pml_crcpw_enable(bool enable)
 int mca_pml_crcpw_add_comm(ompi_communicator_t* comm)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
+
+    if( OPAL_UNLIKELY(NULL == ompi_crcp.pml_add_comm) ) {
+        return mca_pml_crcpw_module.wrapped_pml_module.pml_add_comm(comm);
+    }
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -148,10 +162,17 @@ int mca_pml_crcpw_add_comm(ompi_communicator_t* comm)
 int mca_pml_crcpw_del_comm(ompi_communicator_t* comm)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
+
+    if( OPAL_UNLIKELY(NULL == ompi_crcp.pml_del_comm) ) {
+        return mca_pml_crcpw_module.wrapped_pml_module.pml_del_comm(comm);
+    }
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
-
+    if( NULL == pml_state ) {
+        return mca_pml_crcpw_module.wrapped_pml_module.pml_del_comm(comm);
+    }
+        
     pml_state->wrapped_pml_component = &(mca_pml_crcpw_module.wrapped_pml_component);
     pml_state->wrapped_pml_module    = &(mca_pml_crcpw_module.wrapped_pml_module);
 
@@ -186,7 +207,7 @@ int mca_pml_crcpw_del_comm(ompi_communicator_t* comm)
 int mca_pml_crcpw_add_procs(ompi_proc_t** procs, size_t nprocs)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -224,7 +245,7 @@ int mca_pml_crcpw_add_procs(ompi_proc_t** procs, size_t nprocs)
 int mca_pml_crcpw_del_procs(ompi_proc_t** procs, size_t nprocs)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -262,7 +283,7 @@ int mca_pml_crcpw_del_procs(ompi_proc_t** procs, size_t nprocs)
 int mca_pml_crcpw_iprobe(int dst, int tag, struct ompi_communicator_t* comm, int *matched, ompi_status_public_t* status )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -305,7 +326,7 @@ int mca_pml_crcpw_iprobe(int dst, int tag, struct ompi_communicator_t* comm, int
 int mca_pml_crcpw_probe( int dst, int tag, struct ompi_communicator_t* comm, ompi_status_public_t* status )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -349,7 +370,7 @@ int mca_pml_crcpw_isend_init( void *buf, size_t count, ompi_datatype_t *datatype
                               mca_pml_base_send_mode_t mode, struct ompi_communicator_t* comm, struct ompi_request_t **request )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -388,7 +409,7 @@ int mca_pml_crcpw_isend( void *buf, size_t count, ompi_datatype_t *datatype, int
                          mca_pml_base_send_mode_t mode, struct ompi_communicator_t* comm, struct ompi_request_t **request )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -430,7 +451,7 @@ int mca_pml_crcpw_send(  void *buf, size_t count, ompi_datatype_t *datatype, int
                          mca_pml_base_send_mode_t mode, struct ompi_communicator_t* comm )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -472,7 +493,7 @@ int mca_pml_crcpw_irecv_init( void *buf, size_t count, ompi_datatype_t *datatype
                               struct ompi_communicator_t* comm,  struct ompi_request_t **request)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -511,7 +532,7 @@ int mca_pml_crcpw_irecv( void *buf, size_t count, ompi_datatype_t *datatype, int
                          struct ompi_communicator_t* comm, struct ompi_request_t **request )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -554,9 +575,9 @@ int mca_pml_crcpw_irecv( void *buf, size_t count, ompi_datatype_t *datatype, int
 int mca_pml_crcpw_recv(  void *buf, size_t count, ompi_datatype_t *datatype, int src, int tag,
                          struct ompi_communicator_t* comm,  ompi_status_public_t* given_status)
 {
-    int ret, actual_ret = OMPI_SUCCESS;
+    int ret = OMPI_SUCCESS, actual_ret = OMPI_SUCCESS;
     ompi_status_public_t* status = NULL;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -613,7 +634,7 @@ int mca_pml_crcpw_recv(  void *buf, size_t count, ompi_datatype_t *datatype, int
 int mca_pml_crcpw_dump( struct ompi_communicator_t* comm, int verbose )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -651,7 +672,11 @@ int mca_pml_crcpw_dump( struct ompi_communicator_t* comm, int verbose )
 int mca_pml_crcpw_progress(void)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
+
+    if( OPAL_LIKELY(NULL == ompi_crcp.pml_progress) ) {
+        return mca_pml_crcpw_module.wrapped_pml_module.pml_progress();
+    }
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -689,7 +714,7 @@ int mca_pml_crcpw_progress(void)
 int mca_pml_crcpw_start( size_t count, ompi_request_t** requests )
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 
@@ -729,10 +754,56 @@ int mca_pml_crcpw_start( size_t count, ompi_request_t** requests )
     return OMPI_SUCCESS;
 }
 
+
+int
+mca_pml_crcpw_improbe(int dst,
+                      int tag,
+                      struct ompi_communicator_t* comm,
+                      int *matched,
+                      struct ompi_message_t **message,
+                      ompi_status_public_t* status)
+{
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+
+int
+mca_pml_crcpw_mprobe(int dst,
+                     int tag,
+                     struct ompi_communicator_t* comm,
+                     struct ompi_message_t **message,
+                     ompi_status_public_t* status)
+{
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+
+int
+mca_pml_crcpw_imrecv(void *buf,
+                     size_t count,
+                     ompi_datatype_t *datatype,
+                     struct ompi_message_t **message,
+                     struct ompi_request_t **request)
+{
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+
+int
+mca_pml_crcpw_mrecv(void *buf,
+                    size_t count,
+                    ompi_datatype_t *datatype,
+                    struct ompi_message_t **message,
+                    ompi_status_public_t* status)
+{
+    return OMPI_ERR_NOT_SUPPORTED;
+}
+
+
 int mca_pml_crcpw_ft_event(int state)
 {
     int ret;
-    ompi_crcp_base_pml_state_t * pml_state;
+    ompi_crcp_base_pml_state_t * pml_state = NULL;
 
     PML_CRCP_STATE_ALLOC(pml_state, ret);
 

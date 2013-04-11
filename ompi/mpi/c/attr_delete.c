@@ -21,10 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/attribute/attribute.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Attr_delete = PMPI_Attr_delete
 #endif
 
@@ -54,7 +57,7 @@ int MPI_Attr_delete(MPI_Comm comm, int keyval)
     OPAL_CR_ENTER_LIBRARY();
 
     ret = ompi_attr_delete(COMM_ATTR, comm, comm->c_keyhash, keyval, 
-                           false, true);
+                           false);
 
     OMPI_ERRHANDLER_RETURN(ret, comm, MPI_ERR_OTHER, FUNC_NAME);  
 }

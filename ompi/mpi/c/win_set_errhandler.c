@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,9 +20,12 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/win/win.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Win_set_errhandler = PMPI_Win_set_errhandler
 #endif
 
@@ -42,8 +45,9 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
     if (MPI_PARAM_CHECK) {
         OMPI_ERR_INIT_FINALIZE(FUNC_NAME);
 
-        if (ompi_win_invalid(win) && win != MPI_WIN_NULL) {
-            return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_ARG, FUNC_NAME);
+        if (ompi_win_invalid(win)) {
+            return OMPI_ERRHANDLER_INVOKE(MPI_COMM_WORLD, MPI_ERR_WIN,
+                                          FUNC_NAME);
         } else if (NULL == errhandler ||
                    MPI_ERRHANDLER_NULL == errhandler ||
                    (OMPI_ERRHANDLER_TYPE_WIN != errhandler->eh_mpi_object_type && 
@@ -52,21 +56,16 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
         }
     }
 
+    /* Prepare the new error handler */
+    OBJ_RETAIN(errhandler);
+
     /* Ditch the old errhandler, and decrement its refcount.  On 64
        bits environments we have to make sure the reading of the
        error_handler became atomic. */
     do {
         tmp = win->error_handler;
-    } while (!OPAL_ATOMIC_CMPSET(&(win->error_handler), tmp, tmp));
+    } while (!OPAL_ATOMIC_CMPSET(&(win->error_handler), tmp, errhandler));
     OBJ_RELEASE(tmp);
-
-    /* Now set the new errhandler and increase its refcount */
-    do {
-        win->error_handler = errhandler;
-    } while (!OPAL_ATOMIC_CMPSET(&(errhandler), win->error_handler, 
-                                 win->error_handler));
-    win->error_handler = errhandler;
-    OBJ_RETAIN(errhandler);
 
     /* All done */
     return MPI_SUCCESS;

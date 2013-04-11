@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -10,6 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2007      Evergrid, Inc. All rights reserved.
+ * Copyright (c) 2010-2011 Oak Ridge National Labs.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -51,23 +52,52 @@
 #include "opal/mca/base/base.h"
 #include "opal/class/opal_object.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /**
  * States of the module
  */
 enum opal_crs_state_type_t {
-    OPAL_CRS_CHECKPOINT,
-    OPAL_CRS_RESTART_PRE,
-    OPAL_CRS_RESTART, /* RESTART_POST */
-    OPAL_CRS_CONTINUE,
-    OPAL_CRS_TERM,
-    OPAL_CRS_RUNNING,
-    OPAL_CRS_ERROR
+    OPAL_CRS_NONE        = 0,
+    OPAL_CRS_CHECKPOINT  = 1,
+    OPAL_CRS_RESTART_PRE = 2,
+    OPAL_CRS_RESTART     = 3, /* RESTART_POST */
+    OPAL_CRS_CONTINUE    = 4,
+    OPAL_CRS_TERM        = 5,
+    OPAL_CRS_RUNNING     = 6,
+    OPAL_CRS_ERROR       = 7,
+    OPAL_CRS_STATE_MAX   = 8
 };
 typedef enum opal_crs_state_type_t opal_crs_state_type_t;
+
+/*
+ * Possible checkpoint options
+ */
+struct opal_crs_base_ckpt_options_1_0_0_t {
+    /** Parent is an object type */
+    opal_object_t super;
+
+    /** Terminate after checkpoint */
+    bool term;
+    /** Send SIGSTOP after checkpoint */
+    bool stop;
+
+    /** INC Prep Only */
+    bool inc_prep_only;
+
+    /** INC Recover Only */
+    bool inc_recover_only;
+
+#if OPAL_ENABLE_CRDEBUG == 1
+    /** Wait for debugger to attach after checkpoint */
+    bool attach_debugger;
+    /** Do not wait for debugger to reattach after checkpoint */
+    bool detach_debugger;
+#endif
+};
+typedef struct opal_crs_base_ckpt_options_1_0_0_t opal_crs_base_ckpt_options_1_0_0_t;
+typedef struct opal_crs_base_ckpt_options_1_0_0_t opal_crs_base_ckpt_options_t;
+OPAL_DECLSPEC OBJ_CLASS_DECLARATION(opal_crs_base_ckpt_options_t);
 
 /**
  * Structure for Single process snapshot
@@ -81,12 +111,14 @@ struct opal_crs_base_snapshot_1_0_0_t {
     /** MCA Component name */
     char * component_name;
 
-    /** Unique name of snapshot */
-    char * reference_name;
+    /** Metadata filename */
+    char * metadata_filename;
+
+    /** Metadata fd */
+    FILE * metadata;
 
     /** Absolute path the the snapshot directory */
-    char * local_location;
-    char * remote_location;
+    char * snapshot_directory;
 
     /** Cold Start: 
      * If we are restarting cold, then we need to recreate this structure 
@@ -135,6 +167,7 @@ typedef int (*opal_crs_base_module_finalize_fn_t)
 typedef int (*opal_crs_base_module_checkpoint_fn_t)
      (pid_t pid,
       opal_crs_base_snapshot_t *snapshot,
+      opal_crs_base_ckpt_options_t *options,
       opal_crs_state_type_t *state);
 
 /**
@@ -266,9 +299,7 @@ OPAL_DECLSPEC extern opal_crs_base_module_t opal_crs;
     MCA_BASE_VERSION_2_0_0, \
     "crs", 2, 0, 0
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OPAL_CRS_H */
 

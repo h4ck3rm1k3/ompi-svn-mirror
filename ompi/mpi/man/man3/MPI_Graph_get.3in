@@ -1,4 +1,5 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Graph_get 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -10,8 +11,9 @@
 .nf
 #include <mpi.h>
 int MPI_Graph_get(MPI_Comm \fIcomm\fP, int\fI maxindex\fP, int\fI maxedges\fP,
-	int\fI *index\fP, int\fI *edges\fP)
+	int\fI index\fP[], int\fI edges\fP[])
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
@@ -19,12 +21,14 @@ MPI_GRAPH_GET(\fICOMM, MAXINDEX, MAXEDGES, INDEX, EDGES, IERROR\fP)
 	INTEGER	\fICOMM, MAXINDEX, MAXEDGES, INDEX(*)\fP
 	INTEGER	\fIEDGES(*), IERROR\fP 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
 void Graphcomm::Get_topo(int \fImaxindex\fP, int \fImaxedges\fP, 
 	int \fIindex\fP[], int \fIedges\fP[]) const 
 
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
@@ -58,7 +62,7 @@ Functions MPI_Graphdims_get and MPI_Graph_get retrieve the graph-topology inform
 The information provided by MPI_Graphdims_get can be used to dimension the vectors index and edges correctly for a call to MPI_Graph_get.
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler may be changed with MPI_Comm_set_errhandler; the predefined error handler MPI_ERRORS_RETURN may be used to cause error values to be returned. Note that MPI does not guarantee that an MPI program can continue past an error.  

@@ -10,7 +10,7 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Sun Microsystems, Inc.  All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -39,6 +39,7 @@
 #include "opal/constants.h"
 #include "opal/util/output.h"
 #include "opal/util/show_help.h"
+#include "opal/util/argv.h"
 
 #ifndef _NSIG
 #define _NSIG 32
@@ -47,6 +48,7 @@
 #define HOSTFORMAT "[%s:%05d] "
 
 static char stacktrace_hostname[64];
+static char *unable_to_print_msg = "Unable to print stack trace!\n";
 
 /**
  * This function is being called as a signal-handler in response
@@ -64,7 +66,7 @@ static char stacktrace_hostname[64];
  *
  * FIXME: Should distinguish for systems, which don't have siginfo...
  */
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
 static void show_stackframe (int signo, siginfo_t * info, void * p)
 {   
     char print_buffer[1024];
@@ -176,8 +178,8 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
 #ifdef BUS_ADRALN
             case BUS_ADRALN: si_code_str = "Invalid address alignment"; break;
 #endif
-#ifdef BUSADRERR
-            case BUS_ADRERR: si_code_str = "Non-existent physical address"; break;
+#ifdef BUS_ADRERR
+            case BUS_ADRERR: si_code_str = "Non-existant physical address"; break;
 #endif
 #ifdef BUS_OBJERR
             case BUS_OBJERR: si_code_str = "Objet-specific hardware error"; break;
@@ -264,8 +266,13 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
 #ifdef SI_KERNEL
             case SI_KERNEL: si_code_str = "Kernel signal"; break;
 #endif
-#ifdef SI_UNDEFINED
+/* Dragonfly defines SI_USER and SI_UNDEFINED both as zero: */
+/* For some reason, the PGI compiler will not let us combine these two
+   #if tests into a single statement.  Sigh. */
+#if defined(SI_UNDEFINED)
+#if SI_UNDEFINED != SI_USER
             case SI_UNDEFINED: si_code_str = "Undefined code"; break;
+#endif
 #endif
             }
         }
@@ -312,10 +319,10 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
         {
 #ifdef HAVE_SIGINFO_T_SI_FD
             ret = snprintf(tmp, size, HOSTFORMAT "Band event: %ld, File Descriptor : %d\n",
-                           stacktrace_hostname, getpid(), info->si_band, info->si_fd);
+                           stacktrace_hostname, getpid(), (long)info->si_band, info->si_fd);
 #elif HAVE_SIGINFO_T_SI_BAND
             ret = snprintf(tmp, size, HOSTFORMAT "Band event: %ld\n",
-                           stacktrace_hostname, getpid(), info->si_band);
+                           stacktrace_hostname, getpid(), (long)info->si_band);
 #else
             ret = 0;
 #endif
@@ -348,7 +355,12 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
             ret = snprintf(print_buffer, sizeof(print_buffer),
                            HOSTFORMAT "[%2d] %s\n",
                            stacktrace_hostname, getpid(), i - 2, traces[i]);
-            write(fileno(stderr), print_buffer, ret);
+            if (ret > 0) {
+                write(fileno(stderr), print_buffer, ret);
+            } else {
+                write(fileno(stderr), unable_to_print_msg, 
+                      strlen(unable_to_print_msg));
+            }
         }
     } else {
         opal_backtrace_print(stderr);
@@ -359,14 +371,18 @@ static void show_stackframe (int signo, siginfo_t * info, void * p)
     ret = snprintf(print_buffer, sizeof(print_buffer), 
                    HOSTFORMAT "*** End of error message ***\n", 
                    stacktrace_hostname, getpid());
-    write(fileno(stderr), print_buffer, ret);
+    if (ret > 0) {
+        write(fileno(stderr), print_buffer, ret);
+    } else {
+        write(fileno(stderr), unable_to_print_msg, strlen(unable_to_print_msg));
+    }
     fflush(stderr);
 }
 
-#endif /* OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
+#endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
 
 
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE
 void opal_stackframe_output(int stream)
 {   
     int traces_size;
@@ -379,14 +395,51 @@ void opal_stackframe_output(int stream)
            function calls, which will be this function and
            opa_backtrace_buffer(). */
         for (i = 2; i < traces_size; ++i) {
-            opal_output(stream, traces[i]);
+            opal_output(stream, "%s", traces[i]);
         }
     } else {
         opal_backtrace_print(stderr);
     }
 }
 
-#endif /* OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
+char *opal_stackframe_output_string(void)
+{
+    int traces_size, i;
+    size_t len;
+    char *output, **traces;
+    
+    len = 0;
+    if (OPAL_SUCCESS != opal_backtrace_buffer(&traces, &traces_size)) {
+        return NULL;
+    }
+    
+    /* Calculate the space needed for the string */
+    for (i = 3; i < traces_size; i++) {
+	    if (NULL == traces[i]) {
+            break;
+        }
+        len += strlen(traces[i]) + 1;
+    }
+    
+    output = (char *) malloc(len + 1);
+    if (NULL == output) {
+        return NULL;
+    }
+    
+    *output = '\0';
+    for (i = 3; i < traces_size; i++) {
+        if (NULL == traces[i]) {
+            break;
+        }
+        strcat(output, traces[i]);
+        strcat(output, "\n");
+    }
+
+    free(traces);
+    return output;
+}
+
+#endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE */
 
 /**
  * Here we register the show_stackframe function for signals
@@ -400,7 +453,7 @@ void opal_stackframe_output(int stream)
  */
 int opal_util_register_stackhandlers (void)
 {
-#if OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
+#if OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__)
     struct sigaction act, old;
     char * string_value;
     char * tmp;
@@ -466,9 +519,7 @@ int opal_util_register_stackhandlers (void)
           if (!showed_help && complain) {
               /* JMS This is icky; there is no error message
                  aggregation here so this message may be repeated for
-                 every single MPI process...  This should be replaced
-                 with OPAL_SOS when that is done so that it can be
-                 properly aggregated. */
+                 every single MPI process... */
               opal_show_help("help-opal-util.txt",
                              "stacktrace signal override",
                              true, sig, sig, sig, string_value);
@@ -484,7 +535,7 @@ int opal_util_register_stackhandlers (void)
       }
     }
     free(string_value);
-#endif /* OMPI_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
+#endif /* OPAL_WANT_PRETTY_PRINT_STACKTRACE && ! defined(__WINDOWS__) */
 
     return OPAL_SUCCESS;
 }

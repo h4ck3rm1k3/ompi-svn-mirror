@@ -6,16 +6,17 @@
 # Copyright (c) 2004-2005 The University of Tennessee and The University
 #                         of Tennessee Research Foundation.  All rights
 #                         reserved.
-# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2006 The Regents of the University of California.
 #                         All rights reserved.
-# Copyright (c) 2006-2008 Cisco Systems, Inc.  All rights reserved.
-# Copyright (c) 2007-2008 Mellanox Technologies. All rights reserved.
+# Copyright (c) 2006-2011 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2007-2009 Mellanox Technologies. All rights reserved.
+# Copyright (c) 2009      Sun Microsystems, Inc.  All rights reserved.
 # $COPYRIGHT$
-# 
+#
 # Additional copyrights may follow
-# 
+#
 # $HEADER$
 #
 # This is the US/English help file for Open MPI's OpenFabrics support
@@ -150,9 +151,9 @@ sent.
 
 This error usually means one of two things:
 
-1. There is something awry within the network fabric itself.  
+1. There is something awry within the network fabric itself.
 2. A bug in Open MPI has caused flow control to malfunction.
- 
+
 #1 is usually more likely.  You should note the hosts on which this
 error has occurred; it has been observed that rebooting or removing a
 particular host from the job can sometimes resolve this issue.
@@ -199,7 +200,7 @@ exceeded.  "Retry count" is defined in the InfiniBand spec 1.2
 This error typically means that there is something awry within the
 InfiniBand fabric itself.  You should note the hosts on which this
 error has occurred; it has been observed that rebooting or removing a
-particular host from the job can sometimes resolve this issue.  
+particular host from the job can sometimes resolve this issue.
 
 Two MCA parameters can be used to control Open MPI's behavior with
 respect to the retry count:
@@ -207,7 +208,7 @@ respect to the retry count:
 * btl_openib_ib_retry_count - The number of times the sender will
   attempt to retry (defaulted to 7, the maximum value).
 * btl_openib_ib_timeout - The local ACK timeout parameter (defaulted
-  to 10).  The actual timeout value used is calculated as:
+  to 20).  The actual timeout value used is calculated as:
 
      4.096 microseconds * (2^btl_openib_ib_timeout)
 
@@ -279,7 +280,7 @@ Deactivating the OpenFabrics BTL.
 Wrong buffer alignment %d configured on host '%s'. Should be bigger
 than zero and power of two. Use default %d instead.
 #
-[of error event] 
+[of error event]
 The OpenFabrics stack has reported a network error event.  Open MPI
 will try to continue, but your job may end up failing.
 
@@ -385,21 +386,26 @@ WARNING: An invalid shared receive queue specification was detected as
 part of the btl_openib_receive_queues MCA parameter.  The OpenFabrics
 (openib) BTL will therefore be deactivated for this run.
 
-Shared receive queues can take between 2 and 4 parameters:
+Shared receive queues can take between 2 and 6 parameters:
 
   1. Buffer size in bytes (mandatory)
   2. Number of buffers (mandatory)
   3. Low buffer count watermark (optional; defaults to (num_buffers / 2))
   4. Maximum number of outstanding sends a sender can have (optional;
      defaults to (low_watermark / 4)
+  5. Start value of number of receive buffers that will be pre-posted (optional; defaults to (num_buffers / 4))
+  6. Event limit buffer count watermark (optional; defaults to (3/16 of start value of buffers number))
 
-  Example: S,1024,256,128,32
+  Example: S,1024,256,128,32,32,8
   - 1024 byte buffers
   - 256 buffers to receive incoming MPI messages
   - When the number of available buffers reaches 128, re-post 128 more
     buffers to reach a total of 256
   - A sender will not send to a peer unless it has less than 32
     outstanding sends to that peer.
+  - 32 receive buffers will be preposted.
+  - When the number of unused shared receive buffers reaches 8, more
+    buffers (32 in this case) will be posted.
 
   Local host: %s
   Bad queue specification: %s
@@ -408,6 +414,24 @@ Shared receive queues can take between 2 and 4 parameters:
 WARNING: The number of buffers for a queue pair specified via the
 btl_openib_receive_queues MCA parameter must be greater than the low
 buffer count watermark.  The OpenFabrics (openib) BTL will therefore
+be deactivated for this run.
+
+  Local host: %s
+  Bad queue specification: %s
+#
+[rd_num must be >= rd_init]
+WARNING: The number of buffers for a queue pair specified via the
+btl_openib_receive_queues MCA parameter (parameter #2) must be
+greater or equal to the initial SRQ size (parameter #5).
+The OpenFabrics (openib) BTL will therefore be deactivated for this run.
+
+  Local host: %s
+  Bad queue specification: %s
+#
+[srq_limit must be > rd_num]
+WARNING: The number of buffers for a queue pair specified via the
+btl_openib_receive_queues MCA parameter (parameter #2) must be greater than the limit
+buffer count (parameter #6).  The OpenFabrics (openib) BTL will therefore
 be deactivated for this run.
 
   Local host: %s
@@ -529,28 +553,45 @@ Can not provide %d alternative paths with LMC bit configured to %d.
 WARNING: For APM over ports ompi require at least 2 active ports and
 only single active port was found. Disabling APM over ports
 #
-[conflicting receive_queues]
-Open MPI detected two different sets of OpenFabrics receives queues on
-the same host (in the openib BTL).  Open MPI currently only supports
-one set of OF receive queues in an MPI job, even if you have different
-types of OpenFabrics adapters on the same host.
+[locally conflicting receive_queues]
+Open MPI detected two devices on a single server that have different
+"receive_queues" parameter values (in the openib BTL).  Open MPI
+currently only supports one OpenFabrics receive_queues value in an MPI
+job, even if you have different types of OpenFabrics adapters on the
+same host.
 
-  Local host:      %s
-  Adapter 1: %s (vendor 0x%x, part ID %d)
-  Queues:    %s
-  Adapter 2: %s (vendor 0x%x, part ID %d)
-  Queues:    %s
+Device 2 (in the details shown below) will be ignored for the duration
+of this MPI job.
 
-Note that these receive queues values may have come from the Open MPI
-adapter default settings file:
+You can fix this issue by one or more of the following:
+
+  1. Set the MCA parameter btl_openib_receive_queues to a value that
+     is usable by all the OpenFabrics devices that you will use.
+  2. Use the btl_openib_if_include or btl_openib_if_exclue MCA
+     parameters to select exactly which OpenFabrics devices to use in
+     your MPI job.
+
+Finally, note that the "receive_queues" values may have been set by
+the Open MPI device default settings file.  You may want to look in
+this file and see if your devices are getting receive_queues values
+from this file:
 
     %s/mca-btl-openib-device-params.ini
+
+Here is more detailed information about the recieive_queus value
+conflict:
+
+  Local host:     %s
+  Device 1:       %s (vendor 0x%x, part ID %d)
+  Receive queues: %s
+  Device 2:       %s (vendor 0x%x, part ID %d)
+  Receive queues: %s
 #
 [eager RDMA and progress threads]
 WARNING: The openib BTL was directed to use "eager RDMA" for short
 messages, but the openib BTL was compiled with progress threads
 support.  Short eager RDMA is not yet supported with progress threads;
-its use has been disabled in this job.  
+its use has been disabled in this job.
 
 This is a warning only; you job will attempt to continue.
 #
@@ -581,3 +622,70 @@ MPI to support iWARP devices.
 
 (This message is being displayed because you told Open MPI to use
 iWARP devices via the btl_openib_device_type MCA parameter)
+#
+[invalid ipaddr_inexclude]
+WARNING: An invalid value was given for btl_openib_ipaddr_%s.  This
+value will be ignored.
+
+  Local host: %s
+  Value:      %s
+  Message:    %s
+#
+[unsupported queues configuration]
+The Open MPI receive queue configuration for the OpenFabrics devices
+on two nodes are incompatible, meaning that MPI processes on two
+specific nodes were unable to communicate with each other.  This
+generally happens when you are using OpenFabrics devices from
+different vendors on the same network.  You should be able to use the
+mca_btl_openib_receive_queues MCA parameter to set a uniform receive
+queue configuration for all the devices in the MPI job, and therefore
+be able to run successfully.
+
+  Local host:       %s
+  Local adapter:    %s (vendor 0x%x, part ID %d)
+  Local queues:     %s
+
+  Remote host:      %s
+  Remote adapter:   (vendor 0x%x, part ID %d)
+  Remote queues:    %s
+#
+[conflicting transport types]
+Open MPI detected two different OpenFabrics transport types in the same Infiniband network.
+Such mixed network trasport configuration is not supported by Open MPI.
+
+  Local host:            %s
+  Local adapter:         %s (vendor 0x%x, part ID %d)
+  Local transport type:  %s
+
+  Remote host:           %s
+  Remote Adapter:        (vendor 0x%x, part ID %d)
+  Remote transport type: %s
+#
+[mem-reg-fail]
+The OpenFabrics (openib) BTL failed to register memory in the driver.
+Please check /var/log/messages or dmesg for driver specific failure
+reason.
+The failure occured here:
+
+  Local host:    %s
+  Device:        %s
+  Function:      %s()
+  Errno says:    %s (errno=%d)
+
+You may need to consult with your system administrator to get this
+problem fixed.
+#
+[gid index too large]
+Open MPI tried to use a GID index that was too large for an
+OpenFabrics device (i.e., the GID index does not exist on this
+device).
+
+  Local host:              %s
+  Local adapter:           %s
+  Local port:              %d
+
+  Requested GID index:     %d (specified by the btl_openib_gid_index MCA param)
+  Max allowable GID index: %d
+
+Use "ibv_devinfo -v" on the local host to see the GID table of this
+device.

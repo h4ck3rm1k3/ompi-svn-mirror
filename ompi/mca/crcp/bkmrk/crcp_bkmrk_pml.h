@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -7,6 +7,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -29,16 +30,10 @@
 #include "opal/mca/mca.h"
 #include "ompi/mca/crcp/crcp.h"
 #include "ompi/communicator/communicator.h"
-#include "opal/runtime/opal_cr.h"
-#include "opal/threads/mutex.h"
-#include "opal/threads/condition.h"
-#include "ompi/class/ompi_free_list.h"
 
 #include "ompi/mca/crcp/bkmrk/crcp_bkmrk.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /*
      * PML Coordination functions
@@ -121,6 +116,18 @@ extern "C" {
     
     ompi_crcp_base_pml_state_t* ompi_crcp_bkmrk_pml_ft_event
     (int state, ompi_crcp_base_pml_state_t* pml_state);
+
+    enum ompi_crcp_bkmrk_pml_quiesce_tag_type_t {
+        QUIESCE_TAG_NONE = 0, /* 0 No tag specified */
+        QUIESCE_TAG_CKPT,     /* 1 Prepare for checkpoint */
+        QUIESCE_TAG_CONTINUE, /* 2 Continue after a checkpoint */
+        QUIESCE_TAG_RESTART,  /* 3 Restart from a checkpoint */
+        QUIESCE_TAG_UNKNOWN   /* 4 Unknown */
+    };
+    typedef enum ompi_crcp_bkmrk_pml_quiesce_tag_type_t ompi_crcp_bkmrk_pml_quiesce_tag_type_t;
+
+    int ompi_crcp_bkmrk_pml_quiesce_start(ompi_crcp_bkmrk_pml_quiesce_tag_type_t tag );
+    int ompi_crcp_bkmrk_pml_quiesce_end(ompi_crcp_bkmrk_pml_quiesce_tag_type_t tag );
 
     /*
      * Request function
@@ -229,21 +236,18 @@ extern "C" {
         /** Peer which we received from */
         orte_process_name_t proc_name;
 
-        /** Is this message complete WRT PML semantics?
-         * true = message done on this side (send or receive)
-         * false = message still in process (sending or receiving)
+        /**
+         * Count of the number of completed PML messages that match this reference.
          */
         int done;
 
-        /** Is the message actively being worked on?
-         * true = Message is !done, and is in the progress cycle
-         * false = Message is !done and is *not* in the progress cycle ( [send/recv]_init requests)
+        /**
+         * Count of the number of active PML messages that match this reference.
          */
         int active;
 
-        /** Has this message been posted?
-         * true = message was posted (Send or recv)
-         * false = message was not yet posted.
+        /**
+         * Count of the number of posted PML messages that match this reference.
          *   Used when trying to figure out which messages the drain protocol needs to post, and
          *   which message have already been posted for it.
          */
@@ -448,8 +452,6 @@ extern "C" {
      */
     extern opal_list_t ompi_crcp_bkmrk_pml_peer_refs;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* MCA_CRCP_HOKE_PML_EXPORT_H */

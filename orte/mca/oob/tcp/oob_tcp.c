@@ -1,16 +1,18 @@
 /*
- * Copyright (c) 2004-2007 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2007 The University of Tennessee and The University
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2007 Los Alamos National Security, LLC. 
+ * Copyright (c) 2006-2012 Los Alamos National Security, LLC. 
  *                         All rights reserved.
+ * Copyright (c) 2009-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2011      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -25,6 +27,7 @@
 
 #include "orte_config.h"
 #include "orte/types.h"
+#include "opal/types.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -42,18 +45,21 @@
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
 #endif
+#include <ctype.h>
 
+#include "opal/util/show_help.h"
 #include "opal/util/error.h"
+#include "opal/util/output.h"
 #include "opal/opal_socket_errno.h"
-#include "orte/util/show_help.h"
 #include "opal/util/if.h"
 #include "opal/util/net.h"
+#include "opal/util/argv.h"
 #include "opal/class/opal_hash_table.h"
 
 #include "orte/mca/errmgr/errmgr.h"
-#include "orte/mca/rml/rml.h"
+#include "orte/mca/ess/ess.h"
 #include "orte/util/name_fns.h"
-#include "orte/util/show_help.h"
+#include "orte/util/parse_options.h"
 #include "orte/util/show_help.h"
 #include "orte/runtime/orte_globals.h"
 
@@ -64,13 +70,16 @@
  */
 struct mca_oob_tcp_event_t {
     opal_list_item_t item;
-    opal_event_t event;
+    opal_event_t *event;
 };
 typedef struct mca_oob_tcp_event_t mca_oob_tcp_event_t;
 
 static void mca_oob_tcp_event_construct(mca_oob_tcp_event_t* event)
 {
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
+    /* get an event */
+    event->event = opal_event_alloc();
+    /* track our events */
     opal_list_append(&mca_oob_tcp_component.tcp_events, &event->item);
     OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
 }
@@ -78,6 +87,9 @@ static void mca_oob_tcp_event_construct(mca_oob_tcp_event_t* event)
 static void mca_oob_tcp_event_destruct(mca_oob_tcp_event_t* event)
 {
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
+    /* release the event for re-use */
+    opal_event_free(event->event);
+    /* remove it from our list */
     opal_list_remove_item(&mca_oob_tcp_component.tcp_events, &event->item);
     OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
 }
@@ -92,6 +104,9 @@ OBJ_CLASS_INSTANCE(
  * Local utility functions
  */
 
+static int mca_oob_tcp_component_register(void);
+static int mca_oob_tcp_component_open(void);
+static int mca_oob_tcp_component_close(void);
 static int  mca_oob_tcp_create_listen(int *target_sd, unsigned short *port, uint16_t af_family);
 static int  mca_oob_tcp_create_listen_thread(void);
 static void mca_oob_tcp_recv_handler(int sd, short flags, void* user);
@@ -105,8 +120,8 @@ OBJ_CLASS_INSTANCE(
 
 OBJ_CLASS_INSTANCE(mca_oob_tcp_device_t, opal_list_item_t, NULL, NULL);
 
-int mca_oob_tcp_output_handle = 0;
-
+int mca_oob_tcp_output_handle = -1;
+static int verbose_value = 0;
 
 /*
  * Struct of function pointers and all that to let us be initialized
@@ -120,7 +135,9 @@ mca_oob_tcp_component_t mca_oob_tcp_component = {
         ORTE_MINOR_VERSION,
         ORTE_RELEASE_VERSION,
         mca_oob_tcp_component_open,  /* component open */
-        mca_oob_tcp_component_close /* component close */
+        mca_oob_tcp_component_close, /* component close */
+        NULL, /* component query */
+        mca_oob_tcp_component_register, /* component register */
     },
     {
         /* The component is checkpoint ready */
@@ -137,7 +154,6 @@ mca_oob_t mca_oob_tcp = {
     mca_oob_tcp_get_addr,
     mca_oob_tcp_set_addr,
 
-    mca_oob_tcp_get_new_name,
     mca_oob_tcp_ping,
 
     mca_oob_tcp_send_nb,
@@ -148,49 +164,17 @@ mca_oob_t mca_oob_tcp = {
     mca_oob_tcp_ft_event
 };
 
-
-/*
- * Initialize global variables used w/in this module.
- */
-int mca_oob_tcp_component_open(void)
+static int mca_oob_tcp_component_register(void)
 {
-    int tmp, value = 0;
+    int tmp;
     char *listen_type, *str = NULL;
-
-#ifdef __WINDOWS__
-    WSADATA win_sock_data;
-    if (WSAStartup(MAKEWORD(2,2), &win_sock_data) != 0) {
-        opal_output (0, "mca_oob_tcp_component_init: failed to initialise windows sockets: error %d\n", WSAGetLastError());
-        return ORTE_ERROR;
-    }
-#endif
 
     mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
                            "verbose",
                            "Verbose level for the OOB tcp component",
                            false, false,
                            0,
-                           &value);
-    mca_oob_tcp_output_handle = opal_output_open(NULL);
-    opal_output_set_verbosity(mca_oob_tcp_output_handle, value);
-
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_list,     opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peers,         opal_hash_table_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_names,    opal_hash_table_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_free,     opal_free_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msgs,          opal_free_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_lock,          opal_mutex_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_events,        opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_post,      opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_recv,      opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_completed, opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_match_lock,    opal_mutex_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_match_cond,    opal_condition_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_available_devices, opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_listen_thread, opal_thread_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_pending_connections, opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_connections_return, opal_list_t);
-    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_connections_lock, opal_mutex_t);
+                           &verbose_value);
 
     /* register oob module parameters */
     mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
@@ -225,7 +209,7 @@ int mca_oob_tcp_component_open(void)
 
     mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
                               "if_include",
-                              "Comma-delimited list of TCP interfaces to use",
+                              "Comma-delimited list of devices and/or CIDR notation of networks to use for Open MPI bootstrap communication (e.g., \"eth0,192.168.0.0/16\").  Mutually exclusive with oob_tcp_if_exclude.",
                               false, false, NULL, 
                               &mca_oob_tcp_component.tcp_include);
     mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
@@ -243,7 +227,7 @@ int mca_oob_tcp_component_open(void)
 
     mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
                               "if_exclude",
-                              "Comma-delimited list of TCP interfaces to exclude",
+                              "Comma-delimited list of devices and/or CIDR notation of networks to NOT use for Open MPI bootstrap communication -- all devices not matching these specifications will be used (e.g., \"eth0,192.168.0.0/16\").  If set to a non-default value, it is mutually exclusive with oob_tcp_if_include.",
                               false, false, NULL, 
                               &mca_oob_tcp_component.tcp_exclude);
     mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
@@ -286,6 +270,7 @@ int mca_oob_tcp_component_open(void)
                     listen_type);
         return ORTE_ERROR;
     }
+    free(listen_type);
 
     mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
                            "listen_thread_max_queue",
@@ -308,44 +293,166 @@ int mca_oob_tcp_component_open(void)
     mca_oob_tcp_component.tcp_listen_thread_tv.tv_sec = tmp / (1000);
     mca_oob_tcp_component.tcp_listen_thread_tv.tv_usec = (tmp % 1000) * 1000; 
 
-    mca_oob_tcp_component.tcp_listen_thread_num_sockets = 0;
-    mca_oob_tcp_component.tcp_listen_thread_sds[0] = -1;
-    mca_oob_tcp_component.tcp_listen_thread_sds[1] = -1;
-
-    mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
-                           "port_min_v4", "Starting port allowed (IPv4)",
-                           false, false,
-                           0,
-                           &mca_oob_tcp_component.tcp_port_min);
-    mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
-                           "port_range_v4", "Range of allowed ports (IPv4)",
-                           false, false,
-                           64*1024 - 1 - mca_oob_tcp_component.tcp_port_min,
-                           &mca_oob_tcp_component.tcp_port_range);
+#if ORTE_ENABLE_STATIC_PORTS
+    mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
+                              "static_ports", "Static ports for daemons and procs (IPv4)",
+                              false, false,
+                              orte_oob_static_ports,
+                              &str);
+    /* if ports were provided, parse the provided range */
+    if (NULL != str) {
+        orte_static_ports = true;
+        orte_util_parse_range_options(str, &mca_oob_tcp_component.tcp4_static_ports);
+        if (0 == strcmp(mca_oob_tcp_component.tcp4_static_ports[0], "-1")) {
+            opal_argv_free(mca_oob_tcp_component.tcp4_static_ports);
+            mca_oob_tcp_component.tcp4_static_ports = NULL;
+            orte_static_ports = false;
+        }
+    } else {
+        orte_static_ports = false;
+        mca_oob_tcp_component.tcp4_static_ports = NULL;
+    }
+#endif
+    
+    mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
+                              "dynamic_ports", "Range of ports to be dynamically used by daemons and procs (IPv4)",
+                              false, false,
+                              NULL,
+                              &str);
+    /* if ports were provided, parse the provided range */
+    if (NULL != str) {
+        /* can't have both static and dynamic ports! */
+        if (orte_static_ports) {
+            opal_show_help("help-oob-tcp.txt", "static-and-dynamic", true,
+                           mca_oob_tcp_component.tcp4_static_ports, str);
+            return ORTE_ERROR;
+        }
+        orte_util_parse_range_options(str, &mca_oob_tcp_component.tcp4_dyn_ports);
+        if (0 == strcmp(mca_oob_tcp_component.tcp4_dyn_ports[0], "-1")) {
+            opal_argv_free(mca_oob_tcp_component.tcp4_dyn_ports);
+            mca_oob_tcp_component.tcp4_dyn_ports = NULL;
+        }
+    } else {
+        mca_oob_tcp_component.tcp4_dyn_ports = NULL;
+    }
+    
     mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
                            "disable_family", "Disable IPv4 (4) or IPv6 (6)",
                            false, false,
                            0,
                            &mca_oob_tcp_component.disable_family);
 #if OPAL_WANT_IPV6
-    mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
-                           "port_min_v6", "Starting port allowed (IPv6)",
-                           false, false,
-                           0,
-                           &mca_oob_tcp_component.tcp6_port_min);
-    mca_base_param_reg_int(&mca_oob_tcp_component.super.oob_base,
-                           "port_range_v6", "Range of allowed ports (IPv6)",
-                           false, false,
-                           64*1024 - 1 - mca_oob_tcp_component.tcp6_port_min,
-                           &mca_oob_tcp_component.tcp6_port_range);
+#if ORTE_ENABLE_STATIC_PORTS
+    mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
+                              "static_ports_v6", "Static ports for daemons and procs (IPv6)",
+                              false, false,
+                              orte_oob_static_ports,
+                              &str);
+    if (NULL != str) {
+        orte_static_ports = true;
+        orte_util_parse_range_options(str, &mca_oob_tcp_component.tcp6_static_ports);
+        if (0 == strcmp(mca_oob_tcp_component.tcp6_static_ports[0], "-1")) {
+            opal_argv_free(mca_oob_tcp_component.tcp6_static_ports);
+            mca_oob_tcp_component.tcp6_static_ports = NULL;
+            orte_static_ports = false;
+        }
+    } else {
+        orte_static_ports = false;
+        mca_oob_tcp_component.tcp6_static_ports = NULL;
+    }
+#endif
+
+    mca_base_param_reg_string(&mca_oob_tcp_component.super.oob_base,
+                              "dynamic_ports_v6", "Range of ports to be dynamically used by daemons and procs (IPv4)",
+                              false, false,
+                              NULL,
+                              &str);
+    /* if ports were provided, parse the provided range */
+    if (NULL != str) {
+        /* can't have both static and dynamic ports! */
+        if (orte_static_ports) {
+            opal_show_help("help-oob-tcp.txt", "static-and-dynamic", true,
+                           mca_oob_tcp_component.tcp6_static_ports, str);
+            return ORTE_ERROR;
+        }
+        orte_util_parse_range_options(str, &mca_oob_tcp_component.tcp6_dyn_ports);
+        if (0 == strcmp(mca_oob_tcp_component.tcp6_dyn_ports[0], "-1")) {
+            opal_argv_free(mca_oob_tcp_component.tcp6_dyn_ports);
+            mca_oob_tcp_component.tcp6_dyn_ports = NULL;
+        }
+    } else {
+        mca_oob_tcp_component.tcp6_dyn_ports = NULL;
+    }
+    
     mca_oob_tcp_component.tcp6_listen_sd = -1;
 #endif  /* OPAL_WANT_IPV6 */
+
+    return ORTE_SUCCESS;
+}
+
+/*
+ * Initialize global variables used w/in this module.
+ */
+static int mca_oob_tcp_component_open(void)
+{
+#ifdef __WINDOWS__
+    WSADATA win_sock_data;
+    if (WSAStartup(MAKEWORD(2,2), &win_sock_data) != 0) {
+        opal_output (0, "mca_oob_tcp_component_init: failed to initialise windows sockets: error %d\n", WSAGetLastError());
+        return ORTE_ERROR;
+    }
+#endif
+
+    mca_oob_tcp_output_handle = opal_output_open(NULL);
+    opal_output_set_verbosity(mca_oob_tcp_output_handle, verbose_value);
+
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_list,     opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peers,         opal_hash_table_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_names,    opal_hash_table_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_peer_free,     opal_free_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msgs,          opal_free_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_lock,          opal_mutex_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_events,        opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_post,      opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_recv,      opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_msg_completed, opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_match_lock,    opal_mutex_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_match_cond,    opal_condition_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_available_devices, opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_listen_thread, opal_thread_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_pending_connections, opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_connections_return, opal_list_t);
+    OBJ_CONSTRUCT(&mca_oob_tcp_component.tcp_connections_lock, opal_mutex_t);
+
+    mca_oob_tcp_component.tcp_recv_event = NULL;
+#if OPAL_WANT_IPV6
+    mca_oob_tcp_component.tcp6_recv_event = NULL;
+#endif
+
+    mca_oob_tcp_component.tcp_listen_thread_event = NULL;
+    mca_oob_tcp_component.tcp_listen_thread_num_sockets = 0;
+    mca_oob_tcp_component.tcp_listen_thread_sds[0] = -1;
+    mca_oob_tcp_component.tcp_listen_thread_sds[1] = -1;
 
     /* initialize state */
     mca_oob_tcp_component.tcp_shutdown = false;
     mca_oob_tcp_component.tcp_listen_sd = -1;
     mca_oob_tcp_component.tcp_match_count = 0;
 
+    /* if_include and if_exclude need to be mutually exclusive */
+    if (OPAL_SUCCESS != 
+        mca_base_param_check_exclusive_string(
+        mca_oob_tcp_component.super.oob_base.mca_type_name,
+        mca_oob_tcp_component.super.oob_base.mca_component_name,
+        "if_include",
+        mca_oob_tcp_component.super.oob_base.mca_type_name,
+        mca_oob_tcp_component.super.oob_base.mca_component_name,
+        "if_exclude")) {
+        /* Return ERR_NOT_AVAILABLE so that a warning message about
+           "open" failing is not printed */
+        return ORTE_ERR_NOT_AVAILABLE;
+    }
+    
     return ORTE_SUCCESS;
 }
 
@@ -353,7 +460,7 @@ int mca_oob_tcp_component_open(void)
  * Cleanup of global variables used by this module.
  */
 
-int mca_oob_tcp_component_close(void)
+static int mca_oob_tcp_component_close(void)
 {
     opal_list_item_t *item;
 
@@ -365,7 +472,7 @@ int mca_oob_tcp_component_close(void)
     while (NULL != (item = opal_list_remove_first(&mca_oob_tcp_component.tcp_available_devices))) {
         OBJ_RELEASE(item);
     }
-
+#if 0
     OBJ_DESTRUCT(&mca_oob_tcp_component.tcp_connections_lock);
     OBJ_DESTRUCT(&mca_oob_tcp_component.tcp_connections_return);
     OBJ_DESTRUCT(&mca_oob_tcp_component.tcp_pending_connections);
@@ -384,6 +491,9 @@ int mca_oob_tcp_component_close(void)
     OBJ_DESTRUCT(&mca_oob_tcp_component.tcp_peers);
     OBJ_DESTRUCT(&mca_oob_tcp_component.tcp_peer_list);
 
+    opal_output_close(mca_oob_tcp_output_handle);
+#endif
+    
     return ORTE_SUCCESS;
 }
 
@@ -413,8 +523,9 @@ mca_oob_tcp_create_connection(const int accepted_fd,
 
     /* wait for receipt of peers process identifier to complete this connection */
     event = OBJ_NEW(mca_oob_tcp_event_t);
-    opal_event_set(&event->event, accepted_fd, OPAL_EV_READ, mca_oob_tcp_recv_handler, event);
-    opal_event_add(&event->event, 0);
+    opal_event_set(orte_event_base, event->event, accepted_fd, OPAL_EV_READ, mca_oob_tcp_recv_handler, event);
+    opal_event_set_priority(event->event, ORTE_MSG_PRI);
+    opal_event_add(event->event, 0);
 }
 
 
@@ -473,9 +584,11 @@ static void mca_oob_tcp_accept(int incoming_sd)
 static int
 mca_oob_tcp_create_listen(int *target_sd, unsigned short *target_port, uint16_t af_family)
 {
-    int flags, index, range = 0, port=0;
+    int flags, i;
+    uint16_t port=0;
     struct sockaddr_storage inaddr;
     opal_socklen_t addrlen;
+    char **ports=NULL;
 
     /* create a listen socket for incoming connections */
     *target_sd = socket(af_family, SOCK_STREAM, 0);
@@ -534,79 +647,196 @@ mca_oob_tcp_create_listen(int *target_sd, unsigned short *target_port, uint16_t 
     addrlen = sizeof(struct sockaddr_in);
 #endif
 
-    /* Disable reusing ports */
-    flags = 0;
-    if (setsockopt (*target_sd, SOL_SOCKET, SO_REUSEADDR, (const char *) &flags, sizeof(flags)) < 0) {
-        opal_output(0, "mca_oob_tcp_create_listen: unable to unset the "
-                    "SO_REUSEADDR option (%s:%d)\n",
-                    strerror(opal_socket_errno), opal_socket_errno);
-        CLOSE_THE_SOCKET(*target_sd);
-        return ORTE_ERROR;
-    }
-
     /* If an explicit range of ports was given, find the first open
        port in the range.  Otherwise, tcp_port_min will be 0, which
        means "pick any port" */
     if (AF_INET == af_family) {
-        range = mca_oob_tcp_component.tcp_port_range;
-        port = mca_oob_tcp_component.tcp_port_min;
+        if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_DAEMON) {
+            if (NULL != mca_oob_tcp_component.tcp4_static_ports) {
+                /* if static ports were provided, the daemon takes the
+                 * first entry in the list
+                 */
+                opal_argv_append_nosize(&ports, mca_oob_tcp_component.tcp4_static_ports[0]);
+                /* flag that we are using static ports */
+                orte_static_ports = true;
+            } else if (NULL != mca_oob_tcp_component.tcp4_dyn_ports) {
+                /* take the entire range */
+                ports = opal_argv_copy(mca_oob_tcp_component.tcp4_dyn_ports);
+                orte_static_ports = false;
+            } else {
+                /* flag the system to dynamically take any available port */
+                opal_argv_append_nosize(&ports, "0");
+                orte_static_ports = false;
+            }
+        } else if (ORTE_PROC_IS_MPI) {
+            if (NULL != mca_oob_tcp_component.tcp4_static_ports) {
+                /* if static ports were provided, an mpi proc takes its
+                 * node_local_rank entry in the list IF it has that info
+                 * AND enough ports were provided - otherwise, we "pick any port"
+                 */
+                orte_node_rank_t nrank;
+                /* do I know my node_local_rank yet? */
+                if (ORTE_NODE_RANK_INVALID != (nrank = orte_process_info.my_node_rank) &&
+                    (nrank+1) < opal_argv_count(mca_oob_tcp_component.tcp4_static_ports)) {
+                    /* any daemon takes the first entry, so we start with the second */
+                    opal_argv_append_nosize(&ports, mca_oob_tcp_component.tcp4_static_ports[nrank+1]);
+                    /* flag that we are using static ports */
+                    orte_static_ports = true;
+                } else {
+                    /* flag the system to dynamically take any available port */
+                    opal_argv_append_nosize(&ports, "0");
+                    orte_static_ports = false;
+                }
+            } else if (NULL != mca_oob_tcp_component.tcp4_dyn_ports) {
+                /* take the entire range */
+                ports = opal_argv_copy(mca_oob_tcp_component.tcp4_dyn_ports);
+                orte_static_ports = false;
+            } else {
+                /* flag the system to dynamically take any available port */
+                opal_argv_append_nosize(&ports, "0");
+                orte_static_ports = false;
+            }
+        } else {
+            /* if we are a tool, then we must let the
+             * system pick any port
+             */
+            opal_argv_append_nosize(&ports, "0");
+            /* if static ports were specified, flag it
+             * so the HNP does the right thing
+             */
+            if (NULL != mca_oob_tcp_component.tcp4_static_ports) {
+                orte_static_ports = true;
+            } else {
+                orte_static_ports = false;
+            }
+        }
     }
+
 #if OPAL_WANT_IPV6
     if (AF_INET6 == af_family) {
-        range = mca_oob_tcp_component.tcp6_port_range;
-        port = mca_oob_tcp_component.tcp6_port_min;
+        if (ORTE_PROC_IS_HNP || ORTE_PROC_IS_DAEMON) {
+            if (NULL != mca_oob_tcp_component.tcp6_static_ports) {
+                /* if static ports were provided, the daemon takes the
+                 * first entry in the list
+                 */
+                opal_argv_append_nosize(&ports, mca_oob_tcp_component.tcp6_static_ports[0]);
+                /* flag that we are using static ports */
+                orte_static_ports = true;
+            } else if (NULL != mca_oob_tcp_component.tcp6_dyn_ports) {
+                /* take the entire range */
+                ports = opal_argv_copy(mca_oob_tcp_component.tcp6_dyn_ports);
+                orte_static_ports = false;
+            } else {
+                /* flag the system to dynamically take any available port */
+                opal_argv_append_nosize(&ports, "0");
+                orte_static_ports = false;
+            }
+        } else if (ORTE_PROC_IS_MPI) {
+            if (NULL != mca_oob_tcp_component.tcp6_static_ports) {
+                /* if static ports were provided, an mpi proc takes its
+                 * node_local_rank entry in the list IF it has that info
+                 * AND enough ports were provided - otherwise, we "pick any port"
+                 */
+                orte_node_rank_t nrank;
+                /* do I know my node_local_rank yet? */
+                if (ORTE_NODE_RANK_INVALID != (nrank = orte_process_info.my_node_rank) &&
+                    (nrank+1) < opal_argv_count(mca_oob_tcp_component.tcp6_static_ports)) {
+                    /* any daemon takes the first entry, so we start with the second */
+                    opal_argv_append_nosize(&ports, mca_oob_tcp_component.tcp6_static_ports[nrank+1]);
+                    /* flag that we are using static ports */
+                    orte_static_ports = true;
+                } else {
+                    /* flag the system to dynamically take any available port */
+                    opal_argv_append_nosize(&ports, "0");
+                    orte_static_ports = false;
+                }
+            } else if (NULL != mca_oob_tcp_component.tcp6_dyn_ports) {
+                /* take the entire range */
+                ports = opal_argv_copy(mca_oob_tcp_component.tcp6_dyn_ports);
+                orte_static_ports = false;
+            } else {
+                /* flag the system to dynamically take any available port */
+                opal_argv_append_nosize(&ports, "0");
+                orte_static_ports = false;
+            }
+        } else {
+            /* if we are a tool, then we must let the
+             * system pick any port
+             */
+            opal_argv_append_nosize(&ports, "0");
+            /* if static ports were specified, flag it
+             * so the HNP does the right thing
+             */
+            if (NULL != mca_oob_tcp_component.tcp6_static_ports) {
+                orte_static_ports = true;
+            } else {
+                orte_static_ports = false;
+            }
+        }
     }
 #endif  /* OPAL_WANT_IPV6 */
 
-#if 0
-    /* flag whether or not static ports are in use so that other
-     * parts of ORTE can act appropriately
-     * LEAVE OFF FOR MOMENT PENDING FURTHER TEST
-     */
-    if (0 != port) {
-        orte_static_ports = true;
+    /* bozo check - this should be impossible, but... */
+    if (NULL == ports) {
+        return ORTE_ERROR;
     }
-#endif
     
-    for (index = 0;  index < range; index++ ) {
+    /* Enable/disable reusing ports */
+    if (orte_static_ports) {
+        flags = 1;
+    } else {
+        flags = 0;
+    }
+    if (setsockopt (*target_sd, SOL_SOCKET, SO_REUSEADDR, (const char *)&flags, sizeof(flags)) < 0) {
+        opal_output(0, "mca_oob_tcp_create_listen: unable to set the "
+                    "SO_REUSEADDR option (%s:%d)\n",
+                    strerror(opal_socket_errno), opal_socket_errno);
+        CLOSE_THE_SOCKET(*target_sd);
+        opal_argv_free(ports);
+        return ORTE_ERROR;
+    }
+    
+    for (i=0; i < opal_argv_count(ports); i++) {
+        /* get the port number */
+        port = strtol(ports[i], NULL, 10);
+        /* convert it to network-byte-order */
+        port = htons(port);
+
         if (AF_INET == af_family) {
-            ((struct sockaddr_in*) &inaddr)->sin_port = port + index;
+            ((struct sockaddr_in*) &inaddr)->sin_port = port;
         } else if (AF_INET6 == af_family) {
-            ((struct sockaddr_in6*) &inaddr)->sin6_port = port + index;
+            ((struct sockaddr_in6*) &inaddr)->sin6_port = port;
         } else {
+            opal_argv_free(ports);
             return ORTE_ERROR;
         }
-
-        if(bind(*target_sd, (struct sockaddr*)&inaddr, addrlen) < 0) {
+        
+        if (bind(*target_sd, (struct sockaddr*)&inaddr, addrlen) < 0) {
             if( (EADDRINUSE == opal_socket_errno) || (EADDRNOTAVAIL == opal_socket_errno) ) {
                 continue;
             }
-            opal_output(0, "bind() failed: %s (%d)",
+            opal_output(0, "%s bind() failed for port %d: %s (%d)",
+                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                        (int)ntohs(*target_port),
                         strerror(opal_socket_errno),
                         opal_socket_errno );
             CLOSE_THE_SOCKET(*target_sd);
+            opal_argv_free(ports);
             return ORTE_ERROR;
         }
         goto socket_binded;
-    }
 
-    if (AF_INET == af_family ) {
-        opal_output(0, "bind() failed: no port available in the range [%d..%d]",
-                    mca_oob_tcp_component.tcp_port_min,
-                    mca_oob_tcp_component.tcp_port_min + range);
     }
-#if OPAL_WANT_IPV6
-    if (AF_INET6 == af_family) {
-        opal_output(0, "bind6() failed: no port available in the range [%d..%d]",
-                    mca_oob_tcp_component.tcp6_port_min,
-                    mca_oob_tcp_component.tcp6_port_min + range);
-    }
-#endif  /* OPAL_WANT_IPV6 */
-
+    
+    /* cleanup */
     CLOSE_THE_SOCKET(*target_sd);
-    return ORTE_ERROR;
+    opal_argv_free(ports);
+    return ORTE_ERR_SOCKET_NOT_AVAILABLE;
 
- socket_binded:
+socket_binded:
+    /* done with this, so release it */
+    opal_argv_free(ports);
+    
     /* resolve assigned port */
     if (getsockname(*target_sd, (struct sockaddr*)&inaddr, &addrlen) < 0) {
         opal_output(0, "mca_oob_tcp_create_listen: getsockname(): %s (%d)", 
@@ -615,12 +845,21 @@ mca_oob_tcp_create_listen(int *target_sd, unsigned short *target_port, uint16_t 
         return ORTE_ERROR;
     }
 
+    /* record the assigned port */
     if (AF_INET == af_family) {
         *target_port = ((struct sockaddr_in*) &inaddr)->sin_port;
     } else {
         *target_port = ((struct sockaddr_in6*) &inaddr)->sin6_port;
     }
-
+    
+    /* save the port in a global place as well,
+     * remembering to convert it back from network byte order first
+     */
+    orte_process_info.my_port = ntohs(*target_port);
+    if (mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_CONNECT) {
+        opal_output(0, "%s assigned port %d", ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), orte_process_info.my_port);
+    }
+    
     /* setup listen backlog to maximum allowed by kernel */
     if(listen(*target_sd, SOMAXCONN) < 0) {
         opal_output(0, "mca_oob_tcp_component_init: listen(): %s (%d)", 
@@ -876,16 +1115,25 @@ mca_oob_tcp_accept_thread_handler(int sd, short flags, void* user)
     tv.tv_sec = mca_oob_tcp_component.tcp_listen_thread_tv.tv_sec;
     tv.tv_usec = mca_oob_tcp_component.tcp_listen_thread_tv.tv_usec;
 #ifdef HAVE_PIPE
-    opal_event_set(&mca_oob_tcp_component.tcp_listen_thread_event,
-                   mca_oob_tcp_component.tcp_connections_pipe[0],
-                   OPAL_EV_READ, 
-                   mca_oob_tcp_accept_thread_handler, NULL);
+    if (NULL == mca_oob_tcp_component.tcp_listen_thread_event) {
+        /* get an event */
+        mca_oob_tcp_component.tcp_listen_thread_event = opal_event_alloc();
+        opal_event_set(orte_event_base, mca_oob_tcp_component.tcp_listen_thread_event,
+                       mca_oob_tcp_component.tcp_connections_pipe[0],
+                       OPAL_EV_READ, 
+                       mca_oob_tcp_accept_thread_handler, NULL);
+    }
 #else
-    opal_event_set(&mca_oob_tcp_component.tcp_listen_thread_event,
-                   -1, 0,
-                   mca_oob_tcp_accept_thread_handler, NULL);
+    if (NULL == mca_oob_tcp_component.tcp_listen_thread_event) {
+        /* get an event */
+        mca_oob_tcp_component.tcp_listen_thread_event = opal_event_alloc();
+        opal_event_set(orte_event_base, mca_oob_tcp_component.tcp_listen_thread_event,
+                       -1, 0,
+                       mca_oob_tcp_accept_thread_handler, NULL);
+    }
 #endif
-    opal_event_add(&mca_oob_tcp_component.tcp_listen_thread_event, &tv);
+    opal_event_set_priority(mca_oob_tcp_component.tcp_listen_thread_event, ORTE_MSG_PRI);
+    opal_event_add(mca_oob_tcp_component.tcp_listen_thread_event, &tv);
 }
 
 
@@ -912,16 +1160,25 @@ mca_oob_tcp_create_listen_thread(void)
     tv.tv_sec = mca_oob_tcp_component.tcp_listen_thread_tv.tv_sec;
     tv.tv_usec = mca_oob_tcp_component.tcp_listen_thread_tv.tv_usec;
 #ifdef HAVE_PIPE
-    opal_event_set(&mca_oob_tcp_component.tcp_listen_thread_event,
-                   mca_oob_tcp_component.tcp_connections_pipe[0],
-                   OPAL_EV_READ, 
-                   mca_oob_tcp_accept_thread_handler, NULL);
+    if (NULL == mca_oob_tcp_component.tcp_listen_thread_event) {
+        /* get an event */
+        mca_oob_tcp_component.tcp_listen_thread_event = opal_event_alloc();
+        opal_event_set(orte_event_base, mca_oob_tcp_component.tcp_listen_thread_event,
+                       mca_oob_tcp_component.tcp_connections_pipe[0],
+                       OPAL_EV_READ, 
+                       mca_oob_tcp_accept_thread_handler, NULL);
+    }
 #else
-    opal_event_set(&mca_oob_tcp_component.tcp_listen_thread_event,
-                   -1, 0,
-                   mca_oob_tcp_accept_thread_handler, NULL);
+    if (NULL == mca_oob_tcp_component.tcp_listen_thread_event) {
+        /* get an event */
+        mca_oob_tcp_component.tcp_listen_thread_event = opal_event_alloc();
+        opal_event_set(orte_event_base, mca_oob_tcp_component.tcp_listen_thread_event,
+                       -1, 0,
+                       mca_oob_tcp_accept_thread_handler, NULL);
+    }
 #endif
-    opal_event_add(&mca_oob_tcp_component.tcp_listen_thread_event, &tv);
+    opal_event_set_priority(mca_oob_tcp_component.tcp_listen_thread_event, ORTE_MSG_PRI);
+    opal_event_add(mca_oob_tcp_component.tcp_listen_thread_event, &tv);
 
     return opal_thread_start(&mca_oob_tcp_component.tcp_listen_thread);
 }
@@ -1029,9 +1286,9 @@ static void mca_oob_tcp_recv_handler(int sd, short flags, void* user)
     int rc;
 
     /* accept new connections on the listen socket */
-    if( (mca_oob_tcp_component.tcp_listen_sd == sd)
+    if( mca_oob_tcp_component.tcp_listen_sd == sd
 #if OPAL_WANT_IPV6
-        || (mca_oob_tcp_component.tcp6_listen_sd == sd)
+        || mca_oob_tcp_component.tcp6_listen_sd == sd
 #endif  /* OPAL_WANT_IPV6 */
        ) {
         mca_oob_tcp_accept(sd);
@@ -1041,7 +1298,7 @@ static void mca_oob_tcp_recv_handler(int sd, short flags, void* user)
 
     /* Some mem checkers don't realize that hdr will guarantee to be
        fully filled in during the read(), below :-( */
-    OMPI_DEBUG_ZERO(hdr);
+    OPAL_DEBUG_ZERO(hdr);
 
     /* recv the process identifier */
     while((rc = recv(sd, (char *)&hdr, sizeof(hdr), 0)) != sizeof(hdr)) {
@@ -1081,6 +1338,113 @@ static void mca_oob_tcp_recv_handler(int sd, short flags, void* user)
 
 
 /*
+ * Go through a list of argv; if there are any subnet specifications
+ * (a.b.c.d/e), resolve them to an interface name (Currently only
+ * supporting IPv4).  If unresolvable, warn and remove.
+ */
+static char **split_and_resolve(char **orig_str, char *name)
+{
+    int i, ret, save, if_index;
+    char **argv, *str, *tmp;
+    char if_name[IF_NAMESIZE];
+    struct sockaddr_storage argv_inaddr, if_inaddr;
+    uint32_t argv_prefix;
+
+    /* Sanity check */
+    if (NULL == orig_str || NULL == *orig_str) {
+        return NULL;
+    }
+
+    argv = opal_argv_split(*orig_str, ',');
+    if (NULL == argv) {
+        return NULL;
+    }
+    for (save = i = 0; NULL != argv[i]; ++i) {
+        if (isalpha(argv[i][0])) {
+            argv[save++] = argv[i];
+            continue;
+        }
+
+        /* Found a subnet notation.  Convert it to an IP
+           address/netmask.  Get the prefix first. */
+        argv_prefix = 0;
+        tmp = strdup(argv[i]);
+        str = strchr(argv[i], '/');
+        if (NULL == str) {
+            orte_show_help("help-oob-tcp.txt", "invalid if_inexclude",
+                           true, name, orte_process_info.nodename, 
+                           tmp, "Invalid specification (missing \"/\")");
+            free(argv[i]);
+            free(tmp);
+            continue;
+        }
+        *str = '\0';
+        argv_prefix = atoi(str + 1);
+
+        /* Now convert the IPv4 address */
+        ((struct sockaddr*) &argv_inaddr)->sa_family = AF_INET;
+        ret = inet_pton(AF_INET, argv[i], 
+                        &((struct sockaddr_in*) &argv_inaddr)->sin_addr);
+        free(argv[i]);
+
+        if (1 != ret) {
+            orte_show_help("help-oob-tcp.txt", "invalid if_inexclude",
+                           true, name, orte_process_info.nodename, tmp,
+                           "Invalid specification (inet_pton() failed)");
+            free(tmp);
+            continue;
+        }
+        opal_output_verbose(20, mca_oob_tcp_output_handle,
+                            "%s oob:tcp: Searching for %s address+prefix: %s / %u",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            name,
+                            opal_net_get_hostname((struct sockaddr*) &argv_inaddr),
+                            argv_prefix);
+            
+        /* Go through all interfaces and see if we can find a match */
+        for (if_index = opal_ifbegin(); if_index >= 0; 
+             if_index = opal_ifnext(if_index)) {
+            opal_ifindextoaddr(if_index, 
+                               (struct sockaddr*) &if_inaddr,
+                               sizeof(if_inaddr));
+            if (opal_net_samenetwork((struct sockaddr*) &argv_inaddr,
+                                     (struct sockaddr*) &if_inaddr,
+                                     argv_prefix)) {
+                break;
+            }
+        }
+        
+        /* If we didn't find a match, keep trying */
+        if (if_index < 0) {
+            orte_show_help("help-oob-tcp.txt", "invalid if_inexclude",
+                           true, name, orte_process_info.nodename, tmp,
+                           "Did not find interface matching this subnet");
+            free(tmp);
+            continue;
+        }
+
+        /* We found a match; get the name and replace it in the
+           argv */
+        opal_ifindextoname(if_index, if_name, sizeof(if_name));
+        opal_output_verbose(20, mca_oob_tcp_output_handle,
+                            "%s oob:tcp: Found match: %s (%s)",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            opal_net_get_hostname((struct sockaddr*) &if_inaddr),
+                            if_name);
+        argv[save++] = strdup(if_name);
+        free(tmp);
+    }
+
+    /* The list may have been compressed if there were invalid
+       entries, so ensure we end it with a NULL entry */
+    argv[save] = NULL;
+    free(*orig_str);
+    *orig_str = opal_argv_join(argv, ',');
+    return argv;
+}
+
+
+/*
  * Component initialization - create a module and initialize the
  * static resources associated with that module.
  *
@@ -1092,50 +1456,90 @@ static void mca_oob_tcp_recv_handler(int sd, short flags, void* user)
  */
 mca_oob_t* mca_oob_tcp_component_init(int* priority)
 {
-    int i;
+    int i, rc;
     bool found_local = false;
     bool found_nonlocal = false;
+    char **interfaces = NULL;
+    mca_oob_tcp_device_t *dev;
+    bool including = false, excluding = false;
+    char name[32];
 
-    *priority = 1;
+    *priority = 50;
 
     /* are there any interfaces? */
-    if(opal_ifcount() <= 0)
+    if (opal_ifcount() <= 0) {
         return NULL;
+    }
 
-    /* Which interfaces should we use?  Start by building a list of
-       all devices that meet the requirements of the if_include and
-       if_exclude list.  This might include local and non-local
-       interfaces mixed together. After that sorting is done, if there
-       is a mix of devices, we go through the devices that survived
-       the initial sort and remove all the local devices (since we
-       have non-local devices to use). */
+    /* did someone mistakenly specify both includes AND excludes? */
+    if (NULL != mca_oob_tcp_component.tcp_include &&
+        NULL != mca_oob_tcp_component.tcp_exclude) {
+        orte_show_help("help-oob-tcp.txt", "include-exclude", true,
+                       mca_oob_tcp_component.tcp_include,
+                       mca_oob_tcp_component.tcp_exclude);
+        return NULL;
+    }
+
+    /* if interface include was given, construct a list
+     * of those interfaces which match the specifications - remember,
+     * the includes could be given as named interfaces, IP addrs, or
+     * subnet+mask
+     */
+    if (NULL != mca_oob_tcp_component.tcp_include) {
+        interfaces = split_and_resolve(&mca_oob_tcp_component.tcp_include,
+                                       "include");
+        including = true;
+        excluding = false;
+    } else if (NULL != mca_oob_tcp_component.tcp_exclude) {
+        interfaces = split_and_resolve(&mca_oob_tcp_component.tcp_exclude,
+                                       "exclude");
+        including = false;
+        excluding = true;
+    }
+
+    /* look at all available interfaces */ 
     for (i = opal_ifbegin() ; i > 0 ; i = opal_ifnext(i)) {
-        char name[32];
-        mca_oob_tcp_device_t *dev;
 
+        /* get the name for diagnostic purposes */
         opal_ifindextoname(i, name, sizeof(name));
 
-        if (mca_oob_tcp_component.tcp_include != NULL &&
-            strstr(mca_oob_tcp_component.tcp_include,name) == NULL) {
-            OPAL_OUTPUT_VERBOSE((1, mca_oob_tcp_output_handle,
-                                 "%s oob:tcp:init rejecting interface %s",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name));
-            continue;
-        }
-        if (mca_oob_tcp_component.tcp_exclude != NULL &&
-            strstr(mca_oob_tcp_component.tcp_exclude,name) != NULL) {
-            OPAL_OUTPUT_VERBOSE((1, mca_oob_tcp_output_handle,
-                                 "%s oob:tcp:init rejecting interface %s",
-                                 ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name));
-            continue;
+        /* handle include/exclude directives */
+        if (NULL != interfaces) {
+            /* check for match */
+            rc = opal_ifmatches(i, interfaces);
+            /* if one of the network specifications isn't parseable, then
+             * error out as we can't do what was requested
+             */
+            if (OPAL_ERR_NETWORK_NOT_PARSEABLE == rc) {
+                        orte_show_help("help-oob-tcp.txt", "not-parseable", true);
+                        opal_argv_free(interfaces);
+                        return NULL;
+            }
+            /* if we are including, then ignore this if not present */
+            if (including) {
+                if (OPAL_SUCCESS != rc) {
+                    opal_output_verbose(20, mca_oob_tcp_output_handle,
+                                        "%s oob:tcp:init rejecting interface %s (not in include list)",
+                                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name);
+                    continue;
+                }
+            } else {
+                /* we are excluding, so ignore if present */
+                if (OPAL_SUCCESS == rc) {
+                    opal_output_verbose(20, mca_oob_tcp_output_handle,
+                                        "%s oob:tcp:init rejecting interface %s (in exclude list)",
+                                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name);
+                    continue;
+                }
+            }
         }
 
         dev = OBJ_NEW(mca_oob_tcp_device_t);
         dev->if_index = i;
 
-        OPAL_OUTPUT_VERBOSE((1, mca_oob_tcp_output_handle,
-                             "%s oob:tcp:init setting up interface %s",
-                             ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name));
+        opal_output_verbose(20, mca_oob_tcp_output_handle,
+                            "%s oob:tcp:init setting up interface %s",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME), name);
         
         opal_ifindextoaddr(i, (struct sockaddr*) &dev->if_addr, sizeof(struct sockaddr_storage));
         if(opal_net_islocalhost((struct sockaddr*) &dev->if_addr)) {
@@ -1149,20 +1553,36 @@ mca_oob_t* mca_oob_tcp_component_init(int* priority)
         opal_list_append(&mca_oob_tcp_component.tcp_available_devices,
                          &dev->super);
     }
+
+    /* cleanup */
+    if (NULL != interfaces) {
+        opal_argv_free(interfaces);
+    }
+
+    /* remove all the local devices if we have non-local devices to use. */
     if (found_local && found_nonlocal) {
-        opal_list_item_t *item;
+        opal_list_item_t *item, *next;
         for (item = opal_list_get_first(&mca_oob_tcp_component.tcp_available_devices) ;
              item != opal_list_get_end(&mca_oob_tcp_component.tcp_available_devices) ;
-             item = opal_list_get_next(item)) {
+             item = next) {
             mca_oob_tcp_device_t *dev = (mca_oob_tcp_device_t*) item;
+            next = opal_list_get_next(item);
             if (dev->if_local) {
                 item = opal_list_remove_item(&mca_oob_tcp_component.tcp_available_devices,
                                              item);
+                OBJ_RELEASE(dev);
             }
         }
     }
 
     if (opal_list_get_size(&mca_oob_tcp_component.tcp_available_devices) == 0) {
+        if (including) {
+            orte_show_help("help-oob-tcp.txt", "no-included-found", true, mca_oob_tcp_component.tcp_include);
+        } else if (excluding) {
+            orte_show_help("help-oob-tcp.txt", "excluded-all", true, mca_oob_tcp_component.tcp_exclude);
+        } else {
+            orte_show_help("help-oob-tcp.txt", "no-interfaces-avail", true);
+        }
         return NULL;
     }
 
@@ -1171,24 +1591,20 @@ mca_oob_t* mca_oob_tcp_component_init(int* priority)
     opal_hash_table_init(&mca_oob_tcp_component.tcp_peer_names, 128);
 
     opal_free_list_init(&mca_oob_tcp_component.tcp_peer_free,
-        sizeof(mca_oob_tcp_peer_t),
-        OBJ_CLASS(mca_oob_tcp_peer_t),
-        8,  /* initial number */
-        mca_oob_tcp_component.tcp_peer_limit, /* maximum number */
-        8);  /* increment to grow by */
+                        sizeof(mca_oob_tcp_peer_t),
+                        OBJ_CLASS(mca_oob_tcp_peer_t),
+                        8,  /* initial number */
+                        mca_oob_tcp_component.tcp_peer_limit, /* maximum number */
+                        8);  /* increment to grow by */
 
     opal_free_list_init(&mca_oob_tcp_component.tcp_msgs,
-        sizeof(mca_oob_tcp_msg_t),
-        OBJ_CLASS(mca_oob_tcp_msg_t),
-        8,  /* initial number */
-       -1,  /* maximum number */
-        8);  /* increment to grow by */
+                        sizeof(mca_oob_tcp_msg_t),
+                        OBJ_CLASS(mca_oob_tcp_msg_t),
+                        8,  /* initial number */
+                        -1,  /* maximum number */
+                        8);  /* increment to grow by */
 
-    /* intialize event library */
-    memset(&mca_oob_tcp_component.tcp_recv_event, 0, sizeof(opal_event_t));
-#if OPAL_WANT_IPV6
-    memset(&mca_oob_tcp_component.tcp6_recv_event, 0, sizeof(opal_event_t));
-#endif  /* OPAL_WANT_IPV6 */
+
     return &mca_oob_tcp;
 }
 
@@ -1199,19 +1615,129 @@ mca_oob_t* mca_oob_tcp_component_init(int* priority)
 int mca_oob_tcp_resolve(mca_oob_tcp_peer_t* peer)
 {
     mca_oob_tcp_addr_t* addr = NULL;
+    int rc=ORTE_ERR_ADDRESSEE_UNKNOWN;
 
     /* if the address is already cached - simply return it */
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
     opal_hash_table_get_value_uint64(&mca_oob_tcp_component.tcp_peer_names,
-         orte_util_hash_name(&peer->peer_name), (void**)&addr);
+                                     orte_util_hash_name(&peer->peer_name), (void**)&addr);
     OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
-    if(NULL != addr) {
-         mca_oob_tcp_peer_resolved(peer, addr);
-         return ORTE_SUCCESS;
+    if (NULL != addr) {
+        mca_oob_tcp_peer_resolved(peer, addr);
+        return ORTE_SUCCESS;
     }
 
-    /* if we don't know it, then report unknown - don't try to go get it */
-    return ORTE_ERR_ADDRESSEE_UNKNOWN;
+#if ORTE_ENABLE_STATIC_PORTS
+    {
+        char *host, *haddr=NULL;
+        orte_node_rank_t nrank;
+        struct hostent *h;
+        int port;
+        char *uri;
+
+        /* if we don't know it, and we are using static ports, try
+         * to compute the address and port
+         */
+        if (orte_static_ports) {
+            if (NULL != (host = orte_get_proc_hostname(&peer->peer_name))) {
+                /* lookup the address of this node */
+                if (NULL == (h = gethostbyname(host))) {
+                    /* this isn't an error - it just means we don't know
+                     * how to compute a contact info for this proc.
+                     * if we are trying to talk to a process on our own node, try
+                     * looking for the loopback interface before giving up
+                     */
+                    goto unlock;
+                }
+                if (0 == strcasecmp(host, orte_process_info.nodename) ||
+                    0 == strncasecmp(host, orte_process_info.nodename, strlen(host)) ||
+                    opal_ifislocal(host)) {
+                    int idx;
+                    struct sockaddr addr;
+                    struct in_addr inaddr;
+                    for (idx = opal_ifbegin(); 0 < idx; idx = opal_ifnext(idx)) {
+                        if (opal_ifisloopback(idx)) {
+                            if (OPAL_SUCCESS != (rc = opal_ifindextoaddr(idx, &addr, sizeof(addr)))) {
+                                ORTE_ERROR_LOG(rc);
+                                goto unlock;
+                            }
+                            inaddr = ((struct sockaddr_in*)(&addr))->sin_addr;
+                            haddr = inet_ntoa(inaddr);
+                            goto proceed;
+                        }
+                    }
+                }
+                opal_output(0, "%s COULD NOT COMPUTE CONTACT INFO FOR PROC %s on NODE %s",
+                            ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
+                            ORTE_NAME_PRINT(&peer->peer_name), host);
+                goto unlock;
+            } else {
+                haddr = inet_ntoa(*(struct in_addr*)h->h_addr_list[0]);
+            }
+        proceed:
+            /* we can't know which af_family we are using, so for now, let's
+             * just look to see which static port family was provided
+             */
+            if (NULL != mca_oob_tcp_component.tcp4_static_ports) {
+                if (ORTE_JOBID_IS_DAEMON(peer->peer_name.jobid)) {
+                    /* we are trying to talk to a daemon, which will always
+                     * be listening on the first port in the range
+                     */
+                    port = strtol(mca_oob_tcp_component.tcp4_static_ports[0], NULL, 10);
+                } else {
+                    /* lookup the node rank of the proc */
+                    if (ORTE_NODE_RANK_INVALID == (nrank = orte_get_proc_node_rank(&peer->peer_name)) ||
+                        (nrank+1) > opal_argv_count(mca_oob_tcp_component.tcp4_static_ports)) {
+                        /* this isn't an error - it just means we don't know
+                         * how to compute a contact info for this proc
+                         */
+                        opal_output(0, "COULD NOT GET NODE RANK");
+                        rc = ORTE_ERR_ADDRESSEE_UNKNOWN;
+                        goto unlock;
+                    }
+                    /* any daemon takes the first entry, so we start with the second */
+                    port = strtol(mca_oob_tcp_component.tcp4_static_ports[nrank+1], NULL, 10);
+                }
+                /* create the uri */
+                asprintf(&uri, "tcp://%s:%d", (NULL == haddr) ? "NULL" : haddr, port);
+#if OPAL_WANT_IPV6
+            } else if (NULL != mca_oob_tcp_component.tcp6_static_ports) {
+                if (ORTE_JOBID_IS_DAEMON(peer->peer_name.jobid)) {
+                    /* we are trying to talk to a daemon, which will always
+                     * be listening on the first port in the range
+                     */
+                    port = strtol(mca_oob_tcp_component.tcp6_static_ports[0], NULL, 10);
+                } else {
+                    /* lookup the node rank of the proc */
+                    if (ORTE_NODE_RANK_INVALID == (nrank = orte_get_proc_node_rank(&peer->peer_name)) ||
+                        (nrank+1) > opal_argv_count(mca_oob_tcp_component.tcp6_static_ports)) {
+                        /* this isn't an error - it just means we don't know
+                         * how to compute a contact info for this proc
+                         */
+                        rc = ORTE_ERR_ADDRESSEE_UNKNOWN;
+                        goto unlock;
+                    }
+                    /* any daemon takes the first entry, so we start with the second */
+                    port = strtol(mca_oob_tcp_component.tcp6_static_ports[nrank+1], NULL, 10);
+                }
+                /* create the uri */
+                asprintf(&uri, "tcp6://%s:%d", (NULL == haddr) ? "NULL" : haddr, port);
+#endif  /* OPAL_WANT_IPV6 */
+            } else {
+                /* can't do anything with this - no idea how static ports got set! */
+                rc = ORTE_ERR_ADDRESSEE_UNKNOWN;
+                goto unlock;
+            }
+            /* set the contact info */
+            rc = mca_oob_tcp_set_addr(&peer->peer_name, uri);
+            /* release memory */
+            free(uri);
+        }
+    }
+
+ unlock:
+#endif
+    return rc;
 }
 
 
@@ -1243,10 +1769,10 @@ int mca_oob_tcp_init(void)
     jobid = ORTE_PROC_MY_NAME->jobid;
 
     /* Fix up the listen type.  This is the first call into the OOB in
-       which the orte_process_info.hnp field is reliably set.  The
+       which the ORTE_PROC_IS_HNP field is reliably set.  The
        listen_mode should only be listen_thread for the HNP -- all
        others should use the traditional event library. */
-    if (!orte_process_info.hnp) {
+    if (!ORTE_PROC_IS_HNP) {
         mca_oob_tcp_component.tcp_listen_type = OOB_TCP_EVENT;
     }
 
@@ -1271,12 +1797,16 @@ int mca_oob_tcp_init(void)
             mca_oob_tcp_component.tcp_listen_thread_sds[idx] = 
                 mca_oob_tcp_component.tcp_listen_sd;
         } else {
-            opal_event_set(&mca_oob_tcp_component.tcp_recv_event,
-                           mca_oob_tcp_component.tcp_listen_sd,
-                           OPAL_EV_READ|OPAL_EV_PERSIST,
-                           mca_oob_tcp_recv_handler,
-                           0);
-            opal_event_add(&mca_oob_tcp_component.tcp_recv_event, 0);
+            if (NULL == mca_oob_tcp_component.tcp_recv_event) {
+                mca_oob_tcp_component.tcp_recv_event = opal_event_alloc();
+                opal_event_set(orte_event_base, mca_oob_tcp_component.tcp_recv_event,
+                               mca_oob_tcp_component.tcp_listen_sd,
+                               OPAL_EV_READ|OPAL_EV_PERSIST,
+                               mca_oob_tcp_recv_handler,
+                               0);
+                opal_event_set_priority(mca_oob_tcp_component.tcp_recv_event, ORTE_MSG_PRI);
+                opal_event_add(mca_oob_tcp_component.tcp_recv_event, 0);
+            }
         }
     }
 
@@ -1303,12 +1833,16 @@ int mca_oob_tcp_init(void)
             mca_oob_tcp_component.tcp_listen_thread_sds[idx] = 
                 mca_oob_tcp_component.tcp6_listen_sd;
         } else {
-            opal_event_set(&mca_oob_tcp_component.tcp6_recv_event,
-                           mca_oob_tcp_component.tcp6_listen_sd,
-                           OPAL_EV_READ|OPAL_EV_PERSIST,
-                           mca_oob_tcp_recv_handler,
-                           0);
-            opal_event_add(&mca_oob_tcp_component.tcp6_recv_event, 0);
+            if (NULL == mca_oob_tcp_component.tcp6_recv_event) {
+                mca_oob_tcp_component.tcp6_recv_event = opal_event_alloc();
+                opal_event_set(orte_event_base, mca_oob_tcp_component.tcp6_recv_event,
+                               mca_oob_tcp_component.tcp6_listen_sd,
+                               OPAL_EV_READ|OPAL_EV_PERSIST,
+                               mca_oob_tcp_recv_handler,
+                               0);
+                opal_event_set_priority(mca_oob_tcp_component.tcp6_recv_event, ORTE_MSG_PRI);
+                opal_event_add(mca_oob_tcp_component.tcp6_recv_event, 0);
+            }
         }
     }
 #endif
@@ -1354,20 +1888,28 @@ int mca_oob_tcp_fini(void)
     void *data;
 
     OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
+#if 0
     opal_event_disable(); /* disable event processing */
-
+#endif
     /* shut down the listening system */
     if (OOB_TCP_LISTEN_THREAD == mca_oob_tcp_component.tcp_listen_type) {
         mca_oob_tcp_component.tcp_shutdown = true;
         opal_thread_join(&mca_oob_tcp_component.tcp_listen_thread, &data);
-        opal_event_del(&mca_oob_tcp_component.tcp_listen_thread_event);
+        if (NULL != mca_oob_tcp_component.tcp_listen_thread_event) {
+            opal_event_free(mca_oob_tcp_component.tcp_listen_thread_event);
+            mca_oob_tcp_component.tcp_listen_thread_event = NULL;
+        }
     } else {
-        if (mca_oob_tcp_component.tcp_listen_sd >= 0) {
-            opal_event_del(&mca_oob_tcp_component.tcp_recv_event);
+        if (mca_oob_tcp_component.tcp_listen_sd >= 0 &&
+               NULL != mca_oob_tcp_component.tcp_recv_event) {
+        opal_event_free(mca_oob_tcp_component.tcp_recv_event);
+        mca_oob_tcp_component.tcp_recv_event = NULL;
         }
 #if OPAL_WANT_IPV6
-        if (mca_oob_tcp_component.tcp6_listen_sd >= 0) {
-            opal_event_del(&mca_oob_tcp_component.tcp6_recv_event);
+        if (mca_oob_tcp_component.tcp6_listen_sd >= 0 &&
+            NULL != mca_oob_tcp_component.tcp6_recv_event) {
+            opal_event_free(mca_oob_tcp_component.tcp6_recv_event);
+            mca_oob_tcp_component.tcp6_recv_event = NULL;
         }
 #endif
     }
@@ -1397,11 +1939,9 @@ int mca_oob_tcp_fini(void)
         item != opal_list_get_end(&mca_oob_tcp_component.tcp_events);
         item = opal_list_get_first(&mca_oob_tcp_component.tcp_events) ) {
         mca_oob_tcp_event_t* event = (mca_oob_tcp_event_t*)item;
-        opal_event_del(&event->event);
         OBJ_RELEASE(event);
     }
 
-    opal_event_enable();
     OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
     return ORTE_SUCCESS;
 }
@@ -1590,7 +2130,38 @@ int mca_oob_tcp_set_addr(const orte_process_name_t* name, const char* uri)
     struct sockaddr_storage inaddr;
     mca_oob_tcp_addr_t* addr = NULL;
     mca_oob_tcp_peer_t* peer = NULL;
+    opal_list_item_t *item;
     int rc;
+    
+    if (NULL == uri) {
+        /* purge the hash table entry for this proc */
+        OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
+        /* get the peer object */
+        opal_hash_table_get_value_uint64(&mca_oob_tcp_component.tcp_peers,
+                                         orte_util_hash_name(name), 
+                                         (void**)&peer);
+        if (NULL != peer) {
+            OPAL_THREAD_LOCK(&peer->peer_lock);
+            /* flag the state as closed */
+            peer->peer_state = MCA_OOB_TCP_CLOSED;
+            /* clear any pending sends */
+            while (NULL != (item = opal_list_remove_first(&peer->peer_send_queue))) {
+                OBJ_RELEASE(item);
+            }
+            peer->peer_send_msg = NULL;
+            /* clear any pending recvs */
+            peer->peer_recv_msg = NULL;
+            OPAL_THREAD_UNLOCK(&peer->peer_lock);
+            mca_oob_tcp_peer_shutdown(peer);
+        }
+        /* delete the entry from the hash table */
+        opal_hash_table_set_value_uint64(&mca_oob_tcp_component.tcp_peer_names,
+                                         orte_util_hash_name(name), NULL);
+        /* all done */
+        OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
+        return ORTE_SUCCESS;
+    }
+    
     if((rc = mca_oob_tcp_parse_uri(uri, (struct sockaddr*) &inaddr)) != ORTE_SUCCESS) {
         return rc;
     }
@@ -1617,7 +2188,7 @@ int mca_oob_tcp_set_addr(const orte_process_name_t* name, const char* uri)
 
 
 /* Dummy function for when we are not using FT. */
-#if OPAL_ENABLE_FT == 0
+#if OPAL_ENABLE_FT_CR == 0
 int mca_oob_tcp_ft_event(int state) {
     return ORTE_SUCCESS;
 }
@@ -1627,20 +2198,24 @@ int mca_oob_tcp_ft_event(int state) {
     opal_list_item_t *item;
 
     if(OPAL_CRS_CHECKPOINT == state) {
+#if 0
         /*
          * Disable event processing while we are working
          */
         OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
         opal_event_disable();
         OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
+#endif
     }
     else if(OPAL_CRS_CONTINUE == state) {
+#if 0
         /*
          * Resume event processing
          */
         OPAL_THREAD_LOCK(&mca_oob_tcp_component.tcp_lock);
         opal_event_enable();
         OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
+#endif
     }
     else if(OPAL_CRS_RESTART == state) {
         /*
@@ -1672,7 +2247,9 @@ int mca_oob_tcp_ft_event(int state) {
         /*
          * Resume event processing
          */
+#if 0
         opal_event_enable();
+#endif
         OPAL_THREAD_UNLOCK(&mca_oob_tcp_component.tcp_lock);
     }
     else if(OPAL_CRS_TERM == state ) {
@@ -1685,55 +2262,3 @@ int mca_oob_tcp_ft_event(int state) {
     return exit_status;
 }
 #endif
-
-
-
-int
-mca_oob_tcp_get_new_name(orte_process_name_t* name)
-{
-    mca_oob_tcp_peer_t* peer = mca_oob_tcp_peer_lookup(ORTE_PROC_MY_HNP);
-    mca_oob_tcp_msg_t* msg;
-    int rc;
-
-    if(NULL == peer)
-        return ORTE_ERR_UNREACH;
-
-    MCA_OOB_TCP_MSG_ALLOC(msg, rc);
-    if(NULL == msg) {
-        return rc;
-    }
-
-    if(mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_ALL) {
-        opal_output(0, "%s-%s mca_oob_tcp_get_new_name: starting\n",
-                    ORTE_NAME_PRINT(ORTE_PROC_MY_NAME),
-                    ORTE_NAME_PRINT(&(peer->peer_name)));
-    }
-
-    /* turn the size to network byte order so there will be no problems */
-    msg->msg_hdr.msg_type = MCA_OOB_TCP_PING;
-    msg->msg_hdr.msg_size = 0;
-    msg->msg_hdr.msg_tag = 0;
-    msg->msg_hdr.msg_src = *ORTE_NAME_INVALID;
-    msg->msg_hdr.msg_dst = *ORTE_PROC_MY_HNP;
-
-    MCA_OOB_TCP_HDR_HTON(&msg->msg_hdr);
-    rc = mca_oob_tcp_peer_send(peer, msg);
-    if(rc != ORTE_SUCCESS) {
-        if (rc != ORTE_ERR_ADDRESSEE_UNKNOWN) {
-            MCA_OOB_TCP_MSG_RETURN(msg);
-        }
-        return rc;
-    }
-
-    mca_oob_tcp_msg_wait(msg, &rc);
-
-    if (ORTE_SUCCESS == rc) {
-        *name = *ORTE_PROC_MY_NAME;
-        if(mca_oob_tcp_component.tcp_debug >= OOB_TCP_DEBUG_ALL) {
-            opal_output(0, "%s mca_oob_tcp_get_new_name: done\n",
-                        ORTE_NAME_PRINT(ORTE_PROC_MY_NAME));
-        }
-    }
-
-    return rc;
-}

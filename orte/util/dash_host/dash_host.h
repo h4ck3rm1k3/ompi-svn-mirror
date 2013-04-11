@@ -23,20 +23,21 @@
 #define ORTE_UTIL_DASH_HOST_H
 
 #include "orte_config.h"
-#include "orte/types.h"
 
 #include "opal/class/opal_list.h"
 
-#include "orte/mca/plm/plm_types.h"
 
 BEGIN_C_DECLS
 
 ORTE_DECLSPEC int orte_util_add_dash_host_nodes(opal_list_t *nodes,
-                                                bool *override_oversubscribed,
                                                 char ** host_argv);
     
 ORTE_DECLSPEC int orte_util_filter_dash_host_nodes(opal_list_t *nodes,
-                                                   char ** host_argv);
+                                                   char ** host_argv,
+                                                   bool remove);
+
+ORTE_DECLSPEC int orte_util_get_ordered_dash_host_list(opal_list_t *nodes,
+                                                       char ** host_argv);
 
 END_C_DECLS
 

@@ -9,7 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Los Alamos Nat Security, LLC. All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -20,10 +21,13 @@
 #include <stdio.h>
 
 #include "ompi/mpi/c/bindings.h"
+#include "ompi/runtime/params.h"
+#include "ompi/communicator/communicator.h"
+#include "ompi/errhandler/errhandler.h"
 #include "ompi/mca/topo/topo.h"
 #include "ompi/memchecker.h"
 
-#if OMPI_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
+#if OPAL_HAVE_WEAK_SYMBOLS && OMPI_PROFILING_DEFINES
 #pragma weak MPI_Graph_get = PMPI_Graph_get
 #endif
 
@@ -34,8 +38,8 @@
 static const char FUNC_NAME[] = "MPI_Graph_get";
 
 
-int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges,
-                  int *index, int *edges) 
+int MPI_Graph_get(MPI_Comm comm, int maxindx, int maxedges,
+                  int indx[], int edges[]) 
 {
     int err;
     mca_topo_base_module_graph_get_fn_t func;
@@ -58,7 +62,7 @@ int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges,
             return OMPI_ERRHANDLER_INVOKE (comm, MPI_ERR_TOPOLOGY,
                                            FUNC_NAME);
         }
-        if (0 > maxindex || 0 > maxedges || NULL == index || NULL == edges) {
+        if (0 > maxindx || 0 > maxedges || NULL == indx || NULL == edges) {
             return OMPI_ERRHANDLER_INVOKE (comm, MPI_ERR_ARG,
                                            FUNC_NAME);
         }
@@ -70,7 +74,7 @@ int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges,
     func = comm->c_topo->topo_graph_get;
 
     /* call the function */
-    err = func(comm, maxindex, maxedges, index, edges);
+    err = func(comm, maxindx, maxedges, indx, edges);
     OPAL_CR_EXIT_LIBRARY();
     if ( MPI_SUCCESS != err ) {
         return OMPI_ERRHANDLER_INVOKE(comm, err, FUNC_NAME);

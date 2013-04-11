@@ -1,3 +1,5 @@
+%option nounput
+
 %{ /* -*- C -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
@@ -11,6 +13,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2008      Voltaire. All rights reserved
+ * Copyright (c) 2013      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  *  
  * $COPYRIGHT$
  * 
@@ -80,6 +84,8 @@ rank                { orte_rmaps_rank_file_value.sval = yytext;
                      return ORTE_RANKFILE_RANK; }
 slot               { orte_rmaps_rank_file_value.sval = yytext; 
                      return ORTE_RANKFILE_SLOT; }
+slots              { orte_rmaps_rank_file_value.sval = yytext; 
+                     return ORTE_RANKFILE_SLOT; }
 
 username           { orte_rmaps_rank_file_value.sval = yytext;
                      return ORTE_RANKFILE_USERNAME; }
@@ -96,8 +102,8 @@ username           { orte_rmaps_rank_file_value.sval = yytext;
     */
 %}
 
-[A-za-z0-9_\-,:*@]*  { orte_rmaps_rank_file_value.sval = yytext;
-                     return ORTE_RANKFILE_STRING; }
+[A-za-z0-9_\-,\;:*@]*  { orte_rmaps_rank_file_value.sval = yytext;
+                         return ORTE_RANKFILE_STRING; }
 
 ([A-Za-z0-9][A-Za-z0-9_\-]*"@")?([0-9]{1,3}"."){3}[0-9]{1,3} {
                       orte_rmaps_rank_file_value.sval = yytext;

@@ -1,4 +1,5 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Allgather 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -13,6 +14,7 @@ int MPI_Allgather(void\fI *sendbuf\fP, int \fI sendcount\fP,
 	MPI_Datatype\fI sendtype\fP, void\fI *recvbuf\fP, int\fI recvcount\fP,
 	 MPI_Datatype\fI recvtype\fP, MPI_Comm\fI comm\fP) 
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
@@ -22,6 +24,7 @@ MPI_ALLGATHER(\fISENDBUF\fP,\fI SENDCOUNT\fP,\fI SENDTYPE\fP,\fI RECVBUF\fP,\fI 
 	INTEGER	\fISENDCOUNT\fP,\fI SENDTYPE\fP,\fI RECVCOUNT\fP,\fI RECVTYPE\fP,\fI COMM\fP,
 	INTEGER	\fIIERROR\fP  
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -29,17 +32,34 @@ void MPI::Comm::Allgather(const void* \fIsendbuf\fP, int \fIsendcount\fP, const
 	MPI::Datatype& \fIsendtype\fP, void* \fIrecvbuf\fP, int \fIrecvcount\fP,
 	const MPI::Datatype& \fIrecvtype\fP) const = 0
 
+.fi
+.SH Java Syntax
+.nf
+import mpi.*;
+void MPI.COMM_WORLD.Allgather(Object \fIsendbuf\fP, int \fIsendoffset\fP, int \fIsendcount\fP, MPI.Datatype \fIsendtype\fP,
+                              Object \fIrecvbuf\fP, int \fIrecvoffset\fP, int \fIrecvcount\fP, Datatype \fIrecvtype\fP)
+
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
 sendbuf    
 Starting address of send buffer (choice).
 .TP 1i
+sendoffset    
+Number of elements to skip at beginning of buffer (integer, Java-only).
+.TP 1i
 sendcount    
 Number of elements in send buffer (integer).
 .TP 1i
 sendtype    
 Datatype of send buffer elements (handle).
+.TP 1i
+recvbuf    
+Starting address of recv buffer (choice).
+.TP 1i
+recvoffset    
+Number of elements to skip at beginning of buffer (integer, Java-only).
 .TP 1i
 recvcount    
 Number of elements received from any process (integer).
@@ -71,6 +91,7 @@ The outcome of a call to MPI_Allgather(\&...) is as if all processes executed n 
 .nf
   MPI_Gather(sendbuf,sendcount,sendtype,recvbuf,recvcount,
              recvtype,root,comm), 
+.fi
 .sp
 .fi
 for root = 0 , ..., n-1. The rules for correct usage of MPI_Allgather are easily found from the corresponding rules for MPI_Gather.
@@ -90,7 +111,7 @@ MPI_Comm comm;
 After the call, every process has the group-wide concatenation of the sets of data. 
 
 .SH USE OF IN-PLACE OPTION
-When the communicator is an intracommunicator, you can perform an all-gather operation in-place (the output buffer is used as the input buffer).  Use the variable MPI_IN_PLACE as the value of both \fIsendbuf\fR and \fIrecvbuf\fR.  In this case, \fIsendcount\fR and \fIsendtype\fR are ignored.  The input data of each process is assumed to be in the area where that process would receive its own contribution to the receive buffer.  Specifically, the outcome of a call to MPI_Allgather that used the in-place option is identical to the case in which all processes executed \fIn\fR calls to
+When the communicator is an intracommunicator, you can perform an all-gather operation in-place (the output buffer is used as the input buffer).  Use the variable MPI_IN_PLACE as the value of \fIsendbuf\fR.  In this case, \fIsendcount\fR and \fIsendtype\fR are ignored.  The input data of each process is assumed to be in the area where that process would receive its own contribution to the receive buffer.  Specifically, the outcome of a call to MPI_Allgather that used the in-place option is identical to the case in which all processes executed \fIn\fR calls to
 .sp
 .nf
    MPI_GATHER ( MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, recvbuf, 
@@ -114,7 +135,7 @@ When the communicator is an intra-communicator, these groups are the same, and t
 
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler

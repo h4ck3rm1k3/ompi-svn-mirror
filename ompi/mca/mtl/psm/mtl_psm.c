@@ -2,7 +2,7 @@
  * Copyright (c) 2004-2006 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
- * Copyright (c) 2004-2005 The University of Tennessee and The University
+ * Copyright (c) 2004-2010 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
@@ -22,8 +22,6 @@
 #include "orte/util/show_help.h"
 #include "orte/util/proc_info.h"
 #include "ompi/mca/mtl/mtl.h"
-#include "ompi/communicator/communicator.h"
-#include "opal/class/opal_list.h"
 #include "ompi/runtime/ompi_module_exchange.h"
 #include "ompi/mca/mtl/base/mtl_base_datatype.h"
 #include "ompi/proc/proc.h"
@@ -49,8 +47,12 @@ mca_mtl_psm_module_t ompi_mtl_psm = {
         
         ompi_mtl_psm_irecv,
         ompi_mtl_psm_iprobe,
-        
-        ompi_mtl_psm_cancel
+        ompi_mtl_psm_imrecv,
+        ompi_mtl_psm_improbe,
+
+        ompi_mtl_psm_cancel,
+        ompi_mtl_psm_add_comm,
+        ompi_mtl_psm_del_comm
     }    
 };
 
@@ -110,7 +112,7 @@ int ompi_mtl_psm_module_init(int local_rank, int num_local_procs) {
 
     /* Handle our own errors for opening endpoints */
     psm_error_register_handler(ompi_mtl_psm.ep, ompi_mtl_psm_errhandler);
-    
+
     /* Setup MPI_LOCALRANKID and MPI_LOCALNRANKS so PSM can allocate hardware
      * contexts correctly.
      */
@@ -123,7 +125,7 @@ int ompi_mtl_psm_module_init(int local_rank, int num_local_procs) {
     bzero((void*) &ep_opt, sizeof(ep_opt));
     ep_opt.timeout = ompi_mtl_psm.connect_timeout * 1e9;
     ep_opt.unit = ompi_mtl_psm.ib_unit;
-    ep_opt.affinity = -1; /* Let PSM choose affinity */
+    ep_opt.affinity = PSM_EP_OPEN_AFFINITY_SKIP; /* do not let PSM set affinity */
     ep_opt.shm_mbytes = -1; /* Choose PSM defaults */
     ep_opt.sendbufs_num = -1; /* Choose PSM defaults */
 
@@ -134,6 +136,11 @@ int ompi_mtl_psm_module_init(int local_rank, int num_local_procs) {
 #if PSM_VERNO >= 0x0107
     ep_opt.port = ompi_mtl_psm.ib_port;
     ep_opt.outsl = ompi_mtl_psm.ib_service_level;
+#endif
+
+#if PSM_VERNO >= 0x010d
+    ep_opt.service_id = ompi_mtl_psm.ib_service_id;
+    ep_opt.path_res_type = ompi_mtl_psm.path_res_type;
 #endif
 
     /* Open PSM endpoint */
@@ -234,6 +241,10 @@ ompi_mtl_psm_connect_error_msg(psm_error_t err)
 #  define min(a,b) ((a) < (b) ? (a) : (b))
 #endif
 
+#ifndef max
+#  define max(a,b) ((a) > (b) ? (a) : (b))
+#endif
+
 int
 ompi_mtl_psm_add_procs(struct mca_mtl_base_module_t *mtl,
                       size_t nprocs,
@@ -277,10 +288,7 @@ ompi_mtl_psm_add_procs(struct mca_mtl_base_module_t *mtl,
 	epids_in[i] = *epid;
     }
 
-    timeout_in_secs = min(180, 0.5 * nprocs);
-    if (ompi_mtl_psm.connect_timeout  < timeout_in_secs)  {
-	timeout_in_secs = ompi_mtl_psm.connect_timeout;
-    }
+    timeout_in_secs = max(ompi_mtl_psm.connect_timeout, 0.5 * nprocs);
 
     psm_error_register_handler(ompi_mtl_psm.ep, PSM_ERRHANDLER_NOP);
 
@@ -356,6 +364,22 @@ ompi_mtl_psm_del_procs(struct mca_mtl_base_module_t *mtl,
 }
 
 
+int
+ompi_mtl_psm_add_comm(struct mca_mtl_base_module_t *mtl,
+                      struct ompi_communicator_t *comm)
+{
+    return OMPI_SUCCESS;
+}
+
+
+int
+ompi_mtl_psm_del_comm(struct mca_mtl_base_module_t *mtl,
+                      struct ompi_communicator_t *comm)
+{
+    return OMPI_SUCCESS;
+}
+
+
 int ompi_mtl_psm_progress( void ) { 
     psm_error_t err;
     mca_mtl_psm_request_t* mtl_psm_request;
@@ -389,8 +413,8 @@ int ompi_mtl_psm_progress( void ) {
 		    PSM_GET_MQRANK(psm_status.msg_tag);
 	    mtl_psm_request->super.ompi_req->req_status.MPI_TAG =
 		    PSM_GET_MQUTAG(psm_status.msg_tag);
-            mtl_psm_request->super.ompi_req->req_status._count = 
-                    psm_status.nbytes;
+        mtl_psm_request->super.ompi_req->req_status._ucount = 
+            psm_status.nbytes;
 	}
 	
 	if(mtl_psm_request->type == OMPI_MTL_PSM_ISEND) { 

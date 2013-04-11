@@ -1,8 +1,9 @@
-.\"Copyright 2006-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2006-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Intercomm_create 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
-\fBMPI_Intercomm_create\fP \- Creates an intercommuncator from two intracommunicators.
+\fBMPI_Intercomm_create\fP \- Creates an intercommunicator from two intracommunicators.
 
 .SH SYNTAX
 .ft R
@@ -12,6 +13,7 @@
 int MPI_Intercomm_create(MPI_Comm \fIlocal_comm\fP, int\fI local_leader\fP,
 	MPI_Comm\fI peer_comm\fP, int\fI remote_leader\fP, int\fI tag\fP, MPI_Comm\fI *newintercomm\fP)
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
@@ -20,13 +22,15 @@ MPI_INTERCOMM_CREATE(\fILOCAL_COMM, LOCAL_LEADER, PEER_COMM,
 	INTEGER	\fILOCAL_COMM, LOCAL_LEADER, PEER_COMM, REMOTE_LEADER\fP
 	INTEGER	\fITAG, NEWINTERCOMM, IERROR\fP 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
 Intercomm Intracomm::Create_intercomm(int \fIlocal_leader\fP, const 
 	Comm& \fIpeer_comm\fP, int \fIremote_leader\fP, int \fItag\fP) const
 
-.SH INPUT PARAMTERS
+.fi
+.SH INPUT PARAMETERS
 .ft R
 .TP 1i
 local_comm
@@ -67,7 +71,7 @@ If multiple MPI_Intercomm_creates are being made, they should use different tags
 We recommend using a dedicated peer communicator, such as a duplicate of MPI_COMM_WORLD, to avoid trouble with peer communicators.
 .sp
 The MPI 1.1 Standard contains two mutually exclusive comments on the
-input intracommunicators.  One says that their repective groups must be
+input intracommunicators.  One says that their respective groups must be
 disjoint; the other that the leaders can be the same process.  After
 some discussion by the MPI Forum, it has been decided that the groups must
 be disjoint.  Note that the 
@@ -83,7 +87,7 @@ intercommunicators (like
 groups are not disjoint.
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler may be changed with MPI_Comm_set_errhandler; the predefined error handler MPI_ERRORS_RETURN may be used to cause error values to be returned. Note that MPI does not guarantee that an MPI program can continue past an error.  

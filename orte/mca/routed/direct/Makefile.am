@@ -1,6 +1,7 @@
 #
 # Copyright (c) 2007      Los Alamos National Security, LLC.
 #                         All rights reserved. 
+# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -10,14 +11,14 @@
 
 sources = \
 	routed_direct.h \
-	routed_direct_component.c \
-	routed_direct.c
+	routed_direct.c \
+	routed_direct_component.c
 
 # Make the output library in this directory, and name it either
 # mca_<type>_<name>.la (for DSO builds) or libmca_<type>_<name>.la
 # (for static builds).
 
-if OMPI_BUILD_routed_direct_DSO
+if MCA_BUILD_orte_routed_direct_DSO
 component_noinst =
 component_install = mca_routed_direct.la
 else

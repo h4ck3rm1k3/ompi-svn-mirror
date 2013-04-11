@@ -1,4 +1,5 @@
-.\"Copyright 2007-2008 Sun Microsystems, Inc.
+.\" Copyright 2010 Cisco Systems, Inc.  All rights reserved.
+.\" Copyright 2007-2008 Sun Microsystems, Inc.
 .\" Copyright (c) 1996 Thinking Machines Corporation
 .TH MPI_Allreduce 3 "#OMPI_DATE#" "#PACKAGE_VERSION#" "#PACKAGE_NAME#"
 .SH NAME
@@ -12,6 +13,7 @@
 int MPI_Allreduce(void \fI*sendbuf\fP, void \fI*recvbuf\fP, int\fI count\fP,
 	MPI_Datatype\fI datatype\fP, MPI_Op\fI op\fP, MPI_Comm\fI comm\fP)
 
+.fi
 .SH Fortran Syntax
 .nf
 INCLUDE 'mpif.h'
@@ -20,6 +22,7 @@ MPI_ALLREDUCE(\fISENDBUF\fP,\fI RECVBUF\fP, \fICOUNT\fP,\fI DATATYPE\fP,\fI OP\f
 	<type>	\fISENDBUF\fP(*), \fIRECVBUF\fP(*)
 	INTEGER	\fICOUNT\fP,\fI DATATYPE\fP,\fI OP\fP,\fI COMM\fP,\fI IERROR 
 
+.fi
 .SH C++ Syntax
 .nf
 #include <mpi.h>
@@ -27,14 +30,29 @@ void MPI::Comm::Allreduce(const void* \fIsendbuf\fP, void* \fIrecvbuf\fP,
 	int \fIcount\fP, const MPI::Datatype& \fIdatatype\fP, const 
 	MPI::Op& \fIop\fP) const=0
 
+.fi
+.SH Java Syntax
+.nf
+import mpi.*;
+void MPI.COMM_WORLD.Allreduce(Object \fIsendbuf\fP, int \fIsendoffset\fP,
+                              Object \fIrecvbuf\fP, int \fIrecvoffset\fP,
+                              int \fIcount\fP, MPI.Datatype \fIsendtype\fP,
+                              MPI.Op \fIop\fP)
+.fi
 .SH INPUT PARAMETERS
 .ft R
 .TP 1i
 sendbuf
 Starting address of send buffer (choice).
 .TP 1i
+sendoffset    
+Number of elements to skip at beginning of buffer (integer, Java-only).
+.TP 1i
 count
 Number of elements in send buffer (integer).
+.TP 1i
+recvoffset    
+Number of elements to skip at beginning of buffer (integer, Java-only).
 .TP 1i
 datatype
 Datatype of elements of send buffer (handle).
@@ -116,8 +134,6 @@ Because the in-place option converts the receive buffer into a send-and-receive 
 .SH WHEN COMMUNICATOR IS AN INTER-COMMUNICATOR
 When the communicator is an inter-communicator, the reduce operation occurs in two phases.  The data is reduced from all the members of the first group and received by all the members of the second group.  Then the data is reduced from all the members of the second group and received by all the members of the first.  The operation exhibits a symmetric, full-duplex behavior.  
 .sp
-The first group defines the root process.  The root process uses MPI_ROOT as the value of \fIroot\fR.  All other processes in the first group use MPI_PROC_NULL as the value of \fIroot\fR.  All processes in the second group use the rank of the root process in the first group as the value of \fIroot\fR.
-.sp
 When the communicator is an intra-communicator, these groups are the same, and the operation occurs in a single phase.
 .SH NOTES ON COLLECTIVE OPERATIONS
 
@@ -134,7 +150,7 @@ to something else, for example,
 then no error may be indicated.
 
 .SH ERRORS
-Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI:Exception object.
+Almost all MPI routines return an error value; C routines as the value of the function and Fortran routines in the last argument. C++ functions do not return errors. If the default error handler is set to MPI::ERRORS_THROW_EXCEPTIONS, then on error the C++ exception mechanism will be used to throw an MPI::Exception object.
 .sp
 Before the error value is returned, the current MPI error handler is
 called. By default, this error handler aborts the MPI job, except for I/O function errors. The error handler

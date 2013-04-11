@@ -26,6 +26,7 @@
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
+#include <string.h>
 
 #include "opal/runtime/opal.h"
 #include "opal/dss/dss.h"
@@ -51,7 +52,7 @@ FILE *test_out;
 
 int main (int argc, char* argv[])
 {
-    opal_init();
+    opal_init(&argc, &argv);
 
     test_out = stderr;
 

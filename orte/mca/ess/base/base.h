@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011-2012 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2012      Oak Ridge National Labs.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -26,10 +28,6 @@
 
 #include "opal/mca/mca.h"
 #include "opal/dss/dss_types.h"
-#include "opal/class/opal_pointer_array.h"
-#include "opal/class/opal_value_array.h"
-
-#include "orte/runtime/orte_globals.h"
 
 #include "orte/mca/ess/ess.h"
 
@@ -59,6 +57,11 @@ ORTE_DECLSPEC int orte_ess_base_close(void);
  */
 ORTE_DECLSPEC extern int orte_ess_base_output;
 
+/*
+ * stdout/stderr buffering control parameter
+ */
+ORTE_DECLSPEC extern int orte_ess_base_std_buffering;
+
 ORTE_DECLSPEC extern opal_list_t orte_ess_base_components_available;
 
 #if !ORTE_DISABLE_FULL_SUPPORT
@@ -72,26 +75,18 @@ ORTE_DECLSPEC int orte_ess_base_std_prolog(void);
 
 ORTE_DECLSPEC int orte_ess_base_app_setup(void);
 ORTE_DECLSPEC int orte_ess_base_app_finalize(void);
-ORTE_DECLSPEC void orte_ess_base_app_abort(int status, bool report) __opal_attribute_noreturn__;
+ORTE_DECLSPEC void orte_ess_base_app_abort(int status, bool report);
 
 ORTE_DECLSPEC int orte_ess_base_tool_setup(void);
 ORTE_DECLSPEC int orte_ess_base_tool_finalize(void);
 
-ORTE_DECLSPEC int orte_ess_base_orted_setup(void);
+ORTE_DECLSPEC int orte_ess_base_orted_setup(char **hosts);
 ORTE_DECLSPEC int orte_ess_base_orted_finalize(void);
 
-/*
- * Job/nid/pmap support
+/* Detect whether or not this proc is bound - if not, 
+ * see if it should bind itself
  */
-ORTE_DECLSPEC int orte_ess_base_build_nidmap(opal_buffer_t *buffer,
-                                             opal_pointer_array_t *nidmap,
-                                             opal_value_array_t *pmap, orte_vpid_t *num_procs);
-
-ORTE_DECLSPEC orte_pmap_t* orte_ess_base_lookup_pmap(opal_pointer_array_t *jobmap, orte_process_name_t *proc);
-
-ORTE_DECLSPEC orte_nid_t* orte_ess_base_lookup_nid(opal_pointer_array_t *nidmap,
-                                                   opal_pointer_array_t *jobmap,
-                                                   orte_process_name_t *proc);
+ORTE_DECLSPEC int orte_ess_base_proc_binding(void);
 
 /*
  * Put functions

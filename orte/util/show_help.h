@@ -9,7 +9,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2008      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2008-2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -31,7 +31,6 @@
 #include "orte_config.h"
 #include "orte/types.h"
 
-#include "opal/util/output.h"
 
 #include "orte/mca/rml/rml_types.h"
 
@@ -55,6 +54,14 @@ BEGIN_C_DECLS
 ORTE_DECLSPEC int orte_show_help_init(void);
 
 /**
+ * Allow other parts of the code base to know if the ORTE show_help
+ * system is available or not (does not necessarily indicate that
+ * aggregating is available; on no-ORTE systems, ORTE show_help is
+ * available, but aggregating is not).
+ */
+ORTE_DECLSPEC bool orte_show_help_is_available(void);
+
+/**
  * Shut down the output stream system.
  *
  * Shut down the output stream system, including the default verbose
@@ -63,12 +70,35 @@ ORTE_DECLSPEC int orte_show_help_init(void);
 ORTE_DECLSPEC void orte_show_help_finalize(void);
 
 /**
- * Show help
+ * Show help.
  *
- * Sends show help messages to the HNP if on a backend node
+ * Sends show help messages to the HNP if on a backend node.  Note
+ * that aggregation is not currently supported on HNP-less systems
+ * (e.g., cray).
  */
 ORTE_DECLSPEC int orte_show_help(const char *filename, const char *topic, 
                                  bool want_error_header, ...);
+
+/**
+ * Exactly the same as orte_show_help, but pass in a rendered string,
+ * rather than a varargs list which must be rendered.
+ */
+ORTE_DECLSPEC int orte_show_help_norender(const char *filename, 
+                                          const char *topic, 
+                                          bool want_error_header, 
+                                          const char *output);
+
+/**
+ * Pretend that this message has already been shown.
+ *
+ * Sends a control message to the HNP that will effecitvely suppress
+ * this message from being shown.  Primitive *-wildcarding is
+ * possible.
+ *
+ * Not currently supported on HNP-less systems (e.g., cray).
+ */
+ORTE_DECLSPEC int orte_show_help_suppress(const char *filename, 
+                                          const char *topic);
 
 #if !ORTE_DISABLE_FULL_SUPPORT
 

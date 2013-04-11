@@ -1,4 +1,8 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
+ * Copyright (c) 2004-2011 The University of Tennessee and The University
+ *                         of Tennessee Research Foundation.  All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -7,18 +11,15 @@
  */
 
 #include "orte_config.h"
-
-#include "orte/util/show_help.h"
+#include "opal/types.h"
 
 #include "orte/mca/rml/base/base.h"
+#include "orte/mca/rml/rml_types.h"
 #include "opal/dss/dss.h"
 #include "orte/util/name_fns.h"
 #include "orte/runtime/orte_globals.h"
 
-#include "orte/mca/oob/oob.h"
-#include "orte/mca/oob/base/base.h"
 #include "rml_oob.h"
-
 
 static void
 orte_rml_recv_msg_callback(int status,
@@ -41,10 +42,12 @@ orte_rml_recv_msg_callback(int status,
                          hdr->tag));
 
     if (msg->msg_type == ORTE_RML_BLOCKING_RECV) {
+	OPAL_THREAD_LOCK(&msg->msg_lock);
         /* blocking send */
         msg->msg_status = status;
         msg->msg_complete = true;
         opal_condition_broadcast(&msg->msg_cond);
+	OPAL_THREAD_UNLOCK(&msg->msg_lock);
     } else if (msg->msg_type == ORTE_RML_NONBLOCKING_IOV_RECV) {
         /* non-blocking iovec send */
         if (status > 0) {
@@ -193,7 +196,6 @@ orte_rml_oob_recv_buffer(orte_process_name_t* peer,
 
  cleanup:
     OBJ_RELEASE(msg);
-
 
     return ret;
 }

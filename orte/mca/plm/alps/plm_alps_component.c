@@ -25,11 +25,9 @@
 #include "orte_config.h"
 #include "orte/constants.h"
 
-#include "orte/util/show_help.h"
 #include "opal/mca/base/mca_base_param.h"
 
 #include "orte/runtime/orte_globals.h"
-#include "orte/mca/errmgr/errmgr.h"
 
 #include "orte/mca/plm/plm.h"
 #include "orte/mca/plm/base/base.h"
@@ -104,9 +102,14 @@ static int plm_alps_open(void)
                            &mca_plm_alps_component.priority);
 
     mca_plm_alps_component.timing = orte_timing;
-    
+
+    mca_base_param_reg_string(comp, "aprun",
+                              "Command to run instead of aprun",
+                              false, false, "aprun",
+                              &mca_plm_alps_component.aprun_cmd);
+
     mca_base_param_reg_string(comp, "args",
-                              "Custom arguments to srun",
+                              "Custom arguments to aprun",
                               false, false, NULL,
                               &mca_plm_alps_component.custom_args);
 

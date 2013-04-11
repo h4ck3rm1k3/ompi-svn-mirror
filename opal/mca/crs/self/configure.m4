@@ -1,6 +1,6 @@
 # -*- shell-script -*-
 #
-# Copyright (c) 2004-2009 The Trustees of Indiana University.
+# Copyright (c) 2004-2010 The Trustees of Indiana University.
 #                         All rights reserved.
 # Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
 #                         All rights reserved.
@@ -8,6 +8,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,9 +18,11 @@
 
 # MCA_crs_self_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_crs_self_CONFIG],[
+AC_DEFUN([MCA_opal_crs_self_CONFIG],[
+    AC_CONFIG_FILES([opal/mca/crs/self/Makefile])
+
     # If we don't want FT, don't compile this component
-    AS_IF([test "$ompi_want_ft" = "1"],
+    AS_IF([test "$opal_want_ft_cr" = "1"],
         [crs_self_good="yes"],
         [crs_self_good="no"])
 
@@ -32,7 +35,7 @@ AC_DEFUN([MCA_crs_self_CONFIG],[
     # If they did not ask for dlopen support,
     # they probably do not want this component either
     AS_IF([test "$crs_self_good" = "yes"],
-        [AS_IF([test "$OMPI_ENABLE_DLOPEN_SUPPORT" = "1"],
+        [AS_IF([test "$OPAL_ENABLE_DLOPEN_SUPPORT" = "1"],
                 [crs_self_good="yes"],
                 [crs_self_good="no"])])
 

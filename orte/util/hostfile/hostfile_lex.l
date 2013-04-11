@@ -1,3 +1,5 @@
+%option nounput
+
 %{ /* -*- C -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
@@ -10,6 +12,7 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -19,7 +22,7 @@
 #include "orte_config.h"
 
 #include <stdio.h>
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
@@ -28,15 +31,11 @@
 /*
  * local functions
  */
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+BEGIN_C_DECLS
 
 int orte_util_hostfile_wrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif  /* defined(c_plusplus) || defined(__cplusplus) */
+END_C_DECLS
 
 int orte_util_hostfile_wrap(void)
 {
@@ -113,6 +112,11 @@ count_max          { orte_util_hostfile_value.sval = yytext;
 max_count          { orte_util_hostfile_value.sval = yytext; 
                      return ORTE_HOSTFILE_SLOTS_MAX; }
 
+rank                { orte_util_hostfile_value.sval = yytext; 
+                     return ORTE_HOSTFILE_RANK; }
+slot               { orte_util_hostfile_value.sval = yytext; 
+                     return ORTE_HOSTFILE_SLOT; }
+
 username           { orte_util_hostfile_value.sval = yytext;
                      return ORTE_HOSTFILE_USERNAME; }
 "user-name"        { orte_util_hostfile_value.sval = yytext;
@@ -140,12 +144,6 @@ cores_per_socket   { orte_util_hostfile_value.sval = yytext;
 
 "cores-per-socket" { orte_util_hostfile_value.sval = yytext;
                      return ORTE_HOSTFILE_CORES_PER_SOCKET; }
-
-cpu_set            { orte_util_hostfile_value.sval = yytext;
-                     return ORTE_HOSTFILE_CPU_SET; }
-
-"cpu-set"           { orte_util_hostfile_value.sval = yytext;
-                     return ORTE_HOSTFILE_CPU_SET; }
 
 \+n[0-9]+	   { orte_util_hostfile_value.sval = yytext;
                      return ORTE_HOSTFILE_RELATIVE; }

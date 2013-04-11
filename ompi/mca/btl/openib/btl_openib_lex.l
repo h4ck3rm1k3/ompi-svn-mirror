@@ -6,15 +6,15 @@
  * Copyright (c) 2004-2005 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
- * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart, 
+ * Copyright (c) 2004-2005 High Performance Computing Center Stuttgart,
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006      Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
- * 
+ *
  * Additional copyrights may follow
- * 
+ *
  * $HEADER$
  */
 
@@ -27,9 +27,7 @@
 
 #include "btl_openib_lex.h"
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
 /*
  * local functions
@@ -37,9 +35,7 @@ extern "C" {
 static int finish_parsing(void) ;
 static int btl_openib_ini_yywrap(void);
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 /*
  * global variables
@@ -76,13 +72,13 @@ NAME_CHAR   [A-Za-z0-9_\-\.\\\/]
 <comment>[^*\n]*       ; /* Eat up non '*'s */
 <comment>"*"+[^*/\n]*  ; /* Eat '*'s not followed by a '/' */
 <comment>\n         { ++btl_openib_ini_yynewlines;
-                      return BTL_OPENIB_INI_PARSE_NEWLINE; } 
+                      return BTL_OPENIB_INI_PARSE_NEWLINE; }
 <comment>"*"+"/"    { BEGIN(INITIAL); /* Done with block comment */
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 
 {WHITE}*\[{WHITE}*  { BEGIN(section_name); }
 <section_name>({NAME_CHAR}|{WHITE})*{NAME_CHAR}/{WHITE}*\] {
-                      BEGIN(section_end); 
+                      BEGIN(section_end);
                       return BTL_OPENIB_INI_PARSE_SECTION; }
 <section_name>\n    { ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_ERROR; }
@@ -91,7 +87,7 @@ NAME_CHAR   [A-Za-z0-9_\-\.\\\/]
                       ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
 
-{WHITE}*"="{WHITE}* { BEGIN(value); 
+{WHITE}*"="{WHITE}* { BEGIN(value);
                       return BTL_OPENIB_INI_PARSE_EQUAL; }
 {WHITE}+            ; /* whitespace */
 {CHAR}+             { return BTL_OPENIB_INI_PARSE_SINGLE_WORD; }
@@ -99,7 +95,7 @@ NAME_CHAR   [A-Za-z0-9_\-\.\\\/]
 <value>{WHITE}*\n   { BEGIN(INITIAL);
                       ++btl_openib_ini_yynewlines;
                       return BTL_OPENIB_INI_PARSE_NEWLINE; }
-<value>[^\n]*[^\t \n]/[\t ]* { 
+<value>[^\n]*[^\t \n]/[\t ]* {
                       return BTL_OPENIB_INI_PARSE_VALUE; }
 
 .                   { return BTL_OPENIB_INI_PARSE_ERROR; }
@@ -111,10 +107,10 @@ NAME_CHAR   [A-Za-z0-9_\-\.\\\/]
  * This cleans up at the end of the parse (since, in this case, we
  * always parse the entire file) and prevents a memory leak.
  */
-static int finish_parsing(void) 
+static int finish_parsing(void)
 {
     if (NULL != YY_CURRENT_BUFFER) {
-        yy_delete_buffer(YY_CURRENT_BUFFER); 
+        yy_delete_buffer(YY_CURRENT_BUFFER);
 #if defined(YY_CURRENT_BUFFER_LVALUE)
         YY_CURRENT_BUFFER_LVALUE = NULL;
 #else

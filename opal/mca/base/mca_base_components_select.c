@@ -18,11 +18,9 @@
 #include <sys/types.h>
 #endif
 
+#include "opal/runtime/opal.h"
 #include "opal/class/opal_list.h"
-#include "opal/util/strncpy.h"
-#include "opal/util/argv.h"
 #include "opal/util/output.h"
-#include "opal/util/show_help.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_component_repository.h"
@@ -120,7 +118,7 @@ int mca_base_select(const char *type_name, int output_id,
     opal_output_verbose(5, output_id,
                         "mca:base:select:(%5s) Selected component [%s]",
                         type_name, (*best_component)->mca_component_name);
-
+    
     /*
      * Close the non-selected components
      */

@@ -9,7 +9,9 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
- * Copyright (c) 2006-2009 QLogic Corporation. All rights reserved.
+ * Copyright (c) 2006-2010 QLogic Corporation. All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC.
+ *                         All rights reserved.
  * $COPYRIGHT$
  *
  * Additional copyrights may follow
@@ -20,9 +22,10 @@
 #include "ompi_config.h"
 
 #include "orte/util/show_help.h"
-#include "opal/event/event.h"
+#include "orte/util/proc_info.h"
+#include "opal/mca/event/event.h"
+#include "opal/util/output.h"
 #include "opal/mca/base/mca_base_param.h"
-#include "ompi/datatype/convertor.h"
 #include "ompi/proc/proc.h"
 
 #include "mtl_psm.h"
@@ -31,8 +34,13 @@
 
 #include "psm.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 static int ompi_mtl_psm_component_open(void);
 static int ompi_mtl_psm_component_close(void);
+static int ompi_mtl_psm_component_register(void);
 
 static mca_mtl_base_module_t* ompi_mtl_psm_component_init( bool enable_progress_threads, 
                                                           bool enable_mpi_threads );
@@ -51,7 +59,9 @@ mca_mtl_psm_component_t mca_mtl_psm_component = {
             OMPI_MINOR_VERSION,  /* MCA component minor version */
             OMPI_RELEASE_VERSION,  /* MCA component release version */
             ompi_mtl_psm_component_open,  /* component open */
-            ompi_mtl_psm_component_close  /* component close */
+            ompi_mtl_psm_component_close,  /* component close */
+	    NULL,
+	    ompi_mtl_psm_component_register
         },
         {
             /* The component is not checkpoint ready */
@@ -64,19 +74,23 @@ mca_mtl_psm_component_t mca_mtl_psm_component = {
 
     
 static int
-ompi_mtl_psm_component_open(void)
+ompi_mtl_psm_component_register(void)
 {
+    int value;
+    char *service_id = NULL;
+    char *path_res = NULL;
     
     mca_base_param_reg_int(&mca_mtl_psm_component.super.mtl_version, 
 			   "connect_timeout",
 			   "PSM connection timeout value in seconds",
-			   false, false, 30, &ompi_mtl_psm.connect_timeout);
+			   false, false, 180, &ompi_mtl_psm.connect_timeout);
   
     mca_base_param_reg_int(&mca_mtl_psm_component.super.mtl_version, 
 			   "debug",
 			   "PSM debug level",
 			   false, false, 1, 
-			   &ompi_mtl_psm.debug_level);
+			   &value);
+    ompi_mtl_psm.debug_level = value;
   
     mca_base_param_reg_int(&mca_mtl_psm_component.super.mtl_version, 
 			   "ib_unit",
@@ -101,8 +115,37 @@ ompi_mtl_psm_component_open(void)
 			   "ib_pkey",
 			   "Infiniband partition key",
 			   false, false, 0x7fffUL, 
-			   &ompi_mtl_psm.ib_pkey);
-  
+			   &value);
+    ompi_mtl_psm.ib_pkey = value;
+    
+#if PSM_VERNO >= 0x010d
+    mca_base_param_reg_string(&mca_mtl_psm_component.super.mtl_version,
+			      "ib_service_id",
+			      "Infiniband service ID to use for application (default is 0)",
+			      false, false, "0x1000117500000000",
+			      &service_id);
+    ompi_mtl_psm.ib_service_id = (uint64_t) strtoull(service_id, NULL, 0);
+    
+    mca_base_param_reg_string(&mca_mtl_psm_component.super.mtl_version,
+			      "path_query",
+			      "Path record query mechanisms (valid values: opp, none)",
+			      false, false, NULL, &path_res);
+    if ((NULL != path_res) && strcasecmp(path_res, "none")) {
+      if (!strcasecmp(path_res, "opp"))
+	ompi_mtl_psm.path_res_type = PSM_PATH_RES_OPP;
+      else {
+	orte_show_help("help-mtl-psm.txt",
+		       "path query mechanism unknown", true,
+		       path_res, "OfedPlus (opp) | Static Routes (none)");
+	return OMPI_ERR_NOT_FOUND;
+      }
+    }
+    else {
+      /* Default is "static/none" path record queries */
+      ompi_mtl_psm.path_res_type = PSM_PATH_RES_NONE;
+    }
+#endif
+    
     if (ompi_mtl_psm.ib_service_level < 0)  {
       ompi_mtl_psm.ib_service_level = 0;
     } else if (ompi_mtl_psm.ib_service_level > 15) {
@@ -113,6 +156,19 @@ ompi_mtl_psm_component_open(void)
     
 }
 
+static int
+ompi_mtl_psm_component_open(void)
+{
+  struct stat st;
+  
+  /* Component available only if Truescale hardware is present */
+  if (0 == stat("/dev/ipath", &st)) {
+    return OMPI_SUCCESS;
+  }
+  else {
+    return OPAL_ERR_NOT_AVAILABLE;
+  }
+}
 
 static int
 ompi_mtl_psm_component_close(void)
@@ -120,46 +176,53 @@ ompi_mtl_psm_component_close(void)
     return OMPI_SUCCESS;
 }
 
+static int
+get_num_local_procs(int *out_nlp)
+{
+    /* num_local_peers does not include us in
+     * its calculation, so adjust for that */
+    *out_nlp = (int)(1 + orte_process_info.num_local_peers);
+    return OMPI_SUCCESS;
+}
 
-static mca_mtl_base_module_t*
+static int
+get_local_rank(int *out_rank)
+{
+    orte_node_rank_t my_node_rank;
+
+    *out_rank = 0;
+
+    if (ORTE_NODE_RANK_INVALID == (my_node_rank =
+        orte_process_info.my_node_rank)) {
+        return OMPI_ERROR;
+    }
+    *out_rank = (int)my_node_rank;
+    return OMPI_SUCCESS;
+}
+
+static mca_mtl_base_module_t *
 ompi_mtl_psm_component_init(bool enable_progress_threads,
-                           bool enable_mpi_threads)
+                            bool enable_mpi_threads)
 {
     psm_error_t	err;
-    int rc;
     int	verno_major = PSM_VERNO_MAJOR;
     int verno_minor = PSM_VERNO_MINOR;
-    ompi_proc_t *my_proc, **procs;
-    size_t num_total_procs;
-    int local_rank = -1, num_local_procs = 0, proc;
-    
+    int local_rank = -1, num_local_procs = 0;
+
     /* Compute the total number of processes on this host and our local rank
      * on that node. We need to provide PSM with these values so it can 
      * allocate hardware contexts appropriately across processes.
      */
-    if ((rc = ompi_proc_refresh()) != OMPI_SUCCESS) {
-      return NULL;
+    if (OMPI_SUCCESS != get_num_local_procs(&num_local_procs)) {
+        opal_output(0, "Cannot determine number of local processes. "
+                    "Cannot continue.\n");
+        return NULL;
     }
-    
-    my_proc = ompi_proc_local();
-    if (NULL == (procs = ompi_proc_world(&num_total_procs))) {
-      return NULL;
+    if (OMPI_SUCCESS != get_local_rank(&local_rank)) {
+        opal_output(0, "Cannot determine local rank. Cannot continue.\n");
+        return NULL;
     }
-    
-    for (proc = 0; proc < num_total_procs; proc++) {
-      if (my_proc == procs[proc]) {
-	local_rank = num_local_procs++;
-	continue;
-      }
-      
-      if (procs[proc]->proc_flags & OMPI_PROC_FLAG_LOCAL) {
-	num_local_procs++;
-      }
-    }
-    
-    assert(local_rank >= 0 && num_local_procs > 0);
-    free(procs);
-    
+     
     err = psm_error_register_handler(NULL /* no ep */,
 			             PSM_ERRHANDLER_NOP);
     if (err) {

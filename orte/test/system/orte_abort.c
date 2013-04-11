@@ -23,7 +23,7 @@ int main(int argc, char* argv[])
     pid_t pid;
     char hostname[500];
 
-    if (0 > (rc = orte_init(ORTE_NON_TOOL))) {
+    if (0 > (rc = orte_init(&argc, &argv, ORTE_PROC_NON_MPI))) {
         fprintf(stderr, "orte_abort: couldn't init orte - error code %d\n", rc);
         return rc;
     }
@@ -41,7 +41,7 @@ int main(int argc, char* argv[])
         if ((ORTE_PROC_MY_NAME->vpid == 3 || 
              (orte_process_info.num_procs <= 3 && ORTE_PROC_MY_NAME->vpid == 0))
             && i == 9995) {
-            orte_errmgr.abort(1, NULL);
+            orte_errmgr.abort(3, NULL);
         }
     }
 

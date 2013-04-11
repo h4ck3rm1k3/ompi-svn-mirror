@@ -25,11 +25,12 @@
 #define _ORTE_PARSE_OPTIONS_H_
 
 #include "orte_config.h"
-#include "orte/types.h"
 
 BEGIN_C_DECLS
 
 ORTE_DECLSPEC void orte_util_parse_range_options(char *input, char ***output);
+
+ORTE_DECLSPEC void orte_util_get_ranges(char *inp, char ***startpts, char ***endpts);
 
 END_C_DECLS
 #endif

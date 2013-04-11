@@ -14,6 +14,7 @@
 #include "orte/mca/errmgr/errmgr.h"
 #include "orte/util/comm/comm.h"
 #include "orte/util/hnp_contact.h"
+#include "orte/util/proc_info.h"
 #include "orte/runtime/orte_globals.h"
 #include "orte/runtime/runtime.h"
 
@@ -25,9 +26,9 @@ int main(int argc, char* argv[])
     orte_hnp_contact_t *hnp;
     orte_std_cntr_t num_jobs, i;
     orte_app_context_t *app;
-    char cwd[OMPI_PATH_MAX];
+    char cwd[OPAL_PATH_MAX];
     
-    if (0 > (rc = orte_init(ORTE_TOOL))) {
+    if (0 > (rc = orte_init(&argc, &argv, ORTE_PROC_TOOL))) {
         fprintf(stderr, "orte_tool: couldn't init orte\n");
         return rc;
     }
@@ -40,7 +41,7 @@ int main(int argc, char* argv[])
     /*
      * Get the directory listing
      */
-    if (ORTE_SUCCESS != (rc = orte_list_local_hnps(&hnp_list) ) ) {
+    if (ORTE_SUCCESS != (rc = orte_list_local_hnps(&hnp_list, true) ) ) {
         fprintf(stderr, "orte_tool: couldn't get list of HNP's on this system - error %s\n",
                 ORTE_ERROR_NAME(rc));
         goto cleanup;
@@ -72,7 +73,7 @@ int main(int argc, char* argv[])
     /* record the number of procs to be generated */
     app->num_procs = 1;
     /* setup the wd */
-    opal_getcwd(cwd, OMPI_PATH_MAX);
+    opal_getcwd(cwd, OPAL_PATH_MAX);
     app->cwd = strdup(cwd);
     
     /* spawn it */

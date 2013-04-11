@@ -12,6 +12,7 @@
  *                         All rights reserved.
  * Copyright (c) 2007-2008 University of Houston. All rights reserved.
  * Copyright (c) 2008      Sun Microsystems, Inc.  All rights reserved.
+ * Copyright (c) 2012 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -24,17 +25,18 @@
 
 #include <stdio.h>
 
+#include "opal/mca/hwloc/base/base.h"
+
 #include "mpi.h"
 #include "ompi/communicator/communicator.h"
 #include "ompi/group/group.h"
 #include "ompi/proc/proc.h"
-#include "ompi/op/op.h"
 
 #include "ompi/mca/coll/coll.h"
 #include "ompi/mca/coll/base/base.h"
 #include "ompi/mca/coll/base/coll_tags.h"
 
-#include "ompi/class/ompi_bitmap.h"
+#include "opal/class/opal_bitmap.h"
 #include "ompi/mca/bml/bml.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/mca/pml/pml.h"
@@ -269,6 +271,14 @@ int mca_coll_hierarch_module_enable (mca_coll_base_module_t *module,
     if ( OMPI_SUCCESS != ret ) {
         goto exit;
     }
+    if ( OMPI_COMM_CID_IS_LOWER ( lcomm, comm ) ) {
+        /* Mark the communicator as 'extra retain' and increase the
+           reference count by one more. See ompi_comm_activate
+           for detailed comments
+	*/
+        OMPI_COMM_SET_EXTRA_RETAIN (lcomm);
+        OBJ_RETAIN(lcomm);
+    }
     
     hierarch_module->hier_comm     = comm;
     hierarch_module->hier_lcomm    = lcomm;
@@ -299,10 +309,24 @@ int mca_coll_hierarch_module_enable (mca_coll_base_module_t *module,
     /* Generate the lleader communicator assuming that all lleaders are the first
        process in the list of processes with the same color. A function generating 
        other lleader-comms will follow soon. */
-    ret = ompi_comm_split ( comm, llead->am_lleader, rank, &llcomm, 0);
+    color = MPI_UNDEFINED;
+    if ( llead->am_lleader ) {
+	color = 1;
+    }
+    ret = ompi_comm_split ( comm, color, rank, &llcomm, 0);
     if ( OMPI_SUCCESS != ret ) {
         goto exit;
     }
+    if ( OMPI_COMM_CID_IS_LOWER ( llcomm, comm ) ) {
+        /* Mark the communicator as 'extra retain' and increase the
+           reference count by one more. See ompi_comm_activate
+	   for detailed explanation. 
+	*/
+        OMPI_COMM_SET_EXTRA_RETAIN (llcomm);
+        OBJ_RETAIN(llcomm);
+    }
+
+    
     llead->llcomm = llcomm;
     
     /* Store it now on the data structure */
@@ -447,6 +471,7 @@ struct ompi_communicator_t*  mca_coll_hierarch_get_llcomm (int root,
     struct mca_coll_hierarch_llead_t *llead=NULL;
     int found, i, rc, num_llead, offset;
     int rank = ompi_comm_rank (hierarch_module->hier_comm);
+    int color;
     
     /* determine what our offset of root is in the colorarr */
     offset = mca_coll_hierarch_get_offset ( root, 
@@ -485,12 +510,25 @@ struct ompi_communicator_t*  mca_coll_hierarch_get_llcomm (int root,
 	
 	/* generate the list of lleaders with this offset */
 	mca_coll_hierarch_get_all_lleaders ( rank, hierarch_module, llead, offset );   
-	
+	color = MPI_UNDEFINED;
+	if ( llead->am_lleader ) {
+	    color = 1;
+	}
+
 	/* create new lleader subcommunicator */
-	rc = ompi_comm_split ( hierarch_module->hier_comm, llead->am_lleader, root, &llcomm, 0);
+	rc = ompi_comm_split ( hierarch_module->hier_comm, color, root, &llcomm, 0);
 	if ( OMPI_SUCCESS != rc ) {
 	    return NULL;
 	}
+	if ( OMPI_COMM_CID_IS_LOWER ( llcomm, hierarch_module->hier_comm ) ) {
+            /* Mark the communicator as 'extra retain' and increase the
+               reference count by one more. See ompi_comm_activate 
+	       for detailed explanation. */
+            OMPI_COMM_SET_EXTRA_RETAIN (llcomm);
+            OBJ_RETAIN(llcomm);
+        }
+
+
 	llead->llcomm = llcomm;
 
 	/* Store the new element on the hierarch_module struct */
@@ -502,22 +540,13 @@ struct ompi_communicator_t*  mca_coll_hierarch_get_llcomm (int root,
     *llroot = MPI_UNDEFINED;
 
     if ( MPI_COMM_NULL != llcomm ) {
-	rc = ompi_comm_group ( hierarch_module->hier_comm, &group);
-	if ( OMPI_SUCCESS != rc ) {
-	    return NULL;
-	}
+	group   = hierarch_module->hier_comm->c_local_group;
+	llgroup = llcomm->c_local_group;
 
-	rc = ompi_comm_group ( llcomm, &llgroup);
-	if ( OMPI_SUCCESS != rc ) {
-	    return NULL;
-	}
-	
-	rc = ompi_group_translate_ranks ( group, 1, &root, llgroup, llroot);
-	if ( OMPI_SUCCESS != rc ) {
-	    return NULL;
-	}
-	/* ompi_group_free (&llgroup) */
-	/* ompi_group_free (&group); */
+        rc = ompi_group_translate_ranks ( group, 1, &root, llgroup, llroot);
+        if ( OMPI_SUCCESS != rc ) {
+            return NULL;
+        }
     }
      
     return llcomm;
@@ -542,7 +571,7 @@ mca_coll_hierarch_checkfor_sm ( struct ompi_communicator_t *comm, int *color,  i
     procs = comm->c_local_group->grp_proc_pointers;
     for ( i = 0 ; i < size ; i++) {
 	if ( procs[i]->proc_name.jobid == my_proc->proc_name.jobid &&
-	     ( (procs[i]->proc_flags & OMPI_PROC_FLAG_LOCAL)) ) {
+	     ( OPAL_PROC_ON_LOCAL_NODE(procs[i]->proc_flags)) ) {
 	    lncount++;
 	    if ( *color == -1){
 		 *color = i;
@@ -577,7 +606,7 @@ mca_coll_hierarch_checkfor_component ( struct ompi_communicator_t *comm,
 				       int *key,
 				       int *ncount )
 {
-    ompi_bitmap_t reachable;
+    opal_bitmap_t reachable;
     ompi_proc_t **procs=NULL;
     struct mca_bml_base_btl_array_t *bml_btl_array=NULL;
     mca_bml_base_btl_t *bml_btl=NULL;
@@ -600,8 +629,8 @@ mca_coll_hierarch_checkfor_component ( struct ompi_communicator_t *comm,
     size = ompi_comm_size ( comm );
     rank = ompi_comm_rank ( comm );
 
-    OBJ_CONSTRUCT(&reachable, ompi_bitmap_t);
-    rc = ompi_bitmap_init(&reachable, size);
+    OBJ_CONSTRUCT(&reachable, opal_bitmap_t);
+    rc = opal_bitmap_init(&reachable, size);
     if(OMPI_SUCCESS != rc) {
         return;
     }

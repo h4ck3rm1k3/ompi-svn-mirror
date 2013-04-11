@@ -9,6 +9,8 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2011      Los Alamos National Security, LLC.  All rights
+ *                         reserved. 
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -21,13 +23,10 @@
 
 #include <stdio.h>
 
-#include "opal/util/trace.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-#include "opal/class/opal_pointer_array.h"
 #include "opal/class/opal_list.h"
-
-#include "orte/runtime/orte_globals.h"
+#include "opal/class/opal_pointer_array.h"
 
 #include "orte/mca/odls/odls.h"
 #include "orte/mca/odls/base/base.h"
@@ -37,14 +36,10 @@
 int orte_odls_base_close(void)
 {
     int i;
-    char **nodes;
+    orte_proc_t *proc;
     opal_list_item_t *item;
 
-    OPAL_TRACE(5);
-    
     /* cleanup ODLS globals */
-    OBJ_DESTRUCT(&orte_odls_globals.mutex);
-    OBJ_DESTRUCT(&orte_odls_globals.cond);
     while (NULL != (item = opal_list_remove_first(&orte_odls_globals.xterm_ranks))) {
         OBJ_RELEASE(item);
     }
@@ -53,13 +48,14 @@ int orte_odls_base_close(void)
         free(orte_odls_globals.dmap->bytes);
         free(orte_odls_globals.dmap);
     }
-    nodes = (char**)orte_daemonmap.addr;
-    for (i=0; i < orte_daemonmap.size; i++) {
-        if (NULL != nodes[i]) {
-            free(nodes[i]);
+    
+    /* cleanup the global list of local children and job data */
+    for (i=0; i < orte_local_children->size; i++) {
+        if (NULL != (proc = (orte_proc_t*)opal_pointer_array_get_item(orte_local_children, i))) {
+            OBJ_RELEASE(proc);
         }
     }
-    OBJ_DESTRUCT(&orte_daemonmap);
+    OBJ_RELEASE(orte_local_children);
 
     /* if no components are available, then punt */
     if (!orte_odls_base.components_available) {
@@ -69,7 +65,7 @@ int orte_odls_base_close(void)
     /* Close all available components (only one in this case)  */
 
     mca_base_components_close(orte_odls_globals.output, 
-                            &orte_odls_base.available_components, NULL);
+                              &orte_odls_base.available_components, NULL);
 
     /* All done */
 

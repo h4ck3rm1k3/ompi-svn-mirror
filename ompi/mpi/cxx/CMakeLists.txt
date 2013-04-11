@@ -1,4 +1,4 @@
-# Copyright (c) 2007-2008 High Performance Computing Center Stuttgart, 
+# Copyright (c) 2007-2011 High Performance Computing Center Stuttgart, 
 #                         University of Stuttgart.  All rights reserved.
 # $COPYRIGHT$
 # 
@@ -23,12 +23,12 @@ ENDIF(NOT OMPI_PROVIDE_MPI_FILE_INTERFACE)
 
 ADD_LIBRARY (libmpi_cxx ${CXX_SOURCE_FILES})
 
-SET_TARGET_PROPERTIES (libmpi_cxx PROPERTIES LINKER_LANGUAGE CXX)
+SET_TARGET_PROPERTIES (libmpi_cxx PROPERTIES LINKER_LANGUAGE CXX PREFIX "" IMPORT_PREFIX "")
 
 # Set compile flags for this target
 IF (BUILD_SHARED_LIBS)
 
-  ADD_DEPENDENCIES(libmpi_cxx libmpi libopen-pal)
+  TARGET_LINK_LIBRARIES(libmpi_cxx libmpi libopen-pal)
   # Need OMPI_BUILDING_CXX_BINDINGS_LIBRARY so that we can get the path 
   # names correct inside the MPI C++ library.  OMPI_SKIP_MPICXX is necessary
   # so that mpi.h doesn't include mpicxx.h through the incorrect pathname 
@@ -48,8 +48,8 @@ INSTALL(TARGETS libmpi_cxx
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
 
-IF (OMPI_DEBUG_BUILD)
+IF (OMPI_DEBUG_BUILD AND WINDOWS_VS)
   INSTALL(FILES ${OpenMPI_BINARY_DIR}/Debug/libmpi_cxx${CMAKE_DEBUG_POSTFIX}.pdb
     DESTINATION bin)
-ENDIF (OMPI_DEBUG_BUILD)
+ENDIF (OMPI_DEBUG_BUILD AND WINDOWS_VS)
 

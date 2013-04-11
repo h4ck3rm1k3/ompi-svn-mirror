@@ -1,6 +1,6 @@
 # -*- shell-script -*-
 #
-# Copyright (c) 2004-2007 The Trustees of Indiana University.
+# Copyright (c) 2004-2010 The Trustees of Indiana University.
 #                         All rights reserved.
 # Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
 #                         All rights reserved.
@@ -8,6 +8,7 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+dnl Copyright (c) 2010      Cisco Systems, Inc.  All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -17,9 +18,11 @@
 
 # MCA_rml_ftrm_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_rml_ftrm_CONFIG],[
+AC_DEFUN([MCA_orte_rml_ftrm_CONFIG],[
+    AC_CONFIG_FILES([orte/mca/rml/ftrm/Makefile])
+
     # If we don't want FT, don't compile this component
-    AS_IF([test "$ompi_want_ft" = "1"],
+    AS_IF([test "$opal_want_ft_cr" = "1" -a "$orte_without_full_support" = 0],
         [$1],
         [$2])
 ])dnl

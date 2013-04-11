@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University and Indiana
+ * Copyright (c) 2004-2010 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
  *                         Corporation.  All rights reserved.
  * Copyright (c) 2004-2005 The University of Tennessee and The University
@@ -21,8 +21,6 @@
 #include "ompi_config.h"
 
 #include "ompi/constants.h"
-#include "orte/mca/rml/rml.h"
-#include "opal/dss/dss.h"
 
 #include "ompi/mca/crcp/crcp.h"
 
@@ -30,9 +28,7 @@
  * Global functions for MCA overall CRCP
  */
 
-#if defined(c_plusplus) || defined(__cplusplus)
-extern "C" {
-#endif
+BEGIN_C_DECLS
 
     /**
      * Initialize the CRCP MCA framework
@@ -65,6 +61,12 @@ extern "C" {
     OMPI_DECLSPEC int ompi_crcp_base_close(void);
 
     /**
+     * Quiesce Interface (For MPI Ext.)
+     */
+    OMPI_DECLSPEC int ompi_crcp_base_quiesce_start(MPI_Info *info);
+    OMPI_DECLSPEC int ompi_crcp_base_quiesce_end(MPI_Info *info);
+
+    /**
      * 'None' component functions
      * These are to be used when no component is selected.
      * They just return success, and empty strings as necessary.
@@ -75,6 +77,10 @@ extern "C" {
 
     int ompi_crcp_base_module_init(void);
     int ompi_crcp_base_module_finalize(void);
+
+    /* Quiesce Interface */
+    int ompi_crcp_base_none_quiesce_start(MPI_Info *info);
+    int ompi_crcp_base_none_quiesce_end(MPI_Info *info);
 
     /* PML Interface */
     ompi_crcp_base_pml_state_t* ompi_crcp_base_none_pml_enable( bool enable, ompi_crcp_base_pml_state_t* );
@@ -124,7 +130,7 @@ extern "C" {
                                        size_t nprocs,
                                        struct ompi_proc_t** procs,
                                        struct mca_btl_base_endpoint_t** endpoints,
-                                       struct ompi_bitmap_t* reachable,
+                                       struct opal_bitmap_t* reachable,
                                        ompi_crcp_base_btl_state_t* );
 
     ompi_crcp_base_btl_state_t*
@@ -159,7 +165,7 @@ extern "C" {
     ompi_crcp_base_none_btl_prepare_src( struct mca_btl_base_module_t* btl,
                                          struct mca_btl_base_endpoint_t* endpoint,
                                          mca_mpool_base_registration_t* registration,
-                                         struct ompi_convertor_t* convertor,
+                                         struct opal_convertor_t* convertor,
                                          size_t reserve,
                                          size_t* size,
                                          ompi_crcp_base_btl_state_t*);
@@ -168,7 +174,7 @@ extern "C" {
     ompi_crcp_base_none_btl_prepare_dst( struct mca_btl_base_module_t* btl,
                                          struct mca_btl_base_endpoint_t* endpoint,
                                          mca_mpool_base_registration_t* registration,
-                                         struct ompi_convertor_t* convertor,
+                                         struct opal_convertor_t* convertor,
                                          size_t reserve,
                                          size_t* size,
                                          ompi_crcp_base_btl_state_t*);
@@ -209,8 +215,6 @@ extern "C" {
     OMPI_DECLSPEC extern ompi_crcp_base_component_t ompi_crcp_base_selected_component;
     OMPI_DECLSPEC extern ompi_crcp_base_module_t ompi_crcp;
 
-#if defined(c_plusplus) || defined(__cplusplus)
-}
-#endif
+END_C_DECLS
 
 #endif /* OMPI_CRCP_BASE_H */

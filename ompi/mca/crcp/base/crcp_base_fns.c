@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2004-2008 The Trustees of Indiana University.
+ * Copyright (c) 2004-2010 The Trustees of Indiana University.
  *                         All rights reserved.
  * Copyright (c) 2004-2005 The Trustees of the University of Tennessee.
  *                         All rights reserved.
@@ -16,30 +16,29 @@
 
 #include "ompi_config.h"
 
-#if HAVE_SYS_TYPES_H
+#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
-#if HAVE_UNISTD_H
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #include <time.h>
 #include <ctype.h>
 
+#include "opal/class/opal_bitmap.h"
 #include "opal/mca/mca.h"
 #include "opal/mca/base/base.h"
-
-#include "orte/util/show_help.h"
-#include "opal/util/os_dirpath.h"
-
-#include "ompi/communicator/communicator.h"
-#include "ompi/proc/proc.h"
+#include "opal/mca/base/base.h"
 #include "opal/mca/base/mca_base_param.h"
 #include "opal/mca/crs/crs.h"
 #include "opal/mca/crs/base/base.h"
+
+#include "ompi/communicator/communicator.h"
+#include "ompi/proc/proc.h"
 #include "ompi/mca/crcp/crcp.h"
 #include "ompi/mca/crcp/base/base.h"
-#include "ompi/mca/bml/bml.h"
 #include "ompi/mca/bml/base/base.h"
+#include "ompi/info/info.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/base.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
@@ -90,6 +89,19 @@ int ompi_crcp_base_module_init(void)
 }
 
 int ompi_crcp_base_module_finalize(void)
+{
+    return OMPI_SUCCESS;
+}
+
+/****************
+ * MPI Quiesce Interface
+ ****************/
+int ompi_crcp_base_none_quiesce_start(MPI_Info *info)
+{
+    return OMPI_SUCCESS;
+}
+
+int ompi_crcp_base_none_quiesce_end(MPI_Info *info)
 {
     return OMPI_SUCCESS;
 }
@@ -264,7 +276,7 @@ ompi_crcp_base_none_btl_add_procs( struct mca_btl_base_module_t* btl,
                                    size_t nprocs,
                                    struct ompi_proc_t** procs,
                                    struct mca_btl_base_endpoint_t** endpoints,
-                                   struct ompi_bitmap_t* reachable,
+                                   struct opal_bitmap_t* reachable,
                                    ompi_crcp_base_btl_state_t* btl_state)
 {
     btl_state->error_code = OMPI_SUCCESS;
@@ -323,7 +335,7 @@ ompi_crcp_base_btl_state_t*
 ompi_crcp_base_none_btl_prepare_src( struct mca_btl_base_module_t* btl,
                                      struct mca_btl_base_endpoint_t* endpoint,
                                      mca_mpool_base_registration_t* registration,
-                                     struct ompi_convertor_t* convertor,
+                                     struct opal_convertor_t* convertor,
                                      size_t reserve,
                                      size_t* size,
                                      ompi_crcp_base_btl_state_t* btl_state)
@@ -336,7 +348,7 @@ ompi_crcp_base_btl_state_t*
 ompi_crcp_base_none_btl_prepare_dst( struct mca_btl_base_module_t* btl,
                                      struct mca_btl_base_endpoint_t* endpoint,
                                      mca_mpool_base_registration_t* registration,
-                                     struct ompi_convertor_t* convertor,
+                                     struct opal_convertor_t* convertor,
                                      size_t reserve,
                                      size_t* size,
                                      ompi_crcp_base_btl_state_t* btl_state)
@@ -399,3 +411,24 @@ ompi_crcp_base_none_btl_ft_event(int state,
 /********************
  * Utility functions
  ********************/
+
+/******************
+ * MPI Interface Functions
+ ******************/
+int ompi_crcp_base_quiesce_start(MPI_Info *info)
+{
+    if( NULL != ompi_crcp.quiesce_start ) {
+        return ompi_crcp.quiesce_start(info);
+    } else {
+        return OMPI_SUCCESS;
+    }
+}
+
+int ompi_crcp_base_quiesce_end(MPI_Info *info)
+{
+    if( NULL != ompi_crcp.quiesce_end ) {
+        return ompi_crcp.quiesce_end(info);
+    } else {
+        return OMPI_SUCCESS;
+    }
+}

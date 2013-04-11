@@ -10,7 +10,8 @@
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
  * Copyright (c) 2006-2007 Voltaire All rights reserved.
- * Copyright (c) 2007      Cisco, Inc.  All rights reserved.
+ * Copyright (c) 2007      Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved.
  *
  * $COPYRIGHT$
  * 
@@ -24,15 +25,15 @@
 #include <stdio.h>
 
 #include "opal/mca/base/mca_base_param.h"
+#include "opal/util/output.h"
 
-#include "orte/util/show_help.h"
 
 #include "ompi/mca/btl/btl.h"
 #include "ompi/mca/btl/base/base.h"
 
 
 int mca_btl_base_param_register(mca_base_component_t *version,
-        mca_btl_base_module_t *module)
+                                mca_btl_base_module_t *module)
 {
     int value, err = 0;
     char *msg;
@@ -47,7 +48,7 @@ int mca_btl_base_param_register(mca_base_component_t *version,
     REG_INT("exclusivity", "BTL exclusivity (must be >= 0)",
             module->btl_exclusivity, 0, uint32_t);
 
-    asprintf(&msg, "BTL bit flags (general flags: SEND=%d, PUT=%d, GET=%d, SEND_INPLACE=%d, RDMA_MATCHED=%d, HETEROGENEOUS_RDMA=%d; flags only used by the \"dr\" PML (ignored by others): ACK=%d, CHECKSUM=%d, RDMA_COMPLETION=%d)",
+    asprintf(&msg, "BTL bit flags (general flags: SEND=%d, PUT=%d, GET=%d, SEND_INPLACE=%d, RDMA_MATCHED=%d, HETEROGENEOUS_RDMA=%d; flags only used by the \"dr\" PML (ignored by others): ACK=%d, CHECKSUM=%d, RDMA_COMPLETION=%d; flags only used by the \"bfo\" PML (ignored by others): FAILOVER_SUPPORT=%d)",
              MCA_BTL_FLAGS_SEND,
              MCA_BTL_FLAGS_PUT,
              MCA_BTL_FLAGS_GET,
@@ -56,16 +57,17 @@ int mca_btl_base_param_register(mca_base_component_t *version,
              MCA_BTL_FLAGS_HETEROGENEOUS_RDMA,
              MCA_BTL_FLAGS_NEED_ACK,
              MCA_BTL_FLAGS_NEED_CSUM,
-             MCA_BTL_FLAGS_RDMA_COMPLETION);
+             MCA_BTL_FLAGS_RDMA_COMPLETION,
+             MCA_BTL_FLAGS_FAILOVER_SUPPORT);
     REG_INT("flags", msg,
             module->btl_flags,
             0, uint32_t);
     free(msg);
 
-    REG_INT("rndv_eager_limit", "Size (in bytes) of \"phase 1\" fragment sent for all large messages (must be >= 0 and <= eager_limit)",
+    REG_INT("rndv_eager_limit", "Size (in bytes, including header) of \"phase 1\" fragment sent for all large messages (must be >= 0 and <= eager_limit)",
             module->btl_rndv_eager_limit, 0, size_t);
 
-    REG_INT("eager_limit", "Maximum size (in bytes) of \"short\" messages (must be >= 1).",
+    REG_INT("eager_limit", "Maximum size (in bytes, including header) of \"short\" messages (must be >= 1).",
             module->btl_eager_limit, 1, size_t);
 
     REG_INT("max_send_size", "Maximum size (in bytes) of a single \"phase 2\" fragment of a long message when using the pipeline protocol (must be >= 1)",
@@ -107,7 +109,7 @@ int mca_btl_base_param_register(mca_base_component_t *version,
     }
 
     REG_INT("bandwidth", "Approximate maximum bandwidth of interconnect"
-            "(must be >= 1)", module->btl_bandwidth, 1, uint32_t);
+            "(0 = auto-detect value at run-time [not supported in all BTL modules], >= 1 = bandwidth in Mbps)", module->btl_bandwidth, 0, uint32_t);
 
     REG_INT("latency", "Approximate latency of interconnect (must be >= 0)",
             module->btl_latency, 0, uint32_t);

@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -52,6 +53,7 @@ int mca_pml_ob1_progress(void)
             completed_requests++;
             break;
         case MCA_PML_OB1_SEND_PENDING_START:
+            MCA_PML_OB1_SEND_REQUEST_RESET(sendreq);
             endpoint = sendreq->req_endpoint;
             send_succedded = false;
             for(j = 0; j < (int)mca_bml_base_btl_array_get_size(&endpoint->btl_eager); j++) {

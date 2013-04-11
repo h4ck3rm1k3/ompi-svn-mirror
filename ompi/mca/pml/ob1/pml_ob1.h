@@ -1,3 +1,4 @@
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil -*- */
 /*
  * Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
  *                         University Research and Technology
@@ -9,6 +10,10 @@
  *                         University of Stuttgart.  All rights reserved.
  * Copyright (c) 2004-2005 The Regents of the University of California.
  *                         All rights reserved.
+ * Copyright (c) 2010      Oracle and/or its affiliates.  All rights reserved
+ * Copyright (c) 2011      Sandia National Laboratories. All rights reserved.
+ * Copyright (c) 2012      Los Alamos National Security, LLC. All rights
+ *                         reserved.
  * $COPYRIGHT$
  * 
  * Additional copyrights may follow
@@ -23,15 +28,13 @@
 #define MCA_PML_OB1_H
 
 #include "ompi_config.h"
-#include "opal/threads/threads.h"
 #include "ompi/class/ompi_free_list.h"
 #include "ompi/request/request.h"
 #include "ompi/mca/pml/pml.h"
 #include "ompi/mca/pml/base/pml_base_request.h"
 #include "ompi/mca/pml/base/pml_base_bsend.h"
 #include "ompi/mca/pml/base/pml_base_sendreq.h"
-#include "ompi/mca/btl/btl.h"
-#include "ompi/datatype/datatype.h"
+#include "ompi/datatype/ompi_datatype.h"
 #include "pml_ob1_hdr.h"
 #include "ompi/mca/bml/base/base.h"
 #include "ompi/proc/proc.h"
@@ -52,7 +55,7 @@ struct mca_pml_ob1_t {
     int free_list_inc;      /* number of elements to grow free list */
     size_t send_pipeline_depth;
     size_t recv_pipeline_depth;
-    size_t rdma_put_retries_limit;
+    size_t rdma_retries_limit;
     int max_rdma_per_request;
     int max_send_per_range;
     bool leave_pinned; 
@@ -83,6 +86,7 @@ struct mca_pml_ob1_t {
 typedef struct mca_pml_ob1_t mca_pml_ob1_t; 
 
 extern mca_pml_ob1_t mca_pml_ob1;
+extern int mca_pml_ob1_output;
 
 /*
  * PML interface functions.
@@ -119,6 +123,19 @@ extern int mca_pml_ob1_iprobe( int dst,
 extern int mca_pml_ob1_probe( int dst,
                               int tag,
                               struct ompi_communicator_t* comm,
+                              ompi_status_public_t* status );
+
+extern int mca_pml_ob1_improbe( int dst,
+                               int tag,
+                               struct ompi_communicator_t* comm,
+                               int *matched,
+                               struct ompi_message_t **message,
+                               ompi_status_public_t* status );
+
+extern int mca_pml_ob1_mprobe( int dst,
+                              int tag,
+                              struct ompi_communicator_t* comm,
+                              struct ompi_message_t **message,
                               ompi_status_public_t* status );
 
 extern int mca_pml_ob1_isend_init( void *buf,
@@ -171,6 +188,18 @@ extern int mca_pml_ob1_recv( void *buf,
                              struct ompi_communicator_t* comm,
                              ompi_status_public_t* status );
 
+extern int mca_pml_ob1_imrecv( void *buf,
+                               size_t count,
+                               ompi_datatype_t *datatype,
+                               struct ompi_message_t **message,
+                               struct ompi_request_t **request );
+
+extern int mca_pml_ob1_mrecv( void *buf,
+                              size_t count,
+                              ompi_datatype_t *datatype,
+                              struct ompi_message_t **message,
+                              ompi_status_public_t* status );
+
 extern int mca_pml_ob1_dump( struct ompi_communicator_t* comm,
                              int verbose );
 
@@ -212,7 +241,7 @@ do {                                                            \
                                                                     \
         MCA_PML_OB1_PCKT_PENDING_ALLOC(_pckt,_rc);                  \
         _pckt->hdr.hdr_common.hdr_type = MCA_PML_OB1_HDR_TYPE_FIN;  \
-        _pckt->hdr.hdr_fin.hdr_des.pval = (D);                      \
+        _pckt->hdr.hdr_fin.hdr_des = (D);                           \
         _pckt->hdr.hdr_fin.hdr_fail = (S);                          \
         _pckt->proc = (P);                                          \
         _pckt->bml_btl = (B);                                       \
@@ -225,7 +254,7 @@ do {                                                            \
 
 
 int mca_pml_ob1_send_fin(ompi_proc_t* proc, mca_bml_base_btl_t* bml_btl, 
-        void *hdr_des, uint8_t order, uint32_t status);
+        ompi_ptr_t hdr_des, uint8_t order, uint32_t status);
 
 /* This function tries to resend FIN/ACK packets from pckt_pending queue.
  * Packets are added to the queue when sending of FIN or ACK is failed due to
@@ -255,15 +284,31 @@ void mca_pml_ob1_process_pending_rdma(void);
 /*
  * Compute the total number of bytes on supplied descriptor
  */
-#define MCA_PML_OB1_COMPUTE_SEGMENT_LENGTH(segments, count, hdrlen, length) \
-do {                                                                        \
-   size_t i;                                                                \
-                                                                            \
-   for( i = 0; i < count; i++ ) {                                           \
-       length += segments[i].seg_len;                                       \
-   }                                                                        \
-   length -= hdrlen;                                                        \
-} while(0)
+static inline size_t
+mca_pml_ob1_compute_segment_length(size_t seg_size, void *segments,
+                                   size_t count, size_t hdrlen)
+{
+    size_t i, length = 0;
+    mca_btl_base_segment_t *segment = (mca_btl_base_segment_t*)segments;
+
+    for (i = 0; i < count ; ++i) {
+        length += segment->seg_len;
+        segment = (mca_btl_base_segment_t *)((char *)segment + seg_size);
+    }
+    return (length - hdrlen);
+}
+
+static inline size_t
+mca_pml_ob1_compute_segment_length_base(mca_btl_base_segment_t *segments,
+                                        size_t count, size_t hdrlen)
+{
+    size_t i, length = 0;
+
+    for (i = 0; i < count ; ++i) {
+        length += segments[i].seg_len;
+    }
+    return (length - hdrlen);
+}
 
 /* represent BTL chosen for sending request */
 struct mca_pml_ob1_com_btl_t {

@@ -10,6 +10,9 @@
 #                         University of Stuttgart.  All rights reserved.
 # Copyright (c) 2004-2005 The Regents of the University of California.
 #                         All rights reserved.
+# Copyright (c) 2009-2010 Cisco Systems, Inc.  All rights reserved.
+# Copyright (c) 2011      Los Alamos National Security, LLC.
+#                         All rights reserved.
 # $COPYRIGHT$
 # 
 # Additional copyrights may follow
@@ -19,15 +22,15 @@
 
 # MCA_ras_tm_CONFIG([action-if-found], [action-if-not-found])
 # -----------------------------------------------------------
-AC_DEFUN([MCA_ras_tm_CONFIG],[
-    OMPI_CHECK_TM([ras_tm], [ras_tm_good=1], [ras_tm_good=0])
+AC_DEFUN([MCA_orte_ras_tm_CONFIG],[
+    AC_CONFIG_FILES([orte/mca/ras/tm/Makefile])
+
+    ORTE_CHECK_TM([ras_tm], [ras_tm_good=1], [ras_tm_good=0])
 
     # if check worked, set wrapper flags if so.  
     # Evaluate succeed / fail
-    AS_IF([test "$ras_tm_good" = "1"],
-          [ras_tm_WRAPPER_EXTRA_LDFLAGS="$ras_tm_LDFLAGS"
-           ras_tm_WRAPPER_EXTRA_LIBS="$ras_tm_LIBS"
-           $1],
+    AS_IF([test "$ras_tm_good" = "1" -a "$orte_without_full_support" = 0],
+          [$1],
           [$2])
 
     # set build flags to use in makefile

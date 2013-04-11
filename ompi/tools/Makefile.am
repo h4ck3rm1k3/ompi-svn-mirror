@@ -32,4 +32,3 @@ DIST_SUBDIRS += \
 	tools/wrappers \
 	tools/ortetools \
 	tools/ompi-server
-
